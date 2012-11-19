@@ -31,6 +31,7 @@ import android.telephony.Rlog;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.ConcurrentModificationException;
 import java.util.List;
 
 
@@ -1850,32 +1851,35 @@ public final class CallManager {
     public String toString() {
         Call call;
         StringBuilder b = new StringBuilder();
+        try {
+            b.append("CallManager {");
+            b.append("\nstate = " + getState());
+            call = getActiveFgCall();
+            b.append("\n- Foreground: " + getActiveFgCallState());
+            b.append(" from " + call.getPhone());
+            b.append("\n  Conn: ").append(getFgCallConnections());
+            call = getFirstActiveBgCall();
+            b.append("\n- Background: " + call.getState());
+            b.append(" from " + call.getPhone());
+            b.append("\n  Conn: ").append(getBgCallConnections());
+            call = getFirstActiveRingingCall();
+            b.append("\n- Ringing: " +call.getState());
+            b.append(" from " + call.getPhone());
 
-        b.append("CallManager {");
-        b.append("\nstate = " + getState());
-        call = getActiveFgCall();
-        b.append("\n- Foreground: " + getActiveFgCallState());
-        b.append(" from " + call.getPhone());
-        b.append("\n  Conn: ").append(getFgCallConnections());
-        call = getFirstActiveBgCall();
-        b.append("\n- Background: " + call.getState());
-        b.append(" from " + call.getPhone());
-        b.append("\n  Conn: ").append(getBgCallConnections());
-        call = getFirstActiveRingingCall();
-        b.append("\n- Ringing: " +call.getState());
-        b.append(" from " + call.getPhone());
-
-        for (Phone phone : getAllPhones()) {
-            if (phone != null) {
-                b.append("\nPhone: " + phone + ", name = " + phone.getPhoneName()
-                        + ", state = " + phone.getState());
-                call = phone.getForegroundCall();
-                b.append("\n- Foreground: ").append(call);
-                call = phone.getBackgroundCall();
-                b.append(" Background: ").append(call);
-                call = phone.getRingingCall();
-                b.append(" Ringing: ").append(call);
+            for (Phone phone : getAllPhones()) {
+                if (phone != null) {
+                    b.append("\nPhone: " + phone + ", name = " + phone.getPhoneName()
+                            + ", state = " + phone.getState());
+                    call = phone.getForegroundCall();
+                    b.append("\n- Foreground: ").append(call);
+                    call = phone.getBackgroundCall();
+                    b.append(" Background: ").append(call);
+                    call = phone.getRingingCall();
+                    b.append(" Ringing: ").append(call);
+                }
             }
+        } catch (ConcurrentModificationException e) {
+            Rlog.e(LOG_TAG, "CallManager toString Exception:" + e);
         }
         b.append("\n}");
         return b.toString();
