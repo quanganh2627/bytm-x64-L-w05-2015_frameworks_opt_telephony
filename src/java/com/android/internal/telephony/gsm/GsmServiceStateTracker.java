@@ -1574,6 +1574,7 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
                 mZoneOffset  = tzOffset;
                 mZoneDst     = dst != 0;
                 mZoneTime    = c.getTimeInMillis();
+                zone = getNitzTimeZone(mZoneOffset, mZoneDst, mZoneTime);
             }
 
             if (zone != null) {
