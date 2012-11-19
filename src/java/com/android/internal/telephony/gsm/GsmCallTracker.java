@@ -752,6 +752,8 @@ public final class GsmCallTracker extends CallTracker {
                     log("(foregnd) hangup dialing or alerting...");
                 }
                 hangup((GsmConnection)(call.getConnections().get(0)));
+            } else if (mBackgroundCall.isIdle()) {
+                hangupAllConnections(call);
             } else {
                 hangupForegroundResumeBackground();
             }
