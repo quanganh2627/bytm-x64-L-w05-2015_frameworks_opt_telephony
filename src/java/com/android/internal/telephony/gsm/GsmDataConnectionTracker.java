@@ -986,6 +986,9 @@ public final class GsmDataConnectionTracker extends DataConnectionTracker {
                 result.add(apn);
             } while (cursor.moveToNext());
         }
+        if (cursor != null) {
+            cursor.close();
+        }
         if (DBG) log("createApnList: X result=" + result);
         return result;
     }
