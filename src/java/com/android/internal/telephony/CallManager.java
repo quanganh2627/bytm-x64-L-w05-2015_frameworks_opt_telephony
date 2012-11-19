@@ -377,7 +377,15 @@ public final class CallManager {
         // but only on audio mode transitions
         switch (getState()) {
             case RINGING:
-                if (audioManager.getMode() != AudioManager.MODE_RINGTONE) {
+                Call ringingCall = getFirstActiveRingingCall();
+                if (ringingCall != null
+                        && ringingCall.getPhone().getPhoneType() == PhoneConstants.PHONE_TYPE_GSM
+                        && ringingCall.isIncomingAcceptedByUser()) {
+                    if (VDBG) Log.d(LOG_TAG, "requestAudioFocus on STREAM_VOICE_CALL");
+                    audioManager.requestAudioFocusForCall(AudioManager.STREAM_VOICE_CALL,
+                            AudioManager.AUDIOFOCUS_GAIN_TRANSIENT);
+                    audioManager.setMode(AudioManager.MODE_IN_CALL);
+                } else if (audioManager.getMode() != AudioManager.MODE_RINGTONE) {
                     // only request audio focus if the ringtone is going to be heard
                     if (audioManager.getStreamVolume(AudioManager.STREAM_RING) > 0) {
                         if (VDBG) Log.d(LOG_TAG, "requestAudioFocus on STREAM_RING");

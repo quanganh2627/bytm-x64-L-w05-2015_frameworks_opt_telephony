@@ -56,6 +56,9 @@ public abstract class Call {
     // merged, etc.
     protected boolean isGeneric = false;
 
+    // Flag to indicate if the incoming call was accepted by user or not
+    protected boolean isIncomingAcceptedByUser = false;
+
     protected final String LOG_TAG = "Call";
 
     /* Instance Methods */
@@ -238,6 +241,22 @@ public abstract class Call {
      */
     public void setGeneric(boolean generic) {
         isGeneric = generic;
+    }
+
+    /**
+     * Sets/Clears the incoming call accepted by user flag.
+     * Only used in GSM.
+     */
+    public void setIncomingAcceptedByUser(boolean isAcceptedByUser) {
+        isIncomingAcceptedByUser = isAcceptedByUser;
+    }
+
+    /**
+     * To indicate if the user has accepted the incoming call
+     * or not. Only used in GSM
+     */
+    public boolean isIncomingAcceptedByUser() {
+        return isIncomingAcceptedByUser;
     }
 
     /**
