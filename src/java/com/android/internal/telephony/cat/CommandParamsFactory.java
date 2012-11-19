@@ -335,6 +335,14 @@ class CommandParamsFactory extends Handler {
         textMsg.isHighPriority = (cmdDet.commandQualifier & 0x01) != 0;
         textMsg.userClear = (cmdDet.commandQualifier & 0x80) != 0;
 
+        // According to 3GPP 31.111 chap 6.5.4 (ETSI TS 102 223 clause 6.5.4):
+        // If the terminal receives an icon and either an empty or no alpha
+        // text string is given by UICC, than the terminal shall reject the
+        // command with general result "Command not understood by terminal".
+        if ((iconId != null) && (textMsg.text == null)) {
+            throw new ResultException(ResultCode.CMD_DATA_NOT_UNDERSTOOD);
+        }
+
         mCmdParams = new DisplayTextParams(cmdDet, textMsg);
 
         if (iconId != null) {
@@ -369,15 +377,20 @@ class CommandParamsFactory extends Handler {
         if (ctlv != null) {
             textMsg.text = ValueParser.retrieveTextString(ctlv);
         }
-        // load icons only when text exist.
-        if (textMsg.text != null) {
-            ctlv = searchForTag(ComprehensionTlvTag.ICON_ID, ctlvs);
-            if (ctlv != null) {
-                iconId = ValueParser.retrieveIconId(ctlv);
-                textMsg.iconSelfExplanatory = iconId.selfExplanatory;
-            }
+
+        ctlv = searchForTag(ComprehensionTlvTag.ICON_ID, ctlvs);
+        if (ctlv != null) {
+            iconId = ValueParser.retrieveIconId(ctlv);
+            textMsg.iconSelfExplanatory = iconId.selfExplanatory;
         }
 
+        // According to 3GPP 31.111 chap 6.5.4 (ETSI TS 102 223 clause 6.5.4):
+        // If the terminal receives an icon and either an empty or no alpha
+        // text string is given by UICC, than the terminal shall reject the
+        // command with general result "Command not understood by terminal".
+        if ((iconId != null) && (textMsg.text == null)) {
+            throw new ResultException(ResultCode.CMD_DATA_NOT_UNDERSTOOD);
+        }
         mCmdParams = new DisplayTextParams(cmdDet, textMsg);
 
         if (iconId != null) {
