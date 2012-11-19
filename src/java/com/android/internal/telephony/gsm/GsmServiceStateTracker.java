@@ -1047,6 +1047,10 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
                     } else {
                         zone = TimeUtils.getTimeZone(mZoneOffset, mZoneDst, mZoneTime, iso);
                         if (DBG) log("pollStateDone: using getTimeZone(off, dst, time, iso)");
+                        if (zone == null) {
+                            // Couldn't find a proper timezone.  Perhaps the DST data is wrong.
+                            zone = TimeUtils.getTimeZone(mZoneOffset,!mZoneDst, mZoneTime, iso);
+                        }
                     }
 
                     mNeedFixZoneAfterNitz = false;
@@ -1550,9 +1554,16 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
 
                 if (mGotCountryCode) {
                     if (iso != null && iso.length() > 0) {
-                        zone = TimeUtils.getTimeZone(tzOffset, dst != 0,
+                        boolean isDstProvided = (dst != 0);
+                        zone = TimeUtils.getTimeZone(tzOffset, isDstProvided,
                                 c.getTimeInMillis(),
                                 iso);
+                        if (zone == null) {
+                            // Couldn't find a proper timezone.  Perhaps the DST data is wrong.
+                            zone = TimeUtils.getTimeZone(tzOffset, !isDstProvided,
+                                c.getTimeInMillis(),
+                                iso);
+                        }
                     } else {
                         // We don't have a valid iso country code.  This is
                         // most likely because we're on a test network that's
