@@ -252,6 +252,7 @@ public final class GsmCallTracker extends CallTracker {
             Log.i("phone", "acceptCall: incoming...");
             // Always unmute when answering a new call
             setMute(false);
+            ringingCall.setIncomingAcceptedByUser(true);
             cm.acceptCall(obtainCompleteMessage());
         } else if (ringingCall.getState() == GsmCall.State.WAITING) {
             setMute(false);
