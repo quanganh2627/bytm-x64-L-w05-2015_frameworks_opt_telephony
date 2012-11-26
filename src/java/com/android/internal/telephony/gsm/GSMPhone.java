@@ -1428,6 +1428,31 @@ public class GSMPhone extends PhoneBase {
             Log.e(LOG_TAG, "failed to commit network selection preference");
         }
 
+        /* Empty operator numeric means network selection mode is automatic */
+        mIsAutomaticNetworkSelection = TextUtils.isEmpty(nsm.operatorNumeric);
+
+        if (ar.exception != null) {
+            /*
+             * Incase of network selection mode failure, reset the network selection
+             * mode to automatic.
+             */
+            mIsAutomaticNetworkSelection = true;
+
+            /*
+             * There won't be any service state change when the previous network
+             * selection also has failed. So, generate a dummy service state
+             * change event to make sure the UI notifications are updated.
+             *
+             * Note: This is an ugly hack due to PhoneApp implementation.
+             */
+            notifyServiceStateChanged(getServiceState());
+        }
+
+        editor.putBoolean(NETWORK_SELECTION_MODE, mIsAutomaticNetworkSelection);
+        // commit and log the result.
+        if (!editor.commit()) {
+            Log.e(LOG_TAG, "failed to commit network selection mode preference");
+        }
     }
 
     /**
