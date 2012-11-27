@@ -39,6 +39,16 @@ public interface AppInterface {
     void onCmdResponse(CatResponseMessage resMsg);
 
     /*
+     * Returns true - Event download active for the given event.
+     */
+    boolean isEventDownloadActive(int event);
+
+    /*
+     * Callback function from app to telephony to pass a event to the SIM.
+     */
+    void onEventDownload(CatEventMessage eventMsg);
+
+    /*
      * Enumeration for representing "Type of Command" of proactive commands.
      * Those are the only commands which are supported by the Telephony. Any app
      * implementation should support those.

@@ -33,6 +33,7 @@ public class CatCmdMessage implements Parcelable {
     private BrowserSettings mBrowserSettings = null;
     private ToneSettings mToneSettings = null;
     private CallSettings mCallSettings = null;
+    private byte[] mEventList = null;
 
     /*
      * Container for Launch Browser command settings.
@@ -53,6 +54,9 @@ public class CatCmdMessage implements Parcelable {
     CatCmdMessage(CommandParams cmdParams) {
         mCmdDet = cmdParams.cmdDet;
         switch(getCmdType()) {
+        case SET_UP_EVENT_LIST:
+            mEventList = ((EventListParams) cmdParams).eventList;
+            break;
         case SET_UP_MENU:
         case SELECT_ITEM:
             mMenu = ((SelectItemParams) cmdParams).menu;
@@ -101,6 +105,14 @@ public class CatCmdMessage implements Parcelable {
         mMenu = in.readParcelable(null);
         mInput = in.readParcelable(null);
         switch (getCmdType()) {
+        case SET_UP_EVENT_LIST:
+            mEventList = null;
+            int len = in.readInt();
+            if (len > 0) {
+                mEventList = new byte[len];
+                in.readByteArray(mEventList);
+            }
+            break;
         case LAUNCH_BROWSER:
             mBrowserSettings = new BrowserSettings();
             mBrowserSettings.url = in.readString();
@@ -123,6 +135,16 @@ public class CatCmdMessage implements Parcelable {
         dest.writeParcelable(mMenu, 0);
         dest.writeParcelable(mInput, 0);
         switch(getCmdType()) {
+        case SET_UP_EVENT_LIST:
+            int len = 0;
+            if (mEventList != null) {
+                len = mEventList.length;
+            }
+            dest.writeInt(len);
+            if (len > 0) {
+                dest.writeByteArray(mEventList);
+            }
+            break;
         case LAUNCH_BROWSER:
             dest.writeString(mBrowserSettings.url);
             dest.writeInt(mBrowserSettings.mode.ordinal());
@@ -154,6 +176,10 @@ public class CatCmdMessage implements Parcelable {
     /* external API to be used by application */
     public AppInterface.CommandType getCmdType() {
         return AppInterface.CommandType.fromInt(mCmdDet.typeOfCommand);
+    }
+
+    public byte[] getEventList() {
+        return mEventList;
     }
 
     public Menu getMenu() {

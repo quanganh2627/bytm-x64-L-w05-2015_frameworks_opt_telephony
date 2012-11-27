@@ -76,6 +76,8 @@ public class CatService extends Handler implements AppInterface {
     private CatCmdMessage mCurrntCmd = null;
     private CatCmdMessage mMenuCmd = null;
 
+    private byte[] mEventList = null;
+
     private RilMessageDecoder mMsgDecoder = null;
     private boolean mStkAppInstalled = false;
 
@@ -93,12 +95,12 @@ public class CatService extends Handler implements AppInterface {
     // Events to signal SIM presence or absent in the device.
     private static final int MSG_ID_ICC_RECORDS_LOADED       = 20;
 
-    private static final int DEV_ID_KEYPAD      = 0x01;
-    private static final int DEV_ID_DISPLAY     = 0x02;
-    private static final int DEV_ID_EARPIECE    = 0x03;
-    private static final int DEV_ID_UICC        = 0x81;
-    private static final int DEV_ID_TERMINAL    = 0x82;
-    private static final int DEV_ID_NETWORK     = 0x83;
+    public static final int DEV_ID_KEYPAD      = 0x01;
+    public static final int DEV_ID_DISPLAY     = 0x02;
+    public static final int DEV_ID_EARPIECE    = 0x03;
+    public static final int DEV_ID_UICC        = 0x81;
+    public static final int DEV_ID_TERMINAL    = 0x82;
+    public static final int DEV_ID_NETWORK     = 0x83;
 
     static final String STK_DEFAULT = "Default Message";
 
@@ -235,6 +237,11 @@ public class CatService extends Handler implements AppInterface {
                 }
                 break;
             case REFRESH:
+                // Invalidate event list if the SIM resets
+                if (cmdParams.cmdDet.commandQualifier
+                        == CommandParamsFactory.REFRESH_UICC_RESET) {
+                    mEventList = null;
+                }
                 // ME side only handles refresh commands which meant to remove IDLE
                 // MODE TEXT.
                 cmdParams.cmdDet.typeOfCommand = CommandType.SET_UP_IDLE_MODE_TEXT.value();
@@ -287,6 +294,20 @@ public class CatService extends Handler implements AppInterface {
                     message = mContext.getText(com.android.internal.R.string.SetupCallDefault);
                     ((CallSetupParams) cmdParams).confirmMsg.text = message.toString();
                 }
+                break;
+           case SET_UP_EVENT_LIST:
+                // Store eventlist
+                mCurrntCmd = cmdMsg;
+                mEventList = mCurrntCmd.getEventList();
+                if (mEventList != null) {
+                    for (byte b : mEventList) {
+                        CatLog.d(this, "Registered Event: " + b);
+                    }
+                } else {
+                    CatLog.d( this, "WARNING: No Event in event list!" );
+                }
+
+                sendTerminalResponse(cmdParams.cmdDet, ResultCode.OK, false, 0, null);
                 break;
             case OPEN_CHANNEL:
             case CLOSE_CHANNEL:
@@ -506,8 +527,52 @@ public class CatService extends Handler implements AppInterface {
         mCmdIf.sendEnvelope(hexString, null);
     }
 
+    public boolean isEventDownloadActive(int event) {
+        if (mEventList != null) {
+            for (byte b : mEventList) {
+                if (b == (byte)event) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    public void updateEventList(byte event, byte value) {
+        if (mEventList != null) {
+            for (int i = 0; i < mEventList.length; i++) {
+                if (mEventList[i] == event) {
+                    mEventList[i] = value;
+                    break;
+                }
+            }
+        }
+    }
+
+    public void onEventDownload(CatEventMessage eventMsg) {
+        CatLog.d(this, "Download event: " + eventMsg.getEvent());
+        eventDownload(eventMsg.getEvent(),
+                eventMsg.getSourceId(),
+                eventMsg.getDestId(),
+                eventMsg.getAdditionalInfo(),
+                eventMsg.isOneShot());
+    }
+
     private void eventDownload(int event, int sourceId, int destinationId,
             byte[] additionalInfo, boolean oneShot) {
+
+        CatLog.d(this, "eventDownload()  "+ event+ "  " + sourceId + " ");
+        // Check if the SIM have subscribed to this event using setup eventlist
+        boolean allowed = isEventDownloadActive((byte)event);
+        if (!allowed) {
+            CatLog.d(this, "(U)SIM has not subscribed for event: " + event);
+            return;
+        }
+
+        if (oneShot) {
+            updateEventList((byte)event, (byte)EventCode.INVALID_EVENT.value());
+        }
 
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
 
@@ -620,6 +685,7 @@ public class CatService extends Handler implements AppInterface {
     @Override
     public void handleMessage(Message msg) {
 
+        CatLog.d(this, "handleMessage() " + msg.what);
         switch (msg.what) {
         case MSG_ID_SESSION_END:
         case MSG_ID_PROACTIVE_COMMAND:
@@ -688,6 +754,11 @@ public class CatService extends Handler implements AppInterface {
     }
 
     private void handleCmdResponse(CatResponseMessage resMsg) {
+        if ((resMsg != null) && (resMsg.mEnvelopeCmd != null)) {
+            mCmdIf.sendEnvelope(resMsg.mEnvelopeCmd, null);
+            return;
+        }
+
         // Make sure the response details match the last valid command. An invalid
         // response is a one that doesn't have a corresponding proactive command
         // and sending it can "confuse" the baseband/ril.
