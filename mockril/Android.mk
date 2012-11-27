@@ -14,7 +14,7 @@
 # limitations under the License.
 #
 #
-ifneq ($(TARGET_BUILD_PDK),true)
+ifeq ($(TARGET_BUILD_PDK),true)
 
 LOCAL_PATH:=$(call my-dir)
 
@@ -30,4 +30,4 @@ LOCAL_MODULE := mockrilcontroller
 
 include $(BUILD_STATIC_JAVA_LIBRARY)
 
-endif # !PDK
+endif # PDK
