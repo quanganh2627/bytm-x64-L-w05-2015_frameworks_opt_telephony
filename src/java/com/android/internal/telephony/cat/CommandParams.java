@@ -171,6 +171,14 @@ class GetInputParams extends CommandParams {
     }
 }
 
+class EventListParams extends CommandParams {
+    byte[] eventList = null;
+    EventListParams(CommandDetails cmdDet, byte[] eventList) {
+        super(cmdDet);
+        this.eventList = eventList;
+    }
+}
+
 /*
  * BIP (Bearer Independent Protocol) is the mechanism for SIM card applications
  * to access data connection through the mobile device.

@@ -126,6 +126,9 @@ class CommandParamsFactory extends Handler {
 
         try {
             switch (cmdType) {
+            case SET_UP_EVENT_LIST:
+                cmdPending = processSetUpEventList(cmdDet, ctlvs);
+                break;
             case SET_UP_MENU:
                 cmdPending = processSelectItem(cmdDet, ctlvs);
                 break;
@@ -667,18 +670,23 @@ class CommandParamsFactory extends Handler {
             List<ComprehensionTlv> ctlvs) {
 
         CatLog.d(this, "process SetUpEventList");
-        //
-        // ComprehensionTlv ctlv = searchForTag(ComprehensionTlvTag.EVENT_LIST,
-        // ctlvs);
-        // if (ctlv != null) {
-        // try {
-        // byte[] rawValue = ctlv.getRawValue();
-        // int valueIndex = ctlv.getValueIndex();
-        // int valueLen = ctlv.getLength();
-        //
-        // } catch (IndexOutOfBoundsException e) {}
-        // }
-        return true;
+        ComprehensionTlv ctlv = searchForTag(ComprehensionTlvTag.EVENT_LIST,ctlvs);
+        if (ctlv != null) {
+            byte[] rawValue = ctlv.getRawValue();
+            int valueIndex = ctlv.getValueIndex();
+            int valueLength = ctlv.getLength();
+            byte[] eventList;
+            if (valueLength > 0 && rawValue.length >= (valueIndex + valueLength)) {
+                eventList = new byte[valueLength];
+                if (eventList != null) {
+                    System.arraycopy(rawValue, valueIndex, eventList, 0, valueLength);
+                }
+            } else {
+                eventList = null;
+            }
+            mCmdParams = new EventListParams(cmdDet, eventList);
+        }
+        return false;
     }
 
     /**
