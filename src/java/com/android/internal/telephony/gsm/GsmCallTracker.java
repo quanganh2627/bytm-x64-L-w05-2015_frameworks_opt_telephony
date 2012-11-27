@@ -858,6 +858,9 @@ public final class GsmCallTracker extends CallTracker {
 
             case EVENT_OPERATION_COMPLETE:
                 ar = (AsyncResult)msg.obj;
+                if (ar.exception != null) {
+                    needsPoll = true;
+                }
                 operationComplete();
             break;
 
@@ -868,6 +871,7 @@ public final class GsmCallTracker extends CallTracker {
                 ar = (AsyncResult)msg.obj;
                 if (ar.exception != null) {
                     phone.notifySuppServiceFailed(getFailedService(msg.what));
+                    needsPoll = true;
                 }
                 operationComplete();
             break;
