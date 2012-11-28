@@ -169,6 +169,9 @@ class CommandParamsFactory extends Handler {
              case PROVIDE_LOCAL_INFORMATION:
                 cmdPending = processProvideLocalInfo(cmdDet, ctlvs);
                 break;
+             case LANGUAGE_NOTIFICATION:
+                cmdPending = processLanguageNotification(cmdDet, ctlvs);
+                break;
              case OPEN_CHANNEL:
              case CLOSE_CHANNEL:
              case RECEIVE_DATA:
@@ -907,6 +910,35 @@ class CommandParamsFactory extends Handler {
                 mCmdParams = new CommandParams(cmdDet);
                 throw new ResultException(ResultCode.BEYOND_TERMINAL_CAPABILITY);
         }
+        return false;
+    }
+
+    private boolean processLanguageNotification(CommandDetails cmdDet,
+            List<ComprehensionTlv> ctlvs) throws ResultException {
+        CatLog.d(this, "process LanguageNotification");
+        ComprehensionTlv ctlv = searchForTag(ComprehensionTlvTag.LANGUAGE,
+                ctlvs);
+        String lang = "";
+        if (ctlv != null) {
+            try {
+                byte[] rawValue = ctlv.getRawValue();
+                int valueIndex = ctlv.getValueIndex();
+                int valueLen = ctlv.getLength();
+                /*
+                 * As per ETSI TS 102 223 section 8.45, Each langugae code is
+                 * a pair of alpha-numeric characters defined in ISO 639. Each
+                 * alpha-numeric character shall be coded on one byte using the
+                 * SMS default -bit coded alphabet as defined in TS 23.038 [3] with
+                 * with bit 8 set to 0.
+                 */
+                if (valueLen > 0) {
+                    lang = GsmAlphabet.gsm8BitUnpackedToString(rawValue, valueIndex, valueLen);
+                }
+            } catch (IndexOutOfBoundsException e) {
+                throw new ResultException(ResultCode.CMD_DATA_NOT_UNDERSTOOD);
+            }
+        }
+        mCmdParams = new LanguageParams(cmdDet, lang);
         return false;
     }
 
