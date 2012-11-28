@@ -476,14 +476,14 @@ public class CatService extends Handler implements AppInterface {
         buf.write(0x00); // place holder
 
         // device identities
-        tag = 0x80 | ComprehensionTlvTag.DEVICE_IDENTITIES.value();
+        tag = ComprehensionTlvTag.DEVICE_IDENTITIES.value();
         buf.write(tag);
         buf.write(0x02); // length
         buf.write(DEV_ID_KEYPAD); // source device id
         buf.write(DEV_ID_UICC); // destination device id
 
         // item identifier
-        tag = 0x80 | ComprehensionTlvTag.ITEM_ID.value();
+        tag = ComprehensionTlvTag.ITEM_ID.value();
         buf.write(tag);
         buf.write(0x01); // length
         buf.write(menuId); // menu identifier chosen
@@ -519,13 +519,13 @@ public class CatService extends Handler implements AppInterface {
         buf.write(0x00); // place holder, assume length < 128.
 
         // event list
-        tag = 0x80 | ComprehensionTlvTag.EVENT_LIST.value();
+        tag = ComprehensionTlvTag.EVENT_LIST.value();
         buf.write(tag);
         buf.write(0x01); // length
         buf.write(event); // event value
 
         // device identities
-        tag = 0x80 | ComprehensionTlvTag.DEVICE_IDENTITIES.value();
+        tag = ComprehensionTlvTag.DEVICE_IDENTITIES.value();
         buf.write(tag);
         buf.write(0x02); // length
         buf.write(sourceId); // source device id

@@ -58,7 +58,7 @@ class SelectItemResponseData extends ResponseData {
     @Override
     public void format(ByteArrayOutputStream buf) {
         // Item identifier object
-        int tag = 0x80 | ComprehensionTlvTag.ITEM_ID.value();
+        int tag = ComprehensionTlvTag.ITEM_ID.value();
         buf.write(tag); // tag
         buf.write(1); // length
         buf.write(id); // identifier of item chosen
@@ -174,7 +174,7 @@ class LanguageResponseData extends ResponseData {
         }
 
         // Text string object
-        int tag = 0x80 | ComprehensionTlvTag.LANGUAGE.value();
+        int tag = ComprehensionTlvTag.LANGUAGE.value();
         buf.write(tag); // tag
 
         byte[] data;
@@ -212,7 +212,7 @@ class DTTZResponseData extends ResponseData {
         }
 
         // DTTZ object
-        int tag = 0x80 | CommandType.PROVIDE_LOCAL_INFORMATION.value();
+        int tag = CommandType.PROVIDE_LOCAL_INFORMATION.value();
         buf.write(tag); // tag
 
         byte[] data = new byte[8];
