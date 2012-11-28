@@ -272,6 +272,8 @@ public final class GsmCallTracker extends CallTracker {
         // so if the phone isn't ringing, this could hang up held
         if (ringingCall.getState().isRinging()) {
             cm.rejectCall(obtainCompleteMessage());
+            ringingCall.onHangupLocal();
+            phone.notifyPreciseCallStateChanged();
         } else {
             throw new CallStateException("phone not ringing");
         }
