@@ -75,7 +75,8 @@ public interface AppInterface {
         OPEN_CHANNEL(0x40),
         CLOSE_CHANNEL(0x41),
         RECEIVE_DATA(0x42),
-        SEND_DATA(0x43);
+        SEND_DATA(0x43),
+        ACTIVATE(0x70);
 
         private int mValue;
 
