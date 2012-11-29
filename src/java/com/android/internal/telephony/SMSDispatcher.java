@@ -696,10 +696,13 @@ public abstract class SMSDispatcher extends Handler {
         // sending app is approved to send to short codes. Otherwise, a message is sent to our
         // handler with the SmsTracker to request user confirmation before sending.
         if (checkDestination(tracker)) {
-            // check for excessive outgoing SMS usage by this app
-            if (!mUsageMonitor.check(appInfo.packageName, SINGLE_PART_SMS)) {
-                sendMessage(obtainMessage(EVENT_SEND_LIMIT_REACHED_CONFIRMATION, tracker));
-                return;
+            String buildType = SystemProperties.get("ro.build.type", null);
+            if (buildType == null || !buildType.equals("eng")) {
+                // check for excessive outgoing SMS usage by this app
+                if (!mUsageMonitor.check(appInfo.packageName, SINGLE_PART_SMS)) {
+                    sendMessage(obtainMessage(EVENT_SEND_LIMIT_REACHED_CONFIRMATION, tracker));
+                    return;
+                }
             }
 
             int ss = mPhone.getServiceState().getState();
