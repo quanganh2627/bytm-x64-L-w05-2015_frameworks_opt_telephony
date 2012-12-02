@@ -84,6 +84,7 @@ public interface AppInterface {
         CLOSE_CHANNEL(0x41),
         RECEIVE_DATA(0x42),
         SEND_DATA(0x43),
+        GET_CHANNEL_STATUS(0x44),
         ACTIVATE(0x70);
 
         private int mValue;

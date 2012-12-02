@@ -23,6 +23,10 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.content.res.Configuration;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
+import android.net.NetworkUtils;
+import android.telephony.ServiceState;
 import android.os.AsyncResult;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -41,6 +45,12 @@ import com.android.internal.telephony.PhoneProxy;
 import com.android.internal.telephony.UiccCard;
 import com.android.internal.telephony.UiccCardApplication;
 
+import com.android.internal.telephony.cat.BearerDescription.BearerType;
+import com.android.internal.telephony.cat.CatCmdMessage.ChannelSettings;
+import com.android.internal.telephony.cat.CatCmdMessage.DataSettings;
+import com.android.internal.telephony.cat.Duration.TimeUnit;
+import com.android.internal.telephony.cat.InterfaceTransportLevel.TransportProtocol;
+import com.android.internal.telephony.ITelephony;
 
 import java.io.ByteArrayOutputStream;
 import java.util.List;
@@ -83,6 +93,7 @@ public class CatService extends Handler implements AppInterface {
     private Context mContext;
     private CatCmdMessage mCurrntCmd = null;
     private CatCmdMessage mMenuCmd = null;
+    private BipGateWay mBipGateWay;
 
     private byte[] mEventList = null;
 
@@ -143,6 +154,8 @@ public class CatService extends Handler implements AppInterface {
         // Register for SIM ready event.
         mUiccApplication.registerForReady(this, MSG_ID_SIM_READY, null);
         mIccRecords.registerForRecordsLoaded(this, MSG_ID_ICC_RECORDS_LOADED, null);
+
+        mBipGateWay = new BipGateWay(this, mCmdIf, mContext);
 
         // Check if STK application is availalbe
         mStkAppInstalled = isStkAppInstalled();
@@ -338,43 +351,35 @@ public class CatService extends Handler implements AppInterface {
                 }
                 sendTerminalResponse(cmdParams.cmdDet, ResultCode.OK, false, 0, null);
                 return;
-            case OPEN_CHANNEL:
+           case OPEN_CHANNEL:
+                ChannelSettings newChannel = cmdMsg.getChannelSettings();
+                if (newChannel == null) {
+                    // Send TR cmd data not understood
+                    sendTerminalResponse(cmdParams.cmdDet, ResultCode.CMD_DATA_NOT_UNDERSTOOD,
+                            false, 0, null);
+                    return;
+                }
+
+                // Check if BipProxy can handle more channels
+                if (!mBipGateWay.available()) {
+                    resp = new OpenChannelResponseData(newChannel.bufSize, null,
+                            newChannel.bearerDescription);
+                    sendTerminalResponse(cmdParams.cmdDet, ResultCode.BIP_ERROR, true, 0x01, resp);
+                    return;
+                }
+                // Check if user confirmation is needed
+                if (cmdMsg.geTextMessage() != null && cmdMsg.geTextMessage().responseNeeded) {
+                    break;
+                }
+            // fall through
             case CLOSE_CHANNEL:
             case RECEIVE_DATA:
             case SEND_DATA:
-                BIPClientParams cmd = (BIPClientParams) cmdParams;
-                if (cmd.bHasAlphaId && (cmd.textMsg.text == null)) {
-                    CatLog.d(this, "cmd " + cmdParams.getCommandType() + " with null alpha id");
-                    // If alpha length is zero, we just respond with OK.
-                    if (isProactiveCmd) {
-                        sendTerminalResponse(cmdParams.cmdDet, ResultCode.OK, false, 0, null);
-                    }
-                    return;
-                }
-                // Respond with permanent failure to avoid retry if STK app is not present.
-                if (!mStkAppInstalled) {
-                    CatLog.d(this, "No STK application found.");
-                    if (isProactiveCmd) {
-                        sendTerminalResponse(cmdParams.cmdDet,
-                                             ResultCode.BEYOND_TERMINAL_CAPABILITY,
-                                             false, 0, null);
-                        return;
-                    }
-                }
-                /*
-                 * CLOSE_CHANNEL, RECEIVE_DATA and SEND_DATA can be delivered by
-                 * either PROACTIVE_COMMAND or EVENT_NOTIFY.
-                 * If PROACTIVE_COMMAND is used for those commands, send terminal
-                 * response here.
-                 */
-                if (isProactiveCmd &&
-                    ((cmdParams.getCommandType() == CommandType.CLOSE_CHANNEL) ||
-                     (cmdParams.getCommandType() == CommandType.RECEIVE_DATA) ||
-                     (cmdParams.getCommandType() == CommandType.SEND_DATA))) {
-                    sendTerminalResponse(cmdParams.cmdDet, ResultCode.OK, false, 0, null);
-                }
-                break;
-           case ACTIVATE:
+            case GET_CHANNEL_STATUS:
+                mCurrntCmd = cmdMsg;
+                mBipGateWay.handleBipCommand(cmdMsg);
+                return;
+            case ACTIVATE:
                 sendTerminalResponse(cmdParams.cmdDet,
                         ResultCode.BEYOND_TERMINAL_CAPABILITY, false, 0, null);
                 return;
@@ -386,6 +391,8 @@ public class CatService extends Handler implements AppInterface {
         Intent intent = new Intent(AppInterface.CAT_CMD_ACTION);
         intent.putExtra("STK CMD", cmdMsg);
         mContext.sendBroadcast(intent);
+
+        mBipGateWay.handleBipCommand(null);
     }
 
     /**
@@ -400,7 +407,7 @@ public class CatService extends Handler implements AppInterface {
         mContext.sendBroadcast(intent);
     }
 
-    private void sendTerminalResponse(CommandDetails cmdDet,
+    public void sendTerminalResponse(CommandDetails cmdDet,
             ResultCode resultCode, boolean includeAdditionalInfo,
             int additionalInfo, ResponseData resp) {
 
@@ -857,13 +864,36 @@ public class CatService extends Handler implements AppInterface {
                 // invoked by the CommandInterface call above.
                 mCurrntCmd = null;
                 return;
+            case OPEN_CHANNEL:
+                CatLog.d(this, "OPEN_CHANNEL");
+                if (resMsg.resCode == ResultCode.OK && resMsg.usersConfirm) {
+                    // user has accepted OPEN CHANNEL
+                    mBipGateWay.handleBipCommand(mCurrntCmd);
+                    return;
+                }
+                break;
             }
             break;
         case NO_RESPONSE_FROM_USER:
         case UICC_SESSION_TERM_BY_USER:
         case BACKWARD_MOVE_BY_USER:
         case USER_NOT_ACCEPT:
-            resp = null;
+            switch (AppInterface.CommandType.fromInt(cmdDet.typeOfCommand)) {
+                case OPEN_CHANNEL:
+                    CatLog.d(this, "OPEN_CHANNEL - User rejection");
+                    if (!resMsg.usersConfirm
+                            && mCurrntCmd.geTextMessage().responseNeeded) {
+                        // user has OPEN CHANNEL rejected
+                        ChannelSettings params = mCurrntCmd.getChannelSettings();
+                        resMsg.resCode = ResultCode.USER_NOT_ACCEPT;
+                        resp = new OpenChannelResponseData(params.bufSize,
+                                null, params.bearerDescription);
+                    }
+                    break;
+                default:
+                    resp = null;
+                    break;
+            }
             break;
         default:
             return;

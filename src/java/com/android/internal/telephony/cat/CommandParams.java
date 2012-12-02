@@ -187,30 +187,66 @@ class LanguageParams extends CommandParams {
     }
 }
 
-/*
- * BIP (Bearer Independent Protocol) is the mechanism for SIM card applications
- * to access data connection through the mobile device.
- *
- * SIM utilizes proactive commands (OPEN CHANNEL, CLOSE CHANNEL, SEND DATA and
- * RECEIVE DATA to control/read/write data for BIP. Refer to ETSI TS 102 223 for
- * the details of proactive commands procedures and their structures.
- */
-class BIPClientParams extends CommandParams {
-    TextMessage textMsg;
-    boolean bHasAlphaId;
+class OpenChannelParams extends CommandParams {
+    TextMessage confirmMsg;
+    int bufSize;
+    InterfaceTransportLevel itl;
+    byte[] destinationAddress;
+    BearerDescription bearerDescription;
+    String networkAccessName;
+    String userLogin;
+    String userPassword;
 
-    BIPClientParams(CommandDetails cmdDet, TextMessage textMsg, boolean has_alpha_id) {
+    OpenChannelParams(CommandDetails cmdDet, TextMessage confirmMsg,
+            int bufSize, InterfaceTransportLevel itl, byte[] destAddress,
+            BearerDescription bearerDesc, String netAccessName,
+            String usrLogin, String userPasswd) {
         super(cmdDet);
-        this.textMsg = textMsg;
-        this.bHasAlphaId = has_alpha_id;
+        this.confirmMsg = confirmMsg;
+        this.bufSize = bufSize;
+        this.itl = itl;
+        this.destinationAddress = destAddress;
+        this.bearerDescription = bearerDesc;
+        this.networkAccessName = netAccessName;
+        this.userLogin = usrLogin;
+        this.userPassword = userPasswd;
     }
+}
 
-    boolean setIcon(Bitmap icon) {
-        if (icon != null && textMsg != null) {
-            textMsg.icon = icon;
-            return true;
-        }
-        return false;
+class CloseChannelParams extends CommandParams {
+    int channel;
+
+    CloseChannelParams(CommandDetails cmdDet, int channel) {
+        super(cmdDet);
+        this.channel = channel;
+    }
+}
+
+class ReceiveDataParams extends CommandParams {
+    int datLen;
+    int channel;
+
+    ReceiveDataParams(CommandDetails cmdDet, int channel, int datLen) {
+        super(cmdDet);
+        this.channel = channel;
+        this.datLen = datLen;
+    }
+}
+
+class SendDataParams extends CommandParams {
+    byte[] data;
+    int channel;
+
+    SendDataParams(CommandDetails cmdDet, int channel, byte[] data) {
+        super(cmdDet);
+        this.channel = channel;
+        this.data = data;
+    }
+}
+
+class GetChannelStatusParams extends CommandParams {
+    GetChannelStatusParams(CommandDetails cmdDet) {
+        super(cmdDet);
     }
 }
 
