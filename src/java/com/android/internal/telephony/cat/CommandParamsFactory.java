@@ -55,6 +55,7 @@ class CommandParamsFactory extends Handler {
     // Command Qualifier values for PLI command
     static final int DTTZ_SETTING                           = 0x03;
     static final int LANGUAGE_SETTING                       = 0x04;
+    static final int SEARCH_MODE_SETTING                    = 0x09;
 
     static synchronized CommandParamsFactory getInstance(RilMessageDecoder caller,
             IccFileHandler fh) {
@@ -906,6 +907,10 @@ class CommandParamsFactory extends Handler {
                 break;
             case LANGUAGE_SETTING:
                 CatLog.d(this, "PLI [LANGUAGE_SETTING]");
+                mCmdParams = new CommandParams(cmdDet);
+                break;
+            case SEARCH_MODE_SETTING:
+                CatLog.d(this, "PLI [SEARCH_MODE_SETTING]");
                 mCmdParams = new CommandParams(cmdDet);
                 break;
             default:

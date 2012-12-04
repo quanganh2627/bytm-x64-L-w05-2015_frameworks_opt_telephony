@@ -34,6 +34,10 @@ import com.android.internal.telephony.IccUtils;
 import com.android.internal.telephony.CommandsInterface;
 import com.android.internal.telephony.IccFileHandler;
 import com.android.internal.telephony.IccRecords;
+import com.android.internal.telephony.Phone;
+import com.android.internal.telephony.PhoneBase;
+import com.android.internal.telephony.PhoneFactory;
+import com.android.internal.telephony.PhoneProxy;
 import com.android.internal.telephony.UiccCard;
 import com.android.internal.telephony.UiccCardApplication;
 
@@ -105,6 +109,10 @@ public class CatService extends Handler implements AppInterface {
     public static final int DEV_ID_UICC        = 0x81;
     public static final int DEV_ID_TERMINAL    = 0x82;
     public static final int DEV_ID_NETWORK     = 0x83;
+
+    // Network type selection
+    static final int NETWORK_SELECTION_MODE_MANUAL         = 0x00;
+    static final int NETWORK_SELECTION_MODE_AUTOMATIC      = 0x01;
 
     static final String STK_DEFAULT = "Default Message";
 
@@ -262,6 +270,10 @@ public class CatService extends Handler implements AppInterface {
                         break;
                     case CommandParamsFactory.LANGUAGE_SETTING:
                         resp = new LanguageResponseData(Locale.getDefault().getLanguage());
+                        sendTerminalResponse(cmdParams.cmdDet, ResultCode.OK, false, 0, resp);
+                        break;
+                    case CommandParamsFactory.SEARCH_MODE_SETTING:
+                        resp = new NetworkSearchModeResponseData(getNetworkSelectionMode());
                         sendTerminalResponse(cmdParams.cmdDet, ResultCode.OK, false, 0, resp);
                         break;
                     default:
@@ -882,5 +894,13 @@ public class CatService extends Handler implements AppInterface {
         } catch (RemoteException e) {
             CatLog.d(this, "failed to change locale language");
         }
+    }
+
+    private int getNetworkSelectionMode() {
+        Phone phone = ((PhoneProxy)PhoneFactory.getDefaultPhone()).getActivePhone();
+        boolean isManual = ((PhoneBase)phone).getServiceState().getIsManualSelection();
+        CatLog.d(this, "Network selection mode is " + (isManual ? "MANUAL" : "AUTOMATIC"));
+
+        return isManual ? NETWORK_SELECTION_MODE_MANUAL : NETWORK_SELECTION_MODE_AUTOMATIC;
     }
 }
