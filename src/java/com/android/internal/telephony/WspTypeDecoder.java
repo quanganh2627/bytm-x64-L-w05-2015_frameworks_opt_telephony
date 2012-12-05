@@ -195,6 +195,7 @@ public class WspTypeDecoder {
     public static final String CONTENT_TYPE_B_PUSH_CO = "application/vnd.wap.coc";
     public static final String CONTENT_TYPE_B_MMS = "application/vnd.wap.mms-message";
     public static final String CONTENT_TYPE_B_PUSH_SYNCML_NOTI = "application/vnd.syncml.notification";
+    public static final String CONTENT_TYPE_B_PUSH_SUPL_INIT = "application/vnd.omaloc-supl-init";
 
     byte[] wspData;
     int    dataLength;

@@ -35,6 +35,8 @@ import android.os.RemoteException;
  */
 public class WapPushOverSms {
     private static final String LOG_TAG = "WAP PUSH";
+    private static final String APP_ID_URN = "x-oma-application:ulp.ua";
+    private static final String APP_ID_SUPL = "16";
 
     private final Context mContext;
     private WspTypeDecoder pduDecoder;
@@ -215,6 +217,14 @@ public class WapPushOverSms {
             String contentType = ((mimeType == null) ?
                                   Long.toString(binaryContentType) : mimeType);
             if (false) Log.v(LOG_TAG, "appid found: " + wapAppId + ":" + contentType);
+
+            // add 16 to support supl application_id Number. not only application_id URN
+            if (contentType.equals(WspTypeDecoder.CONTENT_TYPE_B_PUSH_SUPL_INIT)
+                    && !(APP_ID_URN.equals(wapAppId) || APP_ID_SUPL.equals(wapAppId))) {
+                Log.w(LOG_TAG,"Received a wrong appId wap push sms."
+                                    + "will not send out to AGPS. wrong appid=" + wapAppId);
+                return Intents.RESULT_SMS_HANDLED;
+            }
 
             try {
                 boolean processFurther = true;
