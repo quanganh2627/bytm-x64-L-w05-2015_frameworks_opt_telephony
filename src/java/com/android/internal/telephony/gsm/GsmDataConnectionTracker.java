@@ -2420,6 +2420,31 @@ public final class GsmDataConnectionTracker extends DataConnectionTracker {
         }
     }
 
+    public void onDataSuspended() {
+        if (DBG) log("onDataSuspended");
+        if (isConnected()) {
+            if (DBG) log("onDataSuspended stop polling");
+            stopNetStatPoll();
+            stopDataStallAlarm();
+            notifyDataConnection(null);
+        }
+
+        notifyOffApnsOfAvailability(null);
+    }
+
+    public void onDataResumed() {
+        if (DBG) log("onDataResumed");
+        if (isConnected()) {
+            startNetStatPoll();
+            startDataStallAlarm(DATA_STALL_NOT_SUSPECTED);
+            notifyDataConnection(null);
+        } else {
+            // reset reconnect timer
+            setupDataOnReadyApns(null);
+        }
+        notifyOffApnsOfAvailability(null);
+    }
+
     @Override
     protected void log(String s) {
         Log.d(LOG_TAG, "[GsmDCT] "+ s);

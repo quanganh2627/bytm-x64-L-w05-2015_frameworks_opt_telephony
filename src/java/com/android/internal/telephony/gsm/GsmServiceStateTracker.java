@@ -1334,7 +1334,27 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
      * that could support voice and data simultaneously.
      */
     public boolean isConcurrentVoiceAndDataAllowed() {
-        return (mRilRadioTechnology >= ServiceState.RIL_RADIO_TECHNOLOGY_UMTS);
+        // when tech is UMTS return true always
+        if (mRilRadioTechnology >= ServiceState.RIL_RADIO_TECHNOLOGY_UMTS) {
+            return true;
+        }
+        // If tech is not UMTS, check the MS Class info based property
+        String ccdata = "";
+        try {
+            if (phone.getContext().getResources().getBoolean(
+                    com.android.internal.R.bool.config_usage_oem_hooks_supported)) {
+                String oemproperty = phone.getContext().getText(
+                        com.android.internal.R.string.oemhook_concurrentdata_property).toString();
+                ccdata = SystemProperties.get(oemproperty,"");
+            }
+        } catch (Resources.NotFoundException ex) {
+            log("ignore exception");
+        }
+        if (!ccdata.equals("")) {
+            log("Concurrent data set as:" + ccdata);
+            return ccdata.equals("allowed");
+        }
+        return false;
     }
 
     /**
