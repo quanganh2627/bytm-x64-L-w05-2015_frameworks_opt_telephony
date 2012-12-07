@@ -224,6 +224,11 @@ public class SIMRecords extends IccRecords {
         spn = null;
         efMWIS = null;
         efCPHS_MWI = null;
+        setVoiceMessageWaiting(1, 0);
+        mEfCfis = null;
+        mEfCff = null;
+        setVoiceCallForwardingFlag(1, false);
+
         spdiNetworks = null;
         pnnHomeName = null;
 
