@@ -84,6 +84,10 @@ public class IccCardProxy extends Handler implements IccCard {
     private static final int EVENT_NETWORK_LOCKED = 9;
     private static final int EVENT_CDMA_SUBSCRIPTION_SOURCE_CHANGED = 11;
     private static final int EVENT_NETWORK_LOCKED_PUK = 12;
+    private static final int EVENT_EXCHANGE_APDU_DONE = 13;
+    private static final int EVENT_OPEN_CHANNEL_DONE = 14;
+    private static final int EVENT_CLOSE_CHANNEL_DONE = 15;
+    private static final int EVENT_SIM_IO_DONE = 16;
 
     private final Object mLock = new Object();
     private Context mContext;
@@ -202,6 +206,7 @@ public class IccCardProxy extends Handler implements IccCard {
 
     @Override
     public void handleMessage(Message msg) {
+        AsyncResult ar;
         switch (msg.what) {
             case EVENT_RADIO_OFF_OR_UNAVAILABLE:
                 mRadioOn = false;
@@ -243,6 +248,18 @@ public class IccCardProxy extends Handler implements IccCard {
             case EVENT_NETWORK_LOCKED_PUK:
                 mNetworkLockedPukRegistrants.notifyRegistrants();
                 setExternalState(State.NETWORK_LOCKED_PUK);
+                break;
+            case EVENT_EXCHANGE_APDU_DONE:
+            case EVENT_OPEN_CHANNEL_DONE:
+            case EVENT_CLOSE_CHANNEL_DONE:
+            case EVENT_SIM_IO_DONE:
+                ar = (AsyncResult)msg.obj;
+                if (ar.exception != null) {
+                    loge("Error in SIM access with exception" + ar.exception);
+                }
+                AsyncResult.forMessage(((Message)ar.userObj),
+                        ar.result, ar.exception);
+                ((Message)ar.userObj).sendToTarget();
                 break;
             default:
                 loge("Unhandled message with number: " + msg.what);
@@ -734,6 +751,28 @@ public class IccCardProxy extends Handler implements IccCard {
             }
             return false;
         }
+    }
+
+    public void exchangeAPDU(int cla, int command, int channel, int p1, int p2,
+            int p3, String data, Message onComplete) {
+        mCi.iccExchangeAPDU(cla, command, channel, p1, p2, p3, data,
+                obtainMessage(EVENT_EXCHANGE_APDU_DONE, onComplete));
+    }
+
+    public void openLogicalChannel(String aid, Message onComplete) {
+        mCi.iccOpenChannel(aid,
+                obtainMessage(EVENT_OPEN_CHANNEL_DONE, onComplete));
+    }
+
+    public void closeLogicalChannel(int channel, Message onComplete) {
+        mCi.iccCloseChannel(channel,
+                obtainMessage(EVENT_CLOSE_CHANNEL_DONE, onComplete));
+    }
+
+    public void exchangeSimIO(int fileID, int command,
+            int p1, int p2, int p3, String pathID, Message onComplete) {
+        mCi.iccIO(command, fileID, pathID, p1, p2, p3, null, null,
+               obtainMessage(EVENT_SIM_IO_DONE, onComplete));
     }
 
     private void log(String s) {

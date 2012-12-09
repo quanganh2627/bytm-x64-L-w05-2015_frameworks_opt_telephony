@@ -1581,6 +1581,13 @@ public interface CommandsInterface {
      */
     public void requestIsimAuthentication(String nonce, Message response);
 
+    void iccExchangeAPDU(int cla, int command, int channel, int p1, int p2,
+            int p3, String data, Message response);
+
+    void iccOpenChannel(String AID, Message response);
+
+    void iccCloseChannel(int channel, Message response);
+
     /**
      * Get the current Voice Radio Technology.
      *
