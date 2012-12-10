@@ -25,6 +25,7 @@ import android.os.RegistrantList;
 import android.util.Log;
 
 import com.android.internal.telephony.CommandsInterface;
+import com.android.internal.telephony.IccCardApplicationStatus;
 import com.android.internal.telephony.IccCardStatus;
 import com.android.internal.telephony.IccFileHandler;
 import com.android.internal.telephony.IccRecords;
@@ -82,6 +83,7 @@ public class UiccController extends Handler {
 
     private static final int EVENT_ICC_STATUS_CHANGED = 1;
     private static final int EVENT_GET_ICC_STATUS_DONE = 2;
+    private static final int EVENT_RADIO_OFF_NOT_AVAILABLE = 3;
 
     private static final Object mLock = new Object();
     private static UiccController mInstance;
@@ -184,6 +186,27 @@ public class UiccController extends Handler {
                     AsyncResult ar = (AsyncResult)msg.obj;
                     onGetIccCardStatusDone(ar);
                     break;
+                case EVENT_RADIO_OFF_NOT_AVAILABLE:
+                   IccCardStatus cardStatus = new IccCardStatus();
+                   cardStatus.setCardState(2);
+                   cardStatus.setUniversalPinState(0);
+                   cardStatus.mGsmUmtsSubscriptionAppIndex = -1;
+                   cardStatus.mCdmaSubscriptionAppIndex = -1;
+                   cardStatus.mImsSubscriptionAppIndex = -1;
+                   cardStatus.mApplications = new IccCardApplicationStatus[1];
+                   IccCardApplicationStatus app = new IccCardApplicationStatus();
+                   app.app_type = IccCardApplicationStatus.AppType.APPTYPE_UNKNOWN;
+                   app.app_state = IccCardApplicationStatus.AppState.APPSTATE_UNKNOWN;
+                   cardStatus.mApplications[0] = app;
+                   if (mUiccCard == null) {
+                       //Create new card
+                       mUiccCard = new UiccCard(mContext, mCi, cardStatus);
+                   } else {
+                       //Update already existing card
+                       mUiccCard.update(mContext, mCi, cardStatus);
+                   }
+
+                   break;
                 default:
                     Log.e(LOG_TAG, " Unknown Event " + msg.what);
             }
@@ -197,6 +220,7 @@ public class UiccController extends Handler {
         mCi.registerForIccStatusChanged(this, EVENT_ICC_STATUS_CHANGED, null);
         // TODO remove this once modem correctly notifies the unsols
         mCi.registerForOn(this, EVENT_ICC_STATUS_CHANGED, null);
+        mCi.registerForOffOrNotAvailable(this, EVENT_RADIO_OFF_NOT_AVAILABLE, null);
     }
 
     private synchronized void onGetIccCardStatusDone(AsyncResult ar) {
