@@ -110,6 +110,7 @@ public class CatService extends Handler implements AppInterface {
     static final int MSG_ID_SIM_READY                = 7;
 
     static final int MSG_ID_RIL_MSG_DECODED          = 10;
+    static final int MSG_ID_NETWORK_SEARCH_MODE_CHANGE   = 11;
 
     // Events to signal SIM presence or absent in the device.
     private static final int MSG_ID_ICC_RECORDS_LOADED       = 20;
@@ -124,6 +125,8 @@ public class CatService extends Handler implements AppInterface {
     // Network type selection
     static final int NETWORK_SELECTION_MODE_MANUAL         = 0x00;
     static final int NETWORK_SELECTION_MODE_AUTOMATIC      = 0x01;
+
+    private int mCurrentNetworkSelectionMode;
 
     static final String STK_DEFAULT = "Default Message";
 
@@ -171,6 +174,7 @@ public class CatService extends Handler implements AppInterface {
         mCmdIf.unSetOnCatCallSetUp(this);
 
         this.removeCallbacksAndMessages(null);
+        PhoneFactory.getDefaultPhone().unregisterForServiceStateChanged(this);
     }
 
     protected void finalize() {
@@ -331,6 +335,11 @@ public class CatService extends Handler implements AppInterface {
                 if (mEventList != null) {
                     for (byte b : mEventList) {
                         CatLog.d(this, "Registered Event: " + b);
+                    }
+                    if (isEventDownloadActive(EventCode.NETWORK_SEARCH_MODE_CHANGE.value())) {
+                        mCurrentNetworkSelectionMode = getNetworkSelectionMode();
+                        PhoneFactory.getDefaultPhone().registerForServiceStateChanged(
+                                this, MSG_ID_NETWORK_SEARCH_MODE_CHANGE, null);
                     }
                 } else {
                     CatLog.d( this, "WARNING: No Event in event list!" );
@@ -760,6 +769,9 @@ public class CatService extends Handler implements AppInterface {
             CatLog.d(this, "SIM ready. Reporting STK service running now...");
             mCmdIf.reportStkServiceIsRunning(null);
             break;
+        case MSG_ID_NETWORK_SEARCH_MODE_CHANGE:
+            onNetworkSearchModeChange(msg);
+            break;
         default:
             throw new AssertionError("Unrecognized CAT command: " + msg.what);
         }
@@ -932,5 +944,29 @@ public class CatService extends Handler implements AppInterface {
         CatLog.d(this, "Network selection mode is " + (isManual ? "MANUAL" : "AUTOMATIC"));
 
         return isManual ? NETWORK_SELECTION_MODE_MANUAL : NETWORK_SELECTION_MODE_AUTOMATIC;
+    }
+
+    private void onNetworkSearchModeChange(Message msg) {
+        if (isEventDownloadActive(EventCode.NETWORK_SEARCH_MODE_CHANGE.value())) {
+            ServiceState state = (ServiceState)((AsyncResult) msg.obj).result;
+
+            boolean isManual = state.getIsManualSelection();
+            int mode = isManual ? NETWORK_SELECTION_MODE_MANUAL : NETWORK_SELECTION_MODE_AUTOMATIC;
+
+            if ((mCurrentNetworkSelectionMode ^ mode) != 0) {
+                mCurrentNetworkSelectionMode = mode;
+                byte[] additionalInfo = new byte[3];
+                additionalInfo[0] = (byte)ComprehensionTlvTag.NETWORK_SEARCH_MODE.value();
+                additionalInfo[1] = 0x01;
+                additionalInfo[2] = (byte)mode;
+
+                CatLog.d(this, "Network selection mode is " + (isManual ? "MANUAL" : "AUTOMATIC"));
+
+                onEventDownload(new CatEventMessage(
+                        EventCode.NETWORK_SEARCH_MODE_CHANGE.value(), additionalInfo, false));
+            }
+        } else {
+            PhoneFactory.getDefaultPhone().unregisterForServiceStateChanged(this);
+        }
     }
 }
