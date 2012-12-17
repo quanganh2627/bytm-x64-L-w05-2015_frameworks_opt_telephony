@@ -872,7 +872,8 @@ public class BipGateWay {
                 if (bd.type == BearerType.DEFAULT_BEARER) {
                     result = setupDefaultDataConnection(cmdMsg);
                 } else if (bd.type == BearerType.MOBILE_PS
-                        || bd.type == BearerType.MOBILE_PS_EXTENDED_QOS) {
+                        || bd.type == BearerType.MOBILE_PS_EXTENDED_QOS
+                        || bd.type == BearerType.MOBILE_PS_EXTENDED_EPS_QOS) {
                     result = setupSpecificPdpConnection(cmdMsg);
                 } else {
                     // send TR error
