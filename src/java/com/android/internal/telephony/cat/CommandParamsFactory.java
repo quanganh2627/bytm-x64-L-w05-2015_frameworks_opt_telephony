@@ -1059,7 +1059,8 @@ class CommandParamsFactory extends Handler {
             if (bearerDescription.type == BearerType.DEFAULT_BEARER) {
                 // OPEN CHANNEL related to Default (network) Bearer
             } else if (bearerDescription.type == BearerType.MOBILE_PS
-                    || bearerDescription.type == BearerType.MOBILE_PS_EXTENDED_QOS) {
+                    || bearerDescription.type == BearerType.MOBILE_PS_EXTENDED_QOS
+                    || bearerDescription.type == BearerType.MOBILE_PS_EXTENDED_EPS_QOS) {
                 // OPEN CHANNEL related to packet data service bearer
             } else {
                 throw new ResultException(ResultCode.BEYOND_TERMINAL_CAPABILITY);

@@ -37,7 +37,9 @@ public class BearerDescription implements Parcelable {
         RS232(0x07),
         MOBILE_PS_EXTENDED_QOS(0x09),
         I_WLAN(0x0A),
+        MOBILE_PS_EXTENDED_EPS_QOS(0x0B),
         USB(0x10);
+
         private int mValue;
 
         BearerType(int value) {
