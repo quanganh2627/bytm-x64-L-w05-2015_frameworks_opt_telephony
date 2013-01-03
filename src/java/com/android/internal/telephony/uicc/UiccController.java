@@ -206,6 +206,8 @@ public class UiccController extends Handler {
                        mUiccCard.update(mContext, mCi, cardStatus);
                    }
 
+                   if (DBG) log("Notifying IccChangedRegistrants");
+                   mIccChangedRegistrants.notifyRegistrants();
                    break;
                 default:
                     Log.e(LOG_TAG, " Unknown Event " + msg.what);
