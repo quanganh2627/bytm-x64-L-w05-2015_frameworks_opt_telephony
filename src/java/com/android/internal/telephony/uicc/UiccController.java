@@ -197,6 +197,11 @@ public class UiccController extends Handler {
                    IccCardApplicationStatus app = new IccCardApplicationStatus();
                    app.app_type = IccCardApplicationStatus.AppType.APPTYPE_UNKNOWN;
                    app.app_state = IccCardApplicationStatus.AppState.APPSTATE_UNKNOWN;
+                   app.pin1 = IccCardStatus.PinState.PINSTATE_UNKNOWN;
+                   app.pin2 = IccCardStatus.PinState.PINSTATE_UNKNOWN;
+                   app.perso_substate =
+                           IccCardApplicationStatus.PersoSubState.PERSOSUBSTATE_UNKNOWN;
+
                    cardStatus.mApplications[0] = app;
                    if (mUiccCard == null) {
                        //Create new card
