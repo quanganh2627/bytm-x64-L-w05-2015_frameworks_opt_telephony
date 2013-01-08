@@ -147,9 +147,7 @@ public class UiccCard {
                                                      mContext,
                                                      this);
             } else {
-                if (mCatService != null) {
-                    mCatService.dispose();
-                }
+                // Just set the member variable to null.
                 mCatService = null;
             }
 
