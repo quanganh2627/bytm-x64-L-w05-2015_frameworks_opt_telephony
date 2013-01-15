@@ -387,7 +387,8 @@ public final class CallManager {
                     audioManager.requestAudioFocusForCall(AudioManager.STREAM_VOICE_CALL,
                             AudioManager.AUDIOFOCUS_GAIN_TRANSIENT);
                     audioManager.setMode(AudioManager.MODE_IN_CALL);
-                } else if (audioManager.getMode() != AudioManager.MODE_RINGTONE) {
+                } else if ((!hasActiveFgCall())
+                        && (audioManager.getMode() != AudioManager.MODE_RINGTONE)) {
                     // only request audio focus if the ringtone is going to be heard
                     if (audioManager.getStreamVolume(AudioManager.STREAM_RING) > 0) {
                         if (VDBG) Log.d(LOG_TAG, "requestAudioFocus on STREAM_RING");
