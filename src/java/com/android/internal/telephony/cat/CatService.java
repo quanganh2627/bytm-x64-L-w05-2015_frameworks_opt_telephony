@@ -23,6 +23,7 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.content.res.Configuration;
+import android.content.res.Resources;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.NetworkUtils;
@@ -710,6 +711,15 @@ public class CatService extends Handler implements AppInterface {
                         || ic == null) {
                     return null;
                 }
+
+                try {
+                    if (!context.getResources()
+                            .getBoolean(com.android.internal.R.bool.config_cat_support)) {
+                        return null;
+                    }
+                } catch (Resources.NotFoundException ex) {
+                }
+
                 HandlerThread thread = new HandlerThread("Cat Telephony service");
                 thread.start();
                 sInstance = new CatService(ci, ca, ir, context, fh, ic);
