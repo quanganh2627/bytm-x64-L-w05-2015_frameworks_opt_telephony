@@ -740,19 +740,160 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
         }
     }
 
-    /**
-     * Handle the result of one of the getOperator() request
-     *
+    /*
      * Note: While porting this across android releases, take care of
      *       fixes done in pollStateDone()'s if (hasChanged) case .
      */
+    private void onServiceStateChanged() {
+        String operatorNumeric;
+
+        updateSpnDisplay();
+
+        phone.setSystemProperty(TelephonyProperties.PROPERTY_OPERATOR_ALPHA,
+                ss.getOperatorAlphaLong());
+
+        String prevOperatorNumeric =
+                SystemProperties.get(TelephonyProperties.PROPERTY_OPERATOR_NUMERIC, "");
+        operatorNumeric = ss.getOperatorNumeric();
+        phone.setSystemProperty(TelephonyProperties.PROPERTY_OPERATOR_NUMERIC, operatorNumeric);
+
+        if (operatorNumeric == null || operatorNumeric.length() < 3) {
+            if (DBG) log("onServiceStateChanged: operatorNumeric is invalid");
+            phone.setSystemProperty(TelephonyProperties.PROPERTY_OPERATOR_ISO_COUNTRY, "");
+            mGotCountryCode = false;
+            mNitzUpdatedTime = false;
+        } else {
+            String iso = "";
+            String mcc = operatorNumeric.substring(0, 3);
+            try {
+                iso = MccTable.countryCodeForMcc(Integer.parseInt(mcc));
+            } catch (NumberFormatException ex) {
+                loge("onServiceStateChanged: Mcc Invalid(not a number)" + ex);
+            }
+
+            phone.setSystemProperty(TelephonyProperties.PROPERTY_OPERATOR_ISO_COUNTRY, iso);
+            mGotCountryCode = true;
+
+            setWifiCountryCode(iso);
+
+            TimeZone zone = null;
+
+            if (!mNitzUpdatedTime && !mcc.equals("000") && !TextUtils.isEmpty(iso)
+                    && getAutoTimeZone()) {
+
+                // Test both paths if ignore nitz is true
+                boolean testOneUniqueOffsetPath = SystemProperties.getBoolean(
+                            TelephonyProperties.PROPERTY_IGNORE_NITZ, false)
+                            && ((SystemClock.uptimeMillis() & 1) == 0);
+
+                ArrayList<TimeZone> uniqueZones = TimeUtils.getTimeZonesWithUniqueOffsets(iso);
+                if ((uniqueZones.size() == 1) || testOneUniqueOffsetPath) {
+                    zone = uniqueZones.get(0);
+                    if (DBG) {
+                        log("onServiceStateChanged: no nitz but one TZ for iso-cc=" + iso +
+                                " with zone.getID=" + zone.getID() +
+                                " testOneUniqueOffsetPath=" + testOneUniqueOffsetPath);
+                    }
+                    setAndBroadcastNetworkSetTimeZone(zone.getID());
+                } else {
+                    if (DBG) {
+                        log("onServiceStateChanged: there are " + uniqueZones.size() +
+                                " unique offsets for iso-cc='" + iso +
+                                " testOneUniqueOffsetPath=" + testOneUniqueOffsetPath +
+                                "', do nothing");
+                    }
+                }
+            }
+
+            if (shouldFixTimeZoneNow(phone, operatorNumeric, prevOperatorNumeric,
+                    mNeedFixZoneAfterNitz)) {
+                // If the offset is (0, false) and the timezone property
+                // is set, use the timezone property rather than
+                // GMT.
+                String zoneName = SystemProperties.get(TIMEZONE_PROPERTY);
+                if (DBG) {
+                    log("onServiceStateChanged: fix time zone zoneName='" + zoneName +
+                            "' mZoneOffset=" + mZoneOffset + " mZoneDst=" + mZoneDst +
+                            " iso-cc='" + iso +
+                            "' iso-cc-idx=" + Arrays.binarySearch(GMT_COUNTRY_CODES, iso));
+                }
+
+                // "(mZoneOffset == 0) && (mZoneDst == false) &&
+                //  (Arrays.binarySearch(GMT_COUNTRY_CODES, iso) < 0)"
+                // means that we received a NITZ string telling
+                // it is in GMT+0 w/ DST time zone
+                // BUT iso tells is NOT, e.g, a wrong NITZ reporting
+                // local time w/ 0 offset.
+                if ((mZoneOffset == 0) && (mZoneDst == false)
+                        && (zoneName != null) && (zoneName.length() > 0)
+                        && (Arrays.binarySearch(GMT_COUNTRY_CODES, iso) < 0)) {
+                    zone = TimeZone.getDefault();
+                    if (mNeedFixZoneAfterNitz) {
+                        // For wrong NITZ reporting local time w/ 0 offset,
+                        // need adjust time to reflect default timezone setting
+                        long ctm = System.currentTimeMillis();
+                        long tzOffset = zone.getOffset(ctm);
+                        if (DBG) {
+                            log("onServiceStateChanged: tzOffset=" + tzOffset + " ltod=" +
+                                    TimeUtils.logTimeOfDay(ctm));
+                        }
+                        if (getAutoTime()) {
+                            long adj = ctm - tzOffset;
+                            if (DBG) log("onServiceStateChanged: adj ltod=" +
+                                    TimeUtils.logTimeOfDay(adj));
+                            setAndBroadcastNetworkSetTime(adj);
+                        } else {
+                            // Adjust the saved NITZ time to account for tzOffset.
+                            mSavedTime = mSavedTime - tzOffset;
+                        }
+                    }
+                    if (DBG) log("onServiceStateChanged: using default TimeZone");
+                } else if (iso.equals("")) {
+                    // Country code not found.  This is likely a test network.
+                    // Get a TimeZone based only on the NITZ parameters (best guess).
+                    zone = getNitzTimeZone(mZoneOffset, mZoneDst, mZoneTime);
+                    if (DBG) log("onServiceStateChanged: using NITZ TimeZone");
+                } else {
+                    zone = TimeUtils.getTimeZone(mZoneOffset, mZoneDst, mZoneTime, iso);
+                    if (DBG) log("onServiceStateChanged: using getTimeZone(off, dst, time, iso)");
+                    if (zone == null) {
+                        // Couldn't find a proper timezone.  Perhaps the DST data is wrong.
+                        zone = TimeUtils.getTimeZone(mZoneOffset, !mZoneDst, mZoneTime, iso);
+                    }
+                }
+
+                mNeedFixZoneAfterNitz = false;
+
+                if (zone != null) {
+                    log("onServiceStateChanged: zone != null zone.getID=" + zone.getID());
+                    if (getAutoTimeZone()) {
+                        setAndBroadcastNetworkSetTimeZone(zone.getID());
+                    }
+                    saveNitzTimeZone(zone.getID());
+                } else {
+                    log("onServiceStateChanged: zone == null");
+                }
+            }
+        }
+
+        phone.setSystemProperty(TelephonyProperties.PROPERTY_OPERATOR_ISROAMING,
+                ss.getRoaming() ? "true" : "false");
+
+        phone.notifyServiceStateChanged(ss);
+    }
+
+    /**
+     * Handle the result of one of the getOperator() request
+     */
     private void handleGetOperator(AsyncResult ar) {
-        ServiceState tmpSS = ss;
+        ServiceState tmpSS = new ServiceState(ss);
+
         if (ar.exception != null) {
             if (DBG) {
-                loge("Exception in getting operator" + ar.exception);
-                tmpSS.setOperatorName(null, null, null);
+                loge("handleGetOperator - Exception in getting operator" + ar.exception);
             }
+
+            tmpSS.setOperatorName(null, null, null);
         } else {
             String opNames[] = (String[])ar.result;
             if (opNames != null && opNames.length >= 3) {
@@ -777,144 +918,11 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
 
         boolean hasChanged = !tmpSS.equals(ss);
 
-        // Same as pollStateDone() function's if (hasChanged) case
         if (hasChanged) {
-            String operatorNumeric;
-
-            ss = tmpSS;
-            updateSpnDisplay();
-
-            phone.setSystemProperty(TelephonyProperties.PROPERTY_OPERATOR_ALPHA,
-                    ss.getOperatorAlphaLong());
-
-            String prevOperatorNumeric =
-                    SystemProperties.get(TelephonyProperties.PROPERTY_OPERATOR_NUMERIC, "");
-            operatorNumeric = ss.getOperatorNumeric();
-            phone.setSystemProperty(TelephonyProperties.PROPERTY_OPERATOR_NUMERIC, operatorNumeric);
-
-            if (operatorNumeric == null || operatorNumeric.length() < 3) {
-                if (DBG) log("handleGetOperator: operatorNumeric is invalid");
-                phone.setSystemProperty(TelephonyProperties.PROPERTY_OPERATOR_ISO_COUNTRY, "");
-                mGotCountryCode = false;
-                mNitzUpdatedTime = false;
-            } else {
-                String iso = "";
-                String mcc = operatorNumeric.substring(0, 3);
-                try{
-                    iso = MccTable.countryCodeForMcc(Integer.parseInt(mcc));
-                } catch (NumberFormatException ex) {
-                    loge("handleGetOperator: Mcc Invalid(not a number)" + ex);
-                }
-
-                phone.setSystemProperty(TelephonyProperties.PROPERTY_OPERATOR_ISO_COUNTRY, iso);
-                mGotCountryCode = true;
-
-                setWifiCountryCode(iso);
-
-                TimeZone zone = null;
-
-                if (!mNitzUpdatedTime && !mcc.equals("000") && !TextUtils.isEmpty(iso) &&
-                        getAutoTimeZone()) {
-
-                    // Test both paths if ignore nitz is true
-                    boolean testOneUniqueOffsetPath = SystemProperties.getBoolean(
-                                TelephonyProperties.PROPERTY_IGNORE_NITZ, false)
-                                && ((SystemClock.uptimeMillis() & 1) == 0);
-
-                    ArrayList<TimeZone> uniqueZones = TimeUtils.getTimeZonesWithUniqueOffsets(iso);
-                    if ((uniqueZones.size() == 1) || testOneUniqueOffsetPath) {
-                        zone = uniqueZones.get(0);
-                        if (DBG) {
-                           log("handleGetOperator: no nitz but one TZ for iso-cc=" + iso +
-                                   " with zone.getID=" + zone.getID() +
-                                   " testOneUniqueOffsetPath=" + testOneUniqueOffsetPath);
-                        }
-                        setAndBroadcastNetworkSetTimeZone(zone.getID());
-                    } else {
-                        if (DBG) {
-                            log("handleGetOperator: there are " + uniqueZones.size() +
-                                " unique offsets for iso-cc='" + iso +
-                                " testOneUniqueOffsetPath=" + testOneUniqueOffsetPath +
-                                "', do nothing");
-                        }
-                    }
-                }
-
-                if (shouldFixTimeZoneNow(phone, operatorNumeric, prevOperatorNumeric,
-                        mNeedFixZoneAfterNitz)) {
-                    // If the offset is (0, false) and the timezone property
-                    // is set, use the timezone property rather than
-                    // GMT.
-                    String zoneName = SystemProperties.get(TIMEZONE_PROPERTY);
-                    if (DBG) {
-                        log("handleGetOperator: fix time zone zoneName='" + zoneName +
-                            "' mZoneOffset=" + mZoneOffset + " mZoneDst=" + mZoneDst +
-                            " iso-cc='" + iso +
-                            "' iso-cc-idx=" + Arrays.binarySearch(GMT_COUNTRY_CODES, iso));
-                    }
-
-                    // "(mZoneOffset == 0) && (mZoneDst == false) &&
-                    //  (Arrays.binarySearch(GMT_COUNTRY_CODES, iso) < 0)"
-                    // means that we received a NITZ string telling
-                    // it is in GMT+0 w/ DST time zone
-                    // BUT iso tells is NOT, e.g, a wrong NITZ reporting
-                    // local time w/ 0 offset.
-                    if ((mZoneOffset == 0) && (mZoneDst == false)
-                        && (zoneName != null) && (zoneName.length() > 0)
-                        && (Arrays.binarySearch(GMT_COUNTRY_CODES, iso) < 0)) {
-                        zone = TimeZone.getDefault();
-                        if (mNeedFixZoneAfterNitz) {
-                            // For wrong NITZ reporting local time w/ 0 offset,
-                            // need adjust time to reflect default timezone setting
-                            long ctm = System.currentTimeMillis();
-                            long tzOffset = zone.getOffset(ctm);
-                            if (DBG) {
-                                log("handleGetOperator: tzOffset=" + tzOffset + " ltod=" +
-                                        TimeUtils.logTimeOfDay(ctm));
-                            }
-                            if (getAutoTime()) {
-                                long adj = ctm - tzOffset;
-                                if (DBG) log("handleGetOperator: adj ltod=" +
-                                        TimeUtils.logTimeOfDay(adj));
-                                setAndBroadcastNetworkSetTime(adj);
-                            } else {
-                                // Adjust the saved NITZ time to account for tzOffset.
-                                mSavedTime = mSavedTime - tzOffset;
-                            }
-                        }
-                        if (DBG) log("handleGetOperator: using default TimeZone");
-                    } else if (iso.equals("")) {
-                        // Country code not found.  This is likely a test network.
-                        // Get a TimeZone based only on the NITZ parameters (best guess).
-                        zone = getNitzTimeZone(mZoneOffset, mZoneDst, mZoneTime);
-                        if (DBG) log("handleGetOperator: using NITZ TimeZone");
-                    } else {
-                        zone = TimeUtils.getTimeZone(mZoneOffset, mZoneDst, mZoneTime, iso);
-                        if (DBG) log("handleGetOperator: using getTimeZone(off, dst, time, iso)");
-                        if (zone == null) {
-                            // Couldn't find a proper timezone.  Perhaps the DST data is wrong.
-                            zone = TimeUtils.getTimeZone(mZoneOffset, !mZoneDst, mZoneTime, iso);
-                        }
-                    }
-
-                    mNeedFixZoneAfterNitz = false;
-
-                    if (zone != null) {
-                        log("handleGetOperator: zone != null zone.getID=" + zone.getID());
-                        if (getAutoTimeZone()) {
-                            setAndBroadcastNetworkSetTimeZone(zone.getID());
-                        }
-                        saveNitzTimeZone(zone.getID());
-                    } else {
-                        log("handleGetOperator: zone == null");
-                    }
-                }
-            }
-
-            phone.setSystemProperty(TelephonyProperties.PROPERTY_OPERATOR_ISROAMING,
-                    ss.getRoaming() ? "true" : "false");
-
-            phone.notifyServiceStateChanged(ss);
+            ss.setRoaming(tmpSS.getRoaming());
+            ss.setOperatorName(tmpSS.getOperatorAlphaLong(), tmpSS.getOperatorAlphaShort(),
+                    tmpSS.getOperatorNumeric());
+            onServiceStateChanged();
         }
     }
 
@@ -957,6 +965,7 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
                 mGotCountryCode = false;
                 mNitzUpdatedTime = false;
                 pollStateDone();
+                updateSpnDisplay();
             break;
 
             case RADIO_OFF:
@@ -966,6 +975,7 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
                 mGotCountryCode = false;
                 mNitzUpdatedTime = false;
                 pollStateDone();
+                updateSpnDisplay();
             break;
 
             default:
@@ -1043,18 +1053,21 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
                 ss.getState(), gprsState, newSS.getState(), newGPRSState);
         }
 
+        ServiceState tss;
+        tss = ss;
+        ss = newSS;
+        newSS = tss;
+
         /*
          * Query operator after registration state polling. This has been done to show
          * the registration state information to the user at the earliest.
          */
         if (!mIsGetOperatorPollingTracked) {
             cm.getOperator(obtainMessage(EVENT_GET_OPERATOR));
+            ss.setOperatorName(tss.getOperatorAlphaLong(), tss.getOperatorAlphaShort(),
+                    tss.getOperatorNumeric());
         }
 
-        ServiceState tss;
-        tss = ss;
-        ss = newSS;
-        newSS = tss;
         // clean slate for next time
         newSS.setStateOutOfService();
 
@@ -1104,141 +1117,11 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
         }
 
         if (hasChanged) {
-            String operatorNumeric;
-
-            updateSpnDisplay();
-
-            phone.setSystemProperty(TelephonyProperties.PROPERTY_OPERATOR_ALPHA,
-                ss.getOperatorAlphaLong());
-
-            String prevOperatorNumeric =
-                    SystemProperties.get(TelephonyProperties.PROPERTY_OPERATOR_NUMERIC, "");
-            operatorNumeric = ss.getOperatorNumeric();
-            phone.setSystemProperty(TelephonyProperties.PROPERTY_OPERATOR_NUMERIC, operatorNumeric);
-            if (operatorNumeric == null || operatorNumeric.length() < 3) {
-                if (DBG) log("operatorNumeric is invalid");
-                phone.setSystemProperty(TelephonyProperties.PROPERTY_OPERATOR_ISO_COUNTRY, "");
-                mGotCountryCode = false;
-                mNitzUpdatedTime = false;
+            if (mIsGetOperatorPollingTracked) {
+                onServiceStateChanged();
             } else {
-                String iso = "";
-                String mcc = "";
-                try{
-                    mcc = operatorNumeric.substring(0, 3);
-                    iso = MccTable.countryCodeForMcc(Integer.parseInt(mcc));
-                } catch ( NumberFormatException ex){
-                    loge("pollStateDone: Mcc Invalid(not a number)" + ex);
-                }
-
-                phone.setSystemProperty(TelephonyProperties.PROPERTY_OPERATOR_ISO_COUNTRY, iso);
-                mGotCountryCode = true;
-
-                setWifiCountryCode(iso);
-
-                TimeZone zone = null;
-
-                if (!mNitzUpdatedTime && !mcc.equals("000") && !TextUtils.isEmpty(iso) &&
-                        getAutoTimeZone()) {
-
-                    // Test both paths if ignore nitz is true
-                    boolean testOneUniqueOffsetPath = SystemProperties.getBoolean(
-                                TelephonyProperties.PROPERTY_IGNORE_NITZ, false) &&
-                                    ((SystemClock.uptimeMillis() & 1) == 0);
-
-                    ArrayList<TimeZone> uniqueZones = TimeUtils.getTimeZonesWithUniqueOffsets(iso);
-                    if ((uniqueZones.size() == 1) || testOneUniqueOffsetPath) {
-                        zone = uniqueZones.get(0);
-                        if (DBG) {
-                           log("pollStateDone: no nitz but one TZ for iso-cc=" + iso +
-                                   " with zone.getID=" + zone.getID() +
-                                   " testOneUniqueOffsetPath=" + testOneUniqueOffsetPath);
-                        }
-                        setAndBroadcastNetworkSetTimeZone(zone.getID());
-                    } else {
-                        if (DBG) {
-                            log("pollStateDone: there are " + uniqueZones.size() +
-                                " unique offsets for iso-cc='" + iso +
-                                " testOneUniqueOffsetPath=" + testOneUniqueOffsetPath +
-                                "', do nothing");
-                        }
-                    }
-                }
-
-                if (shouldFixTimeZoneNow(phone, operatorNumeric, prevOperatorNumeric,
-                        mNeedFixZoneAfterNitz)) {
-                    // If the offset is (0, false) and the timezone property
-                    // is set, use the timezone property rather than
-                    // GMT.
-                    String zoneName = SystemProperties.get(TIMEZONE_PROPERTY);
-                    if (DBG) {
-                        log("pollStateDone: fix time zone zoneName='" + zoneName +
-                            "' mZoneOffset=" + mZoneOffset + " mZoneDst=" + mZoneDst +
-                            " iso-cc='" + iso +
-                            "' iso-cc-idx=" + Arrays.binarySearch(GMT_COUNTRY_CODES, iso));
-                    }
-
-                    // "(mZoneOffset == 0) && (mZoneDst == false) &&
-                    //  (Arrays.binarySearch(GMT_COUNTRY_CODES, iso) < 0)"
-                    // means that we received a NITZ string telling
-                    // it is in GMT+0 w/ DST time zone
-                    // BUT iso tells is NOT, e.g, a wrong NITZ reporting
-                    // local time w/ 0 offset.
-                    if ((mZoneOffset == 0) && (mZoneDst == false) &&
-                        (zoneName != null) && (zoneName.length() > 0) &&
-                        (Arrays.binarySearch(GMT_COUNTRY_CODES, iso) < 0)) {
-                        zone = TimeZone.getDefault();
-                        if (mNeedFixZoneAfterNitz) {
-                            // For wrong NITZ reporting local time w/ 0 offset,
-                            // need adjust time to reflect default timezone setting
-                            long ctm = System.currentTimeMillis();
-                            long tzOffset = zone.getOffset(ctm);
-                            if (DBG) {
-                                log("pollStateDone: tzOffset=" + tzOffset + " ltod=" +
-                                        TimeUtils.logTimeOfDay(ctm));
-                            }
-                            if (getAutoTime()) {
-                                long adj = ctm - tzOffset;
-                                if (DBG) log("pollStateDone: adj ltod=" +
-                                        TimeUtils.logTimeOfDay(adj));
-                                setAndBroadcastNetworkSetTime(adj);
-                            } else {
-                                // Adjust the saved NITZ time to account for tzOffset.
-                                mSavedTime = mSavedTime - tzOffset;
-                            }
-                        }
-                        if (DBG) log("pollStateDone: using default TimeZone");
-                    } else if (iso.equals("")){
-                        // Country code not found.  This is likely a test network.
-                        // Get a TimeZone based only on the NITZ parameters (best guess).
-                        zone = getNitzTimeZone(mZoneOffset, mZoneDst, mZoneTime);
-                        if (DBG) log("pollStateDone: using NITZ TimeZone");
-                    } else {
-                        zone = TimeUtils.getTimeZone(mZoneOffset, mZoneDst, mZoneTime, iso);
-                        if (DBG) log("pollStateDone: using getTimeZone(off, dst, time, iso)");
-                        if (zone == null) {
-                            // Couldn't find a proper timezone.  Perhaps the DST data is wrong.
-                            zone = TimeUtils.getTimeZone(mZoneOffset,!mZoneDst, mZoneTime, iso);
-                        }
-                    }
-
-                    mNeedFixZoneAfterNitz = false;
-
-                    if (zone != null) {
-                        log("pollStateDone: zone != null zone.getID=" + zone.getID());
-                        if (getAutoTimeZone()) {
-                            setAndBroadcastNetworkSetTimeZone(zone.getID());
-                        }
-                        saveNitzTimeZone(zone.getID());
-                    } else {
-                        log("pollStateDone: zone == null");
-                    }
-                }
+                phone.notifyServiceStateChanged(ss);
             }
-
-            phone.setSystemProperty(TelephonyProperties.PROPERTY_OPERATOR_ISROAMING,
-                ss.getRoaming() ? "true" : "false");
-
-            phone.notifyServiceStateChanged(ss);
         }
 
         if (hasGprsAttached) {
