@@ -225,8 +225,6 @@ public class UiccController extends Handler {
         mContext = c;
         mCi = ci;
         mCi.registerForIccStatusChanged(this, EVENT_ICC_STATUS_CHANGED, null);
-        // TODO remove this once modem correctly notifies the unsols
-        mCi.registerForOn(this, EVENT_ICC_STATUS_CHANGED, null);
         mCi.registerForOffOrNotAvailable(this, EVENT_RADIO_OFF_NOT_AVAILABLE, null);
     }
 
