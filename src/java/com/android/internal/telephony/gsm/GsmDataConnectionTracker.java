@@ -2447,9 +2447,6 @@ public final class GsmDataConnectionTracker extends DataConnectionTracker {
             startNetStatPoll();
             startDataStallAlarm(DATA_STALL_NOT_SUSPECTED);
             notifyDataConnection(null);
-        } else {
-            // reset reconnect timer
-            setupDataOnReadyApns(null);
         }
         notifyOffApnsOfAvailability(null);
     }
