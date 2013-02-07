@@ -1382,8 +1382,10 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
 
         boolean equalsMcc = true;
         try {
-            equalsMcc = simNumeric.substring(0, 3).
-                    equals(operatorNumeric.substring(0, 3));
+            if (operatorNumeric != null) {
+                equalsMcc = simNumeric.substring(0, 3).
+                        equals(operatorNumeric.substring(0, 3));
+            }
         } catch (Exception e){
         }
 

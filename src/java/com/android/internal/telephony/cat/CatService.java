@@ -813,7 +813,7 @@ public class CatService extends Handler implements AppInterface {
     }
 
     private boolean validateResponse(CatResponseMessage resMsg) {
-        if (mCurrntCmd != null) {
+        if (mCurrntCmd != null && resMsg != null) {
             return (resMsg.cmdDet.compareTo(mCurrntCmd.mCmdDet));
         }
         return false;
