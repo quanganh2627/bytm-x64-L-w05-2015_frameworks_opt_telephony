@@ -1139,9 +1139,9 @@ public class BipGateWay {
                                new TrustManager[] {new SCWSTrustManager()},
                                null);
                         SSLSocket socket = (SSLSocket)sslContext.getSocketFactory().createSocket();
+                        mSocket = socket;
                         socket.connect(new InetSocketAddress(addr, mChannelSettings.port));
                         socket.startHandshake();
-                        mSocket = socket;
                     } else {
                         addr = InetAddress.getLocalHost();
                         mSocket = new Socket(addr, mChannelSettings.port);
@@ -1167,6 +1167,15 @@ public class BipGateWay {
                 } catch (Exception e) {
                     CatLog.d(this, "OPEN_CHANNEL - Client connection failed: "
                                 + e.getMessage() );
+                    if (mSocket != null) {
+                        if (!mSocket.isClosed()) {
+                            try {
+                                mSocket.close();
+                            } catch (IOException ioEx) {
+                            }
+                        }
+                    }
+
                     ResponseData resp = new OpenChannelResponseData(
                                 mChannelSettings.bufSize, mChannelStatus,
                                 mChannelSettings.bearerDescription);
