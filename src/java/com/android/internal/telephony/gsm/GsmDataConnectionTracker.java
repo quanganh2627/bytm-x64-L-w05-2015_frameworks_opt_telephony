@@ -1375,6 +1375,12 @@ public final class GsmDataConnectionTracker extends DataConnectionTracker {
             cleanUpConnection(true, apnContext);
         }
 
+        if (dataCallStates.size() == 0) {
+            if (DBG) log("onDataStateChange(ar): NoData calls Stop stall alarm");
+            stopNetStatPoll();
+            stopDataStallAlarm();
+        }
+
         if (DBG) log("onDataStateChanged(ar): X");
     }
 
