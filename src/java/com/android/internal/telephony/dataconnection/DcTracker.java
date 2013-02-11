@@ -1141,6 +1141,12 @@ public final class DcTracker extends DcTrackerBase {
             if (isAnyDataCallActive) startNetStatPoll();
         }
 
+        if (dataCallStates.size() == 0) {
+            if (DBG) log("onDataStateChange(ar): NoData calls Stop stall alarm");
+            stopNetStatPoll();
+            stopDataStallAlarm();
+        }
+
         if (DBG) log("onDataStateChanged(ar): X");
     }
 
