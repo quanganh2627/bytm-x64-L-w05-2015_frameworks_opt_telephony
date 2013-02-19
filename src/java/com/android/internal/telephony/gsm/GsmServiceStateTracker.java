@@ -1074,7 +1074,7 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
          * Query operator after registration state polling. This has been done to show
          * the registration state information to the user at the earliest.
          */
-        if (!mIsGetOperatorPollingTracked) {
+        if (!mIsGetOperatorPollingTracked && ss.getState() == ServiceState.STATE_IN_SERVICE) {
             cm.getOperator(obtainMessage(EVENT_GET_OPERATOR));
             ss.setOperatorName(tss.getOperatorAlphaLong(), tss.getOperatorAlphaShort(),
                     tss.getOperatorNumeric());
@@ -1132,6 +1132,7 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
             if (mIsGetOperatorPollingTracked) {
                 onServiceStateChanged();
             } else {
+                updateSpnDisplay();
                 phone.notifyServiceStateChanged(ss);
             }
         }
