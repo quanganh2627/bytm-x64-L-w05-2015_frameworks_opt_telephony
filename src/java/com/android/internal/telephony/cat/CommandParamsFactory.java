@@ -203,7 +203,7 @@ class CommandParamsFactory extends Handler {
         int iconIndex = 0;
 
         if (data == null) {
-            return ResultCode.OK;
+            return ResultCode.PRFRMD_ICON_NOT_DISPLAYED;
         }
         switch(mIconLoadState) {
         case LOAD_SINGLE_ICON:
