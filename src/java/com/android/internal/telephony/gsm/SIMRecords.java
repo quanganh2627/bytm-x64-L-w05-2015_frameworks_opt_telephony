@@ -221,8 +221,14 @@ public class SIMRecords extends IccRecords {
         iccid = null;
         // -1 means no EF_SPN found; treat accordingly.
         spnDisplayCondition = -1;
+        spn = null;
         efMWIS = null;
         efCPHS_MWI = null;
+        setVoiceMessageWaiting(1, 0);
+        mEfCfis = null;
+        mEfCff = null;
+        setVoiceCallForwardingFlag(1, false);
+
         spdiNetworks = null;
         pnnHomeName = null;
 

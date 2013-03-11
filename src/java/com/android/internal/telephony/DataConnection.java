@@ -852,7 +852,7 @@ public abstract class DataConnection extends StateMachine {
             }
             if (mDisconnectParams != null) {
                 if (VDBG) log("DcInactiveState: enter notifyDisconnectCompleted");
-                notifyDisconnectCompleted(mDisconnectParams, true);
+                notifyDisconnectCompleted(mDisconnectParams, false);
             }
             clearSettings();
         }

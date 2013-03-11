@@ -64,6 +64,12 @@ public interface IccCard {
     public void unregisterForNetworkLocked(Handler h);
 
     /**
+     * Notifies handler of any transition into IccCardConstants.State.NETWORK_LOCKED_PUK
+     */
+    public void registerForNetworkLockedPuk(Handler h, int what, Object obj);
+    public void unregisterForNetworkLockedPuk(Handler h);
+
+    /**
      * Notifies handler of any transition into IccCardConstants.State.isPinLocked()
      */
     public void registerForLocked(Handler h, int what, Object obj);
@@ -211,4 +217,9 @@ public interface IccCard {
      * @return true if a ICC card is present
      */
     public boolean hasIccCard();
+
+    public void exchangeAPDU(int cla, int command, int channel, int p1, int p2,
+            int p3, String data, Message onComplete);
+    public void openLogicalChannel(String aid, Message onComplete);
+    public void closeLogicalChannel(int channel, Message onComplete);
 }

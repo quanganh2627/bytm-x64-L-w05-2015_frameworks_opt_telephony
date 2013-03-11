@@ -36,13 +36,22 @@ abstract class ResponseData {
     public abstract void format(ByteArrayOutputStream buf);
 
     public static void writeLength(ByteArrayOutputStream buf, int length) {
-        // As per ETSI 102.220 Sec7.1.2, if the total length is greater
-        // than 0x7F, it should be coded in two bytes and the first byte
-        // should be 0x81.
-        if (length > 0x7F) {
+        // Refer ETSI 101.220 Sec 7.1.2 for info on the length encoding
+        if (length < 128) {
+            buf.write(length);
+        } else if (length < 256) {
             buf.write(0x81);
+            buf.write(length & 0xff);
+        } else if (length < 65536) {
+            buf.write(0x82);
+            buf.write((length >> 8) & 0xff);
+            buf.write(length & 0xff);
+        } else {
+            buf.write(0x83);
+            buf.write((length >> 16) & 0xff);
+            buf.write((length >> 8) & 0xff);
+            buf.write(length & 0xff);
         }
-        buf.write(length);
     }
 }
 
@@ -58,7 +67,7 @@ class SelectItemResponseData extends ResponseData {
     @Override
     public void format(ByteArrayOutputStream buf) {
         // Item identifier object
-        int tag = 0x80 | ComprehensionTlvTag.ITEM_ID.value();
+        int tag = ComprehensionTlvTag.ITEM_ID.value();
         buf.write(tag); // tag
         buf.write(1); // length
         buf.write(id); // identifier of item chosen
@@ -114,7 +123,17 @@ class GetInkeyInputResponseData extends ResponseData {
                 // ETSI TS 102 223 8.15, should use the same format as in SMS messages
                 // on the network.
                 if (mIsUcs2) {
-                    // ucs2 is by definition big endian.
+                    int mHeaderLen =
+                         5 // Command details tag full len
+                         + 4 // Device identities tag full len
+                         + 3 // Result tag full len
+                         + 4; // String header len.
+                    // the max length of an APDU message is 0xFF
+                    // if string is too long, need truncate it.
+                    int mRemainLen = 0xFF - mHeaderLen;
+                    if (mInData.length() * 2 > mRemainLen) {
+                        mInData = mInData.substring(0, mRemainLen/2 - 1);
+                    }
                     data = mInData.getBytes("UTF-16BE");
                 } else if (mIsPacked) {
                     int size = mInData.length();
@@ -139,7 +158,12 @@ class GetInkeyInputResponseData extends ResponseData {
         }
 
         // length - one more for data coding scheme.
-        writeLength(buf, data.length + 1);
+        int length = data.length + 1;
+
+        if (length > 0x7F) {
+            buf.write(0x81);
+        }
+        buf.write(length);
 
         // data coding scheme
         if (mIsUcs2) {
@@ -174,7 +198,7 @@ class LanguageResponseData extends ResponseData {
         }
 
         // Text string object
-        int tag = 0x80 | ComprehensionTlvTag.LANGUAGE.value();
+        int tag = ComprehensionTlvTag.LANGUAGE.value();
         buf.write(tag); // tag
 
         byte[] data;
@@ -194,6 +218,30 @@ class LanguageResponseData extends ResponseData {
     }
 }
 
+/* For "PROVIDE LOCAL INFORMATION" Search Mode command.
+ * See TS 31.111 section 6.4.15/ETSI TS 102 223
+ * TS 31.124 section 27.22.4.15 for test spec
+ */
+class NetworkSearchModeResponseData extends ResponseData {
+     // members
+     private int mode;
+
+     public NetworkSearchModeResponseData(int mode) {
+         super();
+         this.mode = mode;
+     }
+
+     @Override
+     public void format(ByteArrayOutputStream buf) {
+         // Network search object
+         int tag = ComprehensionTlvTag.NETWORK_SEARCH_MODE.value();
+         buf.write(tag); // tag
+         buf.write(1); // length
+         buf.write(mode); // Current network search mode value. (01=auto, 00=manual)
+     }
+}
+
+
 // For "PROVIDE LOCAL INFORMATION" command.
 // See TS 31.111 section 6.4.15/ETSI TS 102 223
 // TS 31.124 section 27.22.4.15 for test spec
@@ -212,7 +260,7 @@ class DTTZResponseData extends ResponseData {
         }
 
         // DTTZ object
-        int tag = 0x80 | CommandType.PROVIDE_LOCAL_INFORMATION.value();
+        int tag = CommandType.PROVIDE_LOCAL_INFORMATION.value();
         buf.write(tag); // tag
 
         byte[] data = new byte[8];
@@ -279,6 +327,134 @@ class DTTZResponseData extends ResponseData {
          // For negative offsets, put '1' in the msb
          return isNegative ?  (bcdVal |= 0x08) : bcdVal;
     }
+}
 
+class OpenChannelResponseData extends ResponseData {
+    // members
+    private int bufSize;
+    private Integer channelStatus;
+    private BearerDescription bearer;
+
+    public OpenChannelResponseData(int bufSize, Integer channelStatus, BearerDescription bearer) {
+        super();
+        this.bufSize = bufSize;
+        this.channelStatus = channelStatus;
+        this.bearer = bearer;
+    }
+
+    @Override
+    public void format(ByteArrayOutputStream buf) {
+        // Item identifier object
+        int tag;
+        if (channelStatus != null) {
+            tag = ComprehensionTlvTag.CHANNEL_STATUS.value();
+            buf.write(tag);
+            buf.write(2);
+            buf.write((channelStatus >> 8) & 0xff);
+            buf.write(channelStatus & 0xff);
+        }
+        if (bearer != null) {
+            tag = ComprehensionTlvTag.BEARER_DESC.value();
+            buf.write(tag);
+            int len = 1;
+            if (bearer.parameters != null) {
+                len += bearer.parameters.length;
+                buf.write(len);
+                buf.write(bearer.type.value() & 0xff);
+                buf.write(bearer.parameters, 0, bearer.parameters.length);
+            } else {
+                buf.write(len);
+                buf.write(bearer.type.value() & 0xff);
+            }
+        }
+
+        tag = ComprehensionTlvTag.BUFFER_SIZE.value();
+        buf.write(tag);
+        buf.write(2);
+        buf.write((bufSize >> 8) & 0xff);
+        buf.write(bufSize & 0xff);
+    }
+}
+
+class ReceiveDataResponseData extends ResponseData {
+    // members
+    private byte[] mData = null;
+    private int mLength = 0;
+
+    public ReceiveDataResponseData(byte[] data, int len) {
+        super();
+        mData = data;
+        mLength = len;
+    }
+
+    @Override
+    public void format(ByteArrayOutputStream buf) {
+        int tag = 0x80 | ComprehensionTlvTag.CHANNEL_DATA.value();
+        // write CHANNEL DATA TLV only if data are available.
+        if (mData != null) {
+            buf.write(tag);
+            if (mData.length > 0x7f)
+                buf.write(0x81);
+            buf.write(mData.length & 0xff);
+            for (byte b : mData) {
+                buf.write(b);
+            }
+        }
+        tag = 0x80 | ComprehensionTlvTag.CHANNEL_DATA_LENGTH.value();
+        buf.write(tag);
+        buf.write(1);
+        if (mLength > 255) {
+            buf.write(0xff);
+        } else {
+            buf.write(mLength & 0xff);
+        }
+    }
+}
+
+class SendDataResponseData extends ResponseData {
+    // members
+    private int mLength = 0;
+
+    public SendDataResponseData(int len) {
+        super();
+        mLength = len;
+    }
+
+    @Override
+    public void format(ByteArrayOutputStream buf) {
+        int tag = ComprehensionTlvTag.CHANNEL_DATA_LENGTH.value();
+        buf.write(tag);
+        buf.write(1);
+        if (mLength > 255) {
+            buf.write(0xff);
+        } else {
+            buf.write(mLength & 0xff);
+        }
+    }
+}
+
+class ChannelStatusResponseData extends ResponseData {
+    // members
+   private int[] channelStatus;
+
+    public ChannelStatusResponseData(int[] channelStatus) {
+        super();
+        this.channelStatus = channelStatus;
+    }
+
+    @Override
+    public void format(ByteArrayOutputStream buf) {
+        if (channelStatus != null) {
+            int tag = ComprehensionTlvTag.CHANNEL_STATUS.value();
+            for (int status : channelStatus) {
+               if (status > 0) {
+                    buf.write(tag);
+                    buf.write(2);
+                    buf.write((status >> 8) & 0xff);
+                    buf.write(status & 0xff);
+               }
+            }
+        }
+    }
 }
 

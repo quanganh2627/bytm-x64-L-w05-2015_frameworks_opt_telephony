@@ -23,6 +23,7 @@ import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.res.Resources;
 import android.content.SharedPreferences;
 import android.database.ContentObserver;
 import android.net.LinkCapabilities;
@@ -753,6 +754,10 @@ public abstract class DataConnectionTracker extends Handler {
             return DctConstants.APN_FOTA_ID;
         } else if (TextUtils.equals(type, PhoneConstants.APN_TYPE_CBS)) {
             return DctConstants.APN_CBS_ID;
+        } else if (TextUtils.equals(type, PhoneConstants.APN_TYPE_BIP_GPRS1)) {
+            return DctConstants.APN_BIP_GPRS1_ID;
+        } else if (TextUtils.equals(type, PhoneConstants.APN_TYPE_BIP_GPRS2)) {
+            return DctConstants.APN_BIP_GPRS2_ID;
         } else {
             return DctConstants.APN_INVALID_ID;
         }
@@ -776,6 +781,10 @@ public abstract class DataConnectionTracker extends Handler {
             return PhoneConstants.APN_TYPE_FOTA;
         case DctConstants.APN_CBS_ID:
             return PhoneConstants.APN_TYPE_CBS;
+        case DctConstants.APN_BIP_GPRS1_ID:
+            return PhoneConstants.APN_TYPE_BIP_GPRS1;
+        case DctConstants.APN_BIP_GPRS2_ID:
+            return PhoneConstants.APN_TYPE_BIP_GPRS2;
         default:
             log("Unknown id (" + id + ") in apnIdToType");
             return PhoneConstants.APN_TYPE_DEFAULT;
@@ -1225,6 +1234,24 @@ public abstract class DataConnectionTracker extends Handler {
         }
     }
 
+    public void cancelDataRecovery() {
+        if (DBG) log("cancelDataRecovery()");
+
+        try {
+            if (mPhone.getContext().getResources().getBoolean(
+                    com.android.internal.R.bool.config_usage_oem_hooks_supported)) {
+                String oemproperty = mPhone.getContext().getText(
+                        com.android.internal.R.string.oemhook_concurrentdata_property).toString();
+                SystemProperties.set(oemproperty, "notallowed");
+            }
+        } catch (Resources.NotFoundException ex) {
+            log("ignore exception");
+        }
+
+        cleanUpAllConnections(Phone.REASON_PDP_RESET);
+        putRecoveryAction(RecoveryAction.GET_DATA_CALL_LIST);
+    }
+
     public int getRecoveryAction() {
         int action = Settings.System.getInt(mPhone.getContext().getContentResolver(),
                 "radio.data.stall.recovery.action", RecoveryAction.GET_DATA_CALL_LIST);
@@ -1260,6 +1287,11 @@ public abstract class DataConnectionTracker extends Handler {
                 putRecoveryAction(RecoveryAction.REREGISTER);
                 break;
             case RecoveryAction.REREGISTER:
+                if (mPhone.getState() != PhoneConstants.State.IDLE) {
+                    cancelDataRecovery();
+                    return;
+                }
+
                 EventLog.writeEvent(EventLogTags.DATA_STALL_RECOVERY_REREGISTER,
                         mSentSinceLastRecv);
                 if (DBG) log("doRecovery() re-register");
@@ -1267,6 +1299,11 @@ public abstract class DataConnectionTracker extends Handler {
                 putRecoveryAction(RecoveryAction.RADIO_RESTART);
                 break;
             case RecoveryAction.RADIO_RESTART:
+                if (mPhone.getState() != PhoneConstants.State.IDLE) {
+                    cancelDataRecovery();
+                    return;
+                }
+
                 EventLog.writeEvent(EventLogTags.DATA_STALL_RECOVERY_RADIO_RESTART,
                         mSentSinceLastRecv);
                 if (DBG) log("restarting radio");
@@ -1274,6 +1311,11 @@ public abstract class DataConnectionTracker extends Handler {
                 restartRadio();
                 break;
             case RecoveryAction.RADIO_RESTART_WITH_PROP:
+                if (mPhone.getState() != PhoneConstants.State.IDLE) {
+                    cancelDataRecovery();
+                    return;
+                }
+
                 // This is in case radio restart has not recovered the data.
                 // It will set an additional "gsm.radioreset" property to tell
                 // RIL or system to take further action.
@@ -1373,32 +1415,34 @@ public abstract class DataConnectionTracker extends Handler {
         int nextAction = getRecoveryAction();
         int delayInMs;
 
-        // If screen is on or data stall is currently suspected, set the alarm
-        // with an aggresive timeout.
-        if (mIsScreenOn || suspectedStall || RecoveryAction.isAggressiveRecovery(nextAction)) {
-            delayInMs = Settings.Global.getInt(mResolver,
-                                       Settings.Global.DATA_STALL_ALARM_AGGRESSIVE_DELAY_IN_MS,
-                                       DATA_STALL_ALARM_AGGRESSIVE_DELAY_IN_MS_DEFAULT);
-        } else {
-            delayInMs = Settings.Global.getInt(mResolver,
-                                       Settings.Global.DATA_STALL_ALARM_NON_AGGRESSIVE_DELAY_IN_MS,
-                                       DATA_STALL_ALARM_NON_AGGRESSIVE_DELAY_IN_MS_DEFAULT);
-        }
+        if (getOverallState() == DctConstants.State.CONNECTED) {
+            // If screen is on or data stall is currently suspected, set the alarm
+            // with an aggresive timeout.
+            if (mIsScreenOn || suspectedStall || RecoveryAction.isAggressiveRecovery(nextAction)) {
+                delayInMs = Settings.Global.getInt(mResolver,
+                        Settings.Global.DATA_STALL_ALARM_AGGRESSIVE_DELAY_IN_MS,
+                        DATA_STALL_ALARM_AGGRESSIVE_DELAY_IN_MS_DEFAULT);
+            } else {
+                delayInMs = Settings.Global.getInt(mResolver,
+                        Settings.Global.DATA_STALL_ALARM_NON_AGGRESSIVE_DELAY_IN_MS,
+                        DATA_STALL_ALARM_NON_AGGRESSIVE_DELAY_IN_MS_DEFAULT);
+            }
 
-        mDataStallAlarmTag += 1;
-        if (VDBG) {
-            log("startDataStallAlarm: tag=" + mDataStallAlarmTag +
-                    " delay=" + (delayInMs / 1000) + "s");
-        }
-        AlarmManager am =
-            (AlarmManager) mPhone.getContext().getSystemService(Context.ALARM_SERVICE);
+            mDataStallAlarmTag += 1;
+            if (VDBG) {
+                log("startDataStallAlarm: tag=" + mDataStallAlarmTag +
+                        " delay=" + (delayInMs / 1000) + "s");
+            }
+            AlarmManager am =
+                    (AlarmManager) mPhone.getContext().getSystemService(Context.ALARM_SERVICE);
 
-        Intent intent = new Intent(getActionIntentDataStallAlarm());
-        intent.putExtra(DATA_STALL_ALARM_TAG_EXTRA, mDataStallAlarmTag);
-        mDataStallAlarmIntent = PendingIntent.getBroadcast(mPhone.getContext(), 0, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT);
-        am.set(AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                SystemClock.elapsedRealtime() + delayInMs, mDataStallAlarmIntent);
+            Intent intent = new Intent(getActionIntentDataStallAlarm());
+            intent.putExtra(DATA_STALL_ALARM_TAG_EXTRA, mDataStallAlarmTag);
+            mDataStallAlarmIntent = PendingIntent.getBroadcast(mPhone.getContext(), 0, intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT);
+            am.set(AlarmManager.ELAPSED_REALTIME,
+                    SystemClock.elapsedRealtime() + delayInMs, mDataStallAlarmIntent);
+        }
     }
 
     protected void stopDataStallAlarm() {

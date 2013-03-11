@@ -537,7 +537,6 @@ public abstract class IntRangeManager {
      * @return true if successful, false otherwise
      */
     private boolean tryAddSingleRange(int startId, int endId, boolean selected) {
-        startUpdate();
         addRange(startId, endId, selected);
         return finishUpdate();
     }

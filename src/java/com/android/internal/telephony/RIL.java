@@ -24,6 +24,7 @@ import static android.telephony.TelephonyManager.NETWORK_TYPE_UMTS;
 import static android.telephony.TelephonyManager.NETWORK_TYPE_HSDPA;
 import static android.telephony.TelephonyManager.NETWORK_TYPE_HSUPA;
 import static android.telephony.TelephonyManager.NETWORK_TYPE_HSPA;
+import static android.telephony.TelephonyManager.NETWORK_TYPE_HSPAP;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -2046,10 +2047,10 @@ public final class RIL extends BaseCommands implements CommandsInterface {
     onRadioAvailable() {
         // In case screen state was lost (due to process crash),
         // this ensures that the RIL knows the correct screen state.
-
-        // TODO: Should query Power Manager and send the actual
-        // screen state.  Just send true for now.
-        sendScreenState(true);
+       PowerManager pm = (PowerManager)mContext.getSystemService(Context.POWER_SERVICE);
+       if (pm != null) {
+           sendScreenState(pm.isScreenOn());
+       }
    }
 
     private RadioState getRadioStateFromInt(int stateInt) {
@@ -2328,6 +2329,10 @@ public final class RIL extends BaseCommands implements CommandsInterface {
             case RIL_REQUEST_ACKNOWLEDGE_INCOMING_GSM_SMS_WITH_PDU: ret = responseVoid(p); break;
             case RIL_REQUEST_STK_SEND_ENVELOPE_WITH_STATUS: ret = responseICC_IO(p); break;
             case RIL_REQUEST_VOICE_RADIO_TECH: ret = responseInts(p); break;
+            case RIL_REQUEST_SIM_TRANSMIT_BASIC: ret =  responseICC_IO(p); break;
+            case RIL_REQUEST_SIM_OPEN_CHANNEL: ret  = responseInts(p); break;
+            case RIL_REQUEST_SIM_CLOSE_CHANNEL: ret  = responseVoid(p); break;
+            case RIL_REQUEST_SIM_TRANSMIT_CHANNEL: ret = responseICC_IO(p); break;
             default:
                 throw new RuntimeException("Unrecognized solicited response: " + rr.mRequest);
             //break;
@@ -3292,6 +3297,8 @@ public final class RIL extends BaseCommands implements CommandsInterface {
            radioType = NETWORK_TYPE_HSUPA;
        } else if (radioString.equals("HSPA")) {
            radioType = NETWORK_TYPE_HSPA;
+       } else if (radioString.equals("HSPAP")) {
+           radioType = NETWORK_TYPE_HSPAP;
        } else {
            radioType = NETWORK_TYPE_UNKNOWN;
        }
@@ -3601,6 +3608,10 @@ public final class RIL extends BaseCommands implements CommandsInterface {
             case RIL_REQUEST_ACKNOWLEDGE_INCOMING_GSM_SMS_WITH_PDU: return "RIL_REQUEST_ACKNOWLEDGE_INCOMING_GSM_SMS_WITH_PDU";
             case RIL_REQUEST_STK_SEND_ENVELOPE_WITH_STATUS: return "RIL_REQUEST_STK_SEND_ENVELOPE_WITH_STATUS";
             case RIL_REQUEST_VOICE_RADIO_TECH: return "RIL_REQUEST_VOICE_RADIO_TECH";
+            case RIL_REQUEST_SIM_TRANSMIT_BASIC: return "SIM_TRANSMIT_BASIC";
+            case RIL_REQUEST_SIM_OPEN_CHANNEL: return "SIM_OPEN_CHANNEL";
+            case RIL_REQUEST_SIM_CLOSE_CHANNEL: return "SIM_CLOSE_CHANNEL";
+            case RIL_REQUEST_SIM_TRANSMIT_CHANNEL: return "SIM_TRANSMIT_CHANNEL";
             default: return "<unknown request>";
         }
     }
@@ -3885,5 +3896,66 @@ public final class RIL extends BaseCommands implements CommandsInterface {
         }
         pw.println(" mLastNITZTimeInfo=" + mLastNITZTimeInfo);
         pw.println(" mTestingEmergencyCall=" + mTestingEmergencyCall.get());
+    }
+
+    public void
+    iccExchangeAPDU(int cla, int command, int channel, int p1, int p2, int p3,
+            String data, Message result) {
+        RILRequest rr;
+        if (channel == 0) {
+            rr = RILRequest.obtain(RIL_REQUEST_SIM_TRANSMIT_BASIC, result);
+        } else {
+            rr = RILRequest.obtain(RIL_REQUEST_SIM_TRANSMIT_CHANNEL, result);
+        }
+
+        rr.mp.writeInt(cla);
+        rr.mp.writeInt(command);
+        rr.mp.writeInt(channel);
+        rr.mp.writeString(null);
+        rr.mp.writeInt(p1);
+        rr.mp.writeInt(p2);
+        rr.mp.writeInt(p3);
+        rr.mp.writeString(data);
+        rr.mp.writeString(null);
+
+        if (RILJ_LOGD) {
+            riljLog(rr.serialString() + "> iccExchangeAPDU: "
+                    + requestToString(rr.mRequest)
+                    + " 0x" + Integer.toHexString(cla)
+                    + " 0x" + Integer.toHexString(command)
+                    + " 0x" + Integer.toHexString(channel) + " "
+                    + p1 + "," + p2 + "," + p3);
+        }
+
+        send(rr);
+    }
+
+    public void
+    iccOpenChannel(String aid, Message result) {
+        RILRequest rr = RILRequest.obtain(RIL_REQUEST_SIM_OPEN_CHANNEL, result);
+
+        rr.mp.writeString(aid);
+
+        if (RILJ_LOGD) {
+            riljLog(rr.serialString() + "> iccOpenChannel: "
+                    + requestToString(rr.mRequest) + " " + aid);
+        }
+
+        send(rr);
+    }
+
+    public void
+    iccCloseChannel(int channel, Message result) {
+        RILRequest rr = RILRequest.obtain(RIL_REQUEST_SIM_CLOSE_CHANNEL, result);
+
+        rr.mp.writeInt(1);
+        rr.mp.writeInt(channel);
+
+        if (RILJ_LOGD) {
+            riljLog(rr.serialString() + "> iccCloseChannel: "
+                    + requestToString(rr.mRequest) + " " + channel);
+        }
+
+        send(rr);
     }
 }

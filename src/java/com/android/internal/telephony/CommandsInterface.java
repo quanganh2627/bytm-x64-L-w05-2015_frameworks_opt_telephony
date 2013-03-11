@@ -416,6 +416,17 @@ public interface CommandsInterface {
     void registerForSignalInfo(Handler h, int what, Object obj);
     void unregisterForSignalInfo(Handler h);
 
+     /**
+     * Sets the handler for OEM Hook Raw Notifications.
+     * Unlike the register* methods, there's only one notification handler
+     *
+     * @param h Handler for notification message.
+     * @param what User-defined message code.
+     * @param obj User object.
+     */
+     void setOnUnsolOemHookRaw(Handler h, int what, Object obj);
+     void unSetOnUnsolOemHookRaw(Handler h);
+
     /**
      * Registers the handler for CDMA number information record
      * Unlike the register* methods, there's only one notification handler
@@ -1571,6 +1582,13 @@ public interface CommandsInterface {
      * @param response a callback message with the String response in the obj field
      */
     public void requestIsimAuthentication(String nonce, Message response);
+
+    void iccExchangeAPDU(int cla, int command, int channel, int p1, int p2,
+            int p3, String data, Message response);
+
+    void iccOpenChannel(String AID, Message response);
+
+    void iccCloseChannel(int channel, Message response);
 
     /**
      * Notifiy that we are testing an emergency call

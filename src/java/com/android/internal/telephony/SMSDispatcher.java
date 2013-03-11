@@ -156,7 +156,7 @@ public abstract class SMSDispatcher extends Handler {
     /** Maximum number of times to retry sending a failed SMS. */
     private static final int MAX_SEND_RETRIES = 3;
     /** Delay before next send attempt on a failed SMS, in milliseconds. */
-    private static final int SEND_RETRY_DELAY = 2000;
+    private static final int SEND_RETRY_DELAY = 10000;
     /** single part SMS */
     private static final int SINGLE_PART_SMS = 1;
     /** Message sending queue limit */
@@ -998,10 +998,13 @@ public abstract class SMSDispatcher extends Handler {
         // sending app is approved to send to short codes. Otherwise, a message is sent to our
         // handler with the SmsTracker to request user confirmation before sending.
         if (checkDestination(tracker)) {
-            // check for excessive outgoing SMS usage by this app
-            if (!mUsageMonitor.check(appInfo.packageName, SINGLE_PART_SMS)) {
-                sendMessage(obtainMessage(EVENT_SEND_LIMIT_REACHED_CONFIRMATION, tracker));
-                return;
+            String buildType = SystemProperties.get("ro.build.type", null);
+            if (buildType == null || !buildType.equals("eng")) {
+                // check for excessive outgoing SMS usage by this app
+                if (!mUsageMonitor.check(appInfo.packageName, SINGLE_PART_SMS)) {
+                    sendMessage(obtainMessage(EVENT_SEND_LIMIT_REACHED_CONFIRMATION, tracker));
+                    return;
+                }
             }
 
             int ss = mPhone.getServiceState().getState();
