@@ -536,17 +536,27 @@ public final class GsmMmiCode extends Handler implements MmiCode {
      * equal or less then the MAX_LENGTH_SHORT_CODE [constant that is equal to 2]
      *
      * The phone shall initiate a USSD/SS commands.
+     *
+     * Exception (2) to Call initiation is: If the user of the device enters one
+     * Digit followed by the #-key. This rule defines this String as the
+     * #-String which is a USSD/SS command.
+     *
+     * The phone shall initiate a USSD/SS command.
      */
     static private boolean isShortCodeUSSD(String dialString, GSMPhone phone) {
-        if (dialString != null && dialString.length() <= MAX_LENGTH_SHORT_CODE) {
+        if (dialString != null) {
             if (phone.isInCall()) {
-                return true;
+                // The maximum length of a Short Code (aka Short String) is 2
+                if (dialString.length() <= MAX_LENGTH_SHORT_CODE) {
+                    return true;
+                }
             }
 
             // The maximum length of a Short Code (aka Short String) is 2
-            if (dialString.length() != MAX_LENGTH_SHORT_CODE ||
-                    dialString.charAt(0) != '1') {
-                return true;
+            if (dialString.length() <= MAX_LENGTH_SHORT_CODE) {
+                if (dialString.charAt(dialString.length() - 1) == END_OF_USSD_COMMAND) {
+                    return true;
+                }
             }
         }
         return false;

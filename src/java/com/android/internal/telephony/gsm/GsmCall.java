@@ -192,9 +192,6 @@ class GsmCall extends Call {
      */
     void
     clearDisconnected() {
-        // Clear the incoming call accepted flag
-        setIncomingAcceptedByUser(false);
-
         for (int i = connections.size() - 1 ; i >= 0 ; i--) {
             GsmConnection cn = (GsmConnection)connections.get(i);
 

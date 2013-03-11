@@ -753,10 +753,6 @@ public abstract class DataConnectionTracker extends Handler {
             return DctConstants.APN_FOTA_ID;
         } else if (TextUtils.equals(type, PhoneConstants.APN_TYPE_CBS)) {
             return DctConstants.APN_CBS_ID;
-        } else if (TextUtils.equals(type, PhoneConstants.APN_TYPE_BIP_GPRS1)) {
-            return DctConstants.APN_BIP_GPRS1_ID;
-        } else if (TextUtils.equals(type, PhoneConstants.APN_TYPE_BIP_GPRS2)) {
-            return DctConstants.APN_BIP_GPRS2_ID;
         } else {
             return DctConstants.APN_INVALID_ID;
         }
@@ -780,10 +776,6 @@ public abstract class DataConnectionTracker extends Handler {
             return PhoneConstants.APN_TYPE_FOTA;
         case DctConstants.APN_CBS_ID:
             return PhoneConstants.APN_TYPE_CBS;
-        case DctConstants.APN_BIP_GPRS1_ID:
-            return PhoneConstants.APN_TYPE_BIP_GPRS1;
-        case DctConstants.APN_BIP_GPRS2_ID:
-            return PhoneConstants.APN_TYPE_BIP_GPRS2;
         default:
             log("Unknown id (" + id + ") in apnIdToType");
             return PhoneConstants.APN_TYPE_DEFAULT;
@@ -1381,34 +1373,32 @@ public abstract class DataConnectionTracker extends Handler {
         int nextAction = getRecoveryAction();
         int delayInMs;
 
-        if (getOverallState() == DctConstants.State.CONNECTED) {
-            // If screen is on or data stall is currently suspected, set the alarm
-            // with an aggresive timeout.
-            if (mIsScreenOn || suspectedStall || RecoveryAction.isAggressiveRecovery(nextAction)) {
-                delayInMs = Settings.Global.getInt(mResolver,
-                        Settings.Global.DATA_STALL_ALARM_AGGRESSIVE_DELAY_IN_MS,
-                        DATA_STALL_ALARM_AGGRESSIVE_DELAY_IN_MS_DEFAULT);
-            } else {
-                delayInMs = Settings.Global.getInt(mResolver,
-                        Settings.Global.DATA_STALL_ALARM_NON_AGGRESSIVE_DELAY_IN_MS,
-                        DATA_STALL_ALARM_NON_AGGRESSIVE_DELAY_IN_MS_DEFAULT);
-            }
-
-            mDataStallAlarmTag += 1;
-            if (VDBG) {
-                log("startDataStallAlarm: tag=" + mDataStallAlarmTag +
-                        " delay=" + (delayInMs / 1000) + "s");
-            }
-            AlarmManager am =
-                    (AlarmManager) mPhone.getContext().getSystemService(Context.ALARM_SERVICE);
-
-            Intent intent = new Intent(getActionIntentDataStallAlarm());
-            intent.putExtra(DATA_STALL_ALARM_TAG_EXTRA, mDataStallAlarmTag);
-            mDataStallAlarmIntent = PendingIntent.getBroadcast(mPhone.getContext(), 0, intent,
-                    PendingIntent.FLAG_UPDATE_CURRENT);
-            am.set(AlarmManager.ELAPSED_REALTIME,
-                    SystemClock.elapsedRealtime() + delayInMs, mDataStallAlarmIntent);
+        // If screen is on or data stall is currently suspected, set the alarm
+        // with an aggresive timeout.
+        if (mIsScreenOn || suspectedStall || RecoveryAction.isAggressiveRecovery(nextAction)) {
+            delayInMs = Settings.Global.getInt(mResolver,
+                                       Settings.Global.DATA_STALL_ALARM_AGGRESSIVE_DELAY_IN_MS,
+                                       DATA_STALL_ALARM_AGGRESSIVE_DELAY_IN_MS_DEFAULT);
+        } else {
+            delayInMs = Settings.Global.getInt(mResolver,
+                                       Settings.Global.DATA_STALL_ALARM_NON_AGGRESSIVE_DELAY_IN_MS,
+                                       DATA_STALL_ALARM_NON_AGGRESSIVE_DELAY_IN_MS_DEFAULT);
         }
+
+        mDataStallAlarmTag += 1;
+        if (VDBG) {
+            log("startDataStallAlarm: tag=" + mDataStallAlarmTag +
+                    " delay=" + (delayInMs / 1000) + "s");
+        }
+        AlarmManager am =
+            (AlarmManager) mPhone.getContext().getSystemService(Context.ALARM_SERVICE);
+
+        Intent intent = new Intent(getActionIntentDataStallAlarm());
+        intent.putExtra(DATA_STALL_ALARM_TAG_EXTRA, mDataStallAlarmTag);
+        mDataStallAlarmIntent = PendingIntent.getBroadcast(mPhone.getContext(), 0, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT);
+        am.set(AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                SystemClock.elapsedRealtime() + delayInMs, mDataStallAlarmIntent);
     }
 
     protected void stopDataStallAlarm() {

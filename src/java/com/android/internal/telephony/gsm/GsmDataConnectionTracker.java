@@ -329,12 +329,6 @@ public final class GsmDataConnectionTracker extends DataConnectionTracker {
             case ConnectivityManager.TYPE_MOBILE_CBS:
                 apnContext = addApnContext(PhoneConstants.APN_TYPE_CBS);
                 break;
-            case ConnectivityManager.TYPE_MOBILE_BIP_GPRS1:
-                apnContext = addApnContext(PhoneConstants.APN_TYPE_BIP_GPRS1);
-                break;
-            case ConnectivityManager.TYPE_MOBILE_BIP_GPRS2:
-                apnContext = addApnContext(PhoneConstants.APN_TYPE_BIP_GPRS2);
-                break;
             default:
                 // skip unknown types
                 continue;
@@ -992,9 +986,6 @@ public final class GsmDataConnectionTracker extends DataConnectionTracker {
                 result.add(apn);
             } while (cursor.moveToNext());
         }
-        if (cursor != null) {
-            cursor.close();
-        }
         if (DBG) log("createApnList: X result=" + result);
         return result;
     }
@@ -1375,12 +1366,6 @@ public final class GsmDataConnectionTracker extends DataConnectionTracker {
             cleanUpConnection(true, apnContext);
         }
 
-        if (dataCallStates.size() == 0) {
-            if (DBG) log("onDataStateChange(ar): NoData calls Stop stall alarm");
-            stopNetStatPoll();
-            stopDataStallAlarm();
-        }
-
         if (DBG) log("onDataStateChanged(ar): X");
     }
 
@@ -1441,8 +1426,7 @@ public final class GsmDataConnectionTracker extends DataConnectionTracker {
     private boolean retryAfterDisconnected(String reason) {
         boolean retry = true;
 
-        if (Phone.REASON_RADIO_TURNED_OFF.equals(reason)
-                || Phone.REASON_DATA_DISABLED.equals(reason)) {
+        if ( Phone.REASON_RADIO_TURNED_OFF.equals(reason) ) {
             retry = false;
         }
         return retry;
@@ -2384,14 +2368,6 @@ public final class GsmDataConnectionTracker extends DataConnectionTracker {
             return RILConstants.DATA_PROFILE_FOTA;
         } else if (TextUtils.equals(apnType, PhoneConstants.APN_TYPE_CBS)) {
             return RILConstants.DATA_PROFILE_CBS;
-        } else if (TextUtils.equals(apnType, PhoneConstants.APN_TYPE_MMS)) {
-            return RILConstants.DATA_PROFILE_MMS;
-        } else if (TextUtils.equals(apnType, PhoneConstants.APN_TYPE_DUN)) {
-            return RILConstants.DATA_PROFILE_TETHERED;
-        } else if (TextUtils.equals(apnType, PhoneConstants.APN_TYPE_SUPL)) {
-            return RILConstants.DATA_PROFILE_SUPL;
-        } else if (TextUtils.equals(apnType, PhoneConstants.APN_TYPE_HIPRI)) {
-            return RILConstants.DATA_PROFILE_HIPRI;
         } else {
             return RILConstants.DATA_PROFILE_DEFAULT;
         }
@@ -2433,28 +2409,6 @@ public final class GsmDataConnectionTracker extends DataConnectionTracker {
                         this, DctConstants.EVENT_RECORDS_LOADED, null);
             }
         }
-    }
-
-    public void onDataSuspended() {
-        if (DBG) log("onDataSuspended");
-        if (isConnected()) {
-            if (DBG) log("onDataSuspended stop polling");
-            stopNetStatPoll();
-            stopDataStallAlarm();
-            notifyDataConnection(null);
-        }
-
-        notifyOffApnsOfAvailability(null);
-    }
-
-    public void onDataResumed() {
-        if (DBG) log("onDataResumed");
-        if (isConnected()) {
-            startNetStatPoll();
-            startDataStallAlarm(DATA_STALL_NOT_SUSPECTED);
-            notifyDataConnection(null);
-        }
-        notifyOffApnsOfAvailability(null);
     }
 
     @Override

@@ -74,10 +74,6 @@ public class IccCardProxy extends Handler implements IccCard {
     private static final int EVENT_IMSI_READY = 8;
     private static final int EVENT_NETWORK_LOCKED = 9;
     private static final int EVENT_CDMA_SUBSCRIPTION_SOURCE_CHANGED = 11;
-    private static final int EVENT_NETWORK_LOCKED_PUK = 12;
-    private static final int EVENT_EXCHANGE_APDU_DONE = 13;
-    private static final int EVENT_OPEN_CHANNEL_DONE = 14;
-    private static final int EVENT_CLOSE_CHANNEL_DONE = 15;
 
     private final Object mLock = new Object();
     private Context mContext;
@@ -86,7 +82,6 @@ public class IccCardProxy extends Handler implements IccCard {
     private RegistrantList mAbsentRegistrants = new RegistrantList();
     private RegistrantList mPinLockedRegistrants = new RegistrantList();
     private RegistrantList mNetworkLockedRegistrants = new RegistrantList();
-    private RegistrantList mNetworkLockedPukRegistrants = new RegistrantList();
 
     private int mCurrentAppType = UiccController.APP_FAM_3GPP; //default to 3gpp?
     private UiccController mUiccController = null;
@@ -195,7 +190,6 @@ public class IccCardProxy extends Handler implements IccCard {
     }
 
     public void handleMessage(Message msg) {
-        AsyncResult ar;
         switch (msg.what) {
             case EVENT_RADIO_OFF_OR_UNAVAILABLE:
                 mRadioOn = false;
@@ -233,21 +227,6 @@ public class IccCardProxy extends Handler implements IccCard {
                 break;
             case EVENT_CDMA_SUBSCRIPTION_SOURCE_CHANGED:
                 updateQuietMode();
-                break;
-            case EVENT_NETWORK_LOCKED_PUK:
-                mNetworkLockedPukRegistrants.notifyRegistrants();
-                setExternalState(State.NETWORK_LOCKED_PUK);
-                break;
-            case EVENT_EXCHANGE_APDU_DONE:
-            case EVENT_OPEN_CHANNEL_DONE:
-            case EVENT_CLOSE_CHANNEL_DONE:
-                ar = (AsyncResult)msg.obj;
-                if (ar.exception != null) {
-                    loge("Error in SIM access with exception" + ar.exception);
-                }
-                AsyncResult.forMessage(((Message)ar.userObj),
-                        ar.result, ar.exception);
-                ((Message)ar.userObj).sendToTarget();
                 break;
             default:
                 loge("Unhandled message with number: " + msg.what);
@@ -312,8 +291,6 @@ public class IccCardProxy extends Handler implements IccCard {
             case APPSTATE_SUBSCRIPTION_PERSO:
                 if (mUiccApplication.getPersoSubState() == PersoSubState.PERSOSUBSTATE_SIM_NETWORK) {
                     setExternalState(State.NETWORK_LOCKED);
-                } else if (mUiccApplication.getPersoSubState().isSubscriptionPukRequired()) {
-                   setExternalState(State.NETWORK_LOCKED_PUK);
                 } else {
                     setExternalState(State.UNKNOWN);
                 }
@@ -330,7 +307,6 @@ public class IccCardProxy extends Handler implements IccCard {
             mUiccApplication.registerForReady(this, EVENT_APP_READY, null);
             mUiccApplication.registerForLocked(this, EVENT_ICC_LOCKED, null);
             mUiccApplication.registerForNetworkLocked(this, EVENT_NETWORK_LOCKED, null);
-            mUiccApplication.registerForNetworkLockedPuk(this, EVENT_NETWORK_LOCKED_PUK, null);
         }
         if (mIccRecords != null) {
             mIccRecords.registerForImsiReady(this, EVENT_IMSI_READY, null);
@@ -343,7 +319,6 @@ public class IccCardProxy extends Handler implements IccCard {
         if (mUiccApplication != null) mUiccApplication.unregisterForReady(this);
         if (mUiccApplication != null) mUiccApplication.unregisterForLocked(this);
         if (mUiccApplication != null) mUiccApplication.unregisterForNetworkLocked(this);
-        if (mUiccApplication != null) mUiccApplication.unregisterForNetworkLockedPuk(this);
         if (mIccRecords != null) mIccRecords.unregisterForImsiReady(this);
         if (mIccRecords != null) mIccRecords.unregisterForRecordsLoaded(this);
     }
@@ -428,7 +403,6 @@ public class IccCardProxy extends Handler implements IccCard {
             case READY: return IccCardConstants.INTENT_VALUE_ICC_READY;
             case NOT_READY: return IccCardConstants.INTENT_VALUE_ICC_NOT_READY;
             case PERM_DISABLED: return IccCardConstants.INTENT_VALUE_ICC_LOCKED;
-            case NETWORK_LOCKED_PUK: return IccCardConstants.INTENT_VALUE_LOCKED_NETWORK_PUK;
             default: return IccCardConstants.INTENT_VALUE_ICC_UNKNOWN;
         }
     }
@@ -515,29 +489,6 @@ public class IccCardProxy extends Handler implements IccCard {
     public void unregisterForNetworkLocked(Handler h) {
         synchronized (mLock) {
             mNetworkLockedRegistrants.remove(h);
-        }
-    }
-
-    /**
-     * Notifies handler of any transition into State.NETWORK_LOCKED_PUK
-     */
-    @Override
-    public void registerForNetworkLockedPuk(Handler h, int what, Object obj) {
-        synchronized (mLock) {
-            Registrant r = new Registrant (h, what, obj);
-
-            mNetworkLockedPukRegistrants.add(r);
-
-            if (getState() == State.NETWORK_LOCKED_PUK) {
-                r.notifyRegistrant();
-            }
-        }
-    }
-
-    @Override
-    public void unregisterForNetworkLockedPuk(Handler h) {
-        synchronized (mLock) {
-            mNetworkLockedPukRegistrants.remove(h);
         }
     }
 
@@ -733,22 +684,6 @@ public class IccCardProxy extends Handler implements IccCard {
             }
             return false;
         }
-    }
-
-    public void exchangeAPDU(int cla, int command, int channel, int p1, int p2,
-            int p3, String data, Message onComplete) {
-        mCi.iccExchangeAPDU(cla, command, channel, p1, p2, p3, data,
-                obtainMessage(EVENT_EXCHANGE_APDU_DONE, onComplete));
-    }
-
-    public void openLogicalChannel(String aid, Message onComplete) {
-        mCi.iccOpenChannel(aid,
-                obtainMessage(EVENT_OPEN_CHANNEL_DONE, onComplete));
-    }
-
-    public void closeLogicalChannel(int channel, Message onComplete) {
-        mCi.iccCloseChannel(channel,
-                obtainMessage(EVENT_CLOSE_CHANNEL_DONE, onComplete));
     }
 
     private void log(String s) {

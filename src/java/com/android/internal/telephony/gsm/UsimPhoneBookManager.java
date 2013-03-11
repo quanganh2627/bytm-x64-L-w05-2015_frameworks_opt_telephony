@@ -78,9 +78,6 @@ public class UsimPhoneBookManager extends Handler implements IccConstants {
     public UsimPhoneBookManager(IccFileHandler fh, AdnRecordCache cache) {
         mFh = fh;
         mPhoneBookRecords = new ArrayList<AdnRecord>();
-        mIapFileRecord = new ArrayList<byte[]>();
-        mEmailFileRecord = new ArrayList<byte[]>();
-
         mPbrFile = null;
         // We assume its present, after the first read this is updated.
         // So we don't have to read from UICC if its not present on subsequent reads.
@@ -90,8 +87,8 @@ public class UsimPhoneBookManager extends Handler implements IccConstants {
 
     public void reset() {
         mPhoneBookRecords.clear();
-        mIapFileRecord.clear();
-        mEmailFileRecord.clear();
+        mIapFileRecord = null;
+        mEmailFileRecord = null;
         mPbrFile = null;
         mIsPbrPresent = true;
         mRefreshCache = false;
@@ -362,7 +359,7 @@ public class UsimPhoneBookManager extends Handler implements IccConstants {
             log("Loading USIM IAP records done");
             ar = (AsyncResult) msg.obj;
             if (ar.exception == null) {
-                mIapFileRecord.addAll((ArrayList<byte[]>)ar.result);
+                mIapFileRecord = ((ArrayList<byte[]>)ar.result);
             }
             synchronized (mLock) {
                 mLock.notify();
@@ -372,7 +369,7 @@ public class UsimPhoneBookManager extends Handler implements IccConstants {
             log("Loading USIM Email records done");
             ar = (AsyncResult) msg.obj;
             if (ar.exception == null) {
-                mEmailFileRecord.addAll((ArrayList<byte[]>)ar.result);
+                mEmailFileRecord = ((ArrayList<byte[]>)ar.result);
             }
 
             synchronized (mLock) {
