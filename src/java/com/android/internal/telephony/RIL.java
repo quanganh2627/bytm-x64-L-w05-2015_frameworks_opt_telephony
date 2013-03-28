@@ -33,6 +33,7 @@ import android.content.IntentFilter;
 import android.net.ConnectivityManager;
 import android.net.LocalSocket;
 import android.net.LocalSocketAddress;
+import android.provider.Settings;
 import android.os.AsyncResult;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -1427,8 +1428,27 @@ public final class RIL extends BaseCommands implements CommandsInterface {
     setRadioPower(boolean on, Message result) {
         RILRequest rr = RILRequest.obtain(RIL_REQUEST_RADIO_POWER, result);
 
-        rr.mParcel.writeInt(1);
+        rr.mParcel.writeInt(2);
         rr.mParcel.writeInt(on ? 1 : 0);
+
+        int radioOffReason = 0;//RILConstants.RADIO_OFF_REASON_NONE;
+
+        if (!on) {
+            String rebootOrShutdownRequested =
+                    SystemProperties.get("sys.shutdown.requested", null);
+            if (rebootOrShutdownRequested != null
+                    && rebootOrShutdownRequested.length() > 0) {
+                char reason = rebootOrShutdownRequested.charAt(0);
+                if (reason == '0' || reason == '1') {
+                    radioOffReason = 1;//RILConstants.RADIO_OFF_REASON_SHUTDOWN;
+                }
+            } else if (Settings.Global.getInt(mContext.getContentResolver(),
+                    Settings.Global.AIRPLANE_MODE_ON, 0) != 0) {
+                radioOffReason = 2;//RILConstants.RADIO_OFF_REASON_AIRPLANE_MODE;
+            }
+        }
+
+        rr.mParcel.writeInt(radioOffReason);
 
         if (RILJ_LOGD) {
             riljLog(rr.serialString() + "> " + requestToString(rr.mRequest)
