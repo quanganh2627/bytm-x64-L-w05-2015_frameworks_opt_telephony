@@ -222,4 +222,6 @@ public interface IccCard {
             int p3, String data, Message onComplete);
     public void openLogicalChannel(String aid, Message onComplete);
     public void closeLogicalChannel(int channel, Message onComplete);
+    public void exchangeSimIO(int fileID, int command,
+            int p1, int p2, int p3, String pathID, Message onComplete);
 }
