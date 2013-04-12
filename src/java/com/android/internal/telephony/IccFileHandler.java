@@ -169,8 +169,7 @@ public abstract class IccFileHandler extends Handler implements IccConstants {
                         onLoaded));
 
         mCi.iccIOForApp(COMMAND_GET_RESPONSE, IccConstants.EF_IMG,
-                    getEFPath(IccConstants.EF_IMG), recordNum,
-                    READ_RECORD_MODE_ABSOLUTE, GET_RESPONSE_EF_IMG_SIZE_BYTES,
+                    getEFPath(IccConstants.EF_IMG), 0, 0, GET_RESPONSE_EF_SIZE_BYTES,
                     null, null, mAid, response);
     }
 
@@ -366,7 +365,7 @@ public abstract class IccFileHandler extends Handler implements IccConstants {
                         lc.recordNum,
                         READ_RECORD_MODE_ABSOLUTE,
                         lc.recordSize, null, null, mAid,
-                        obtainMessage(EVENT_READ_IMG_DONE, IccConstants.EF_IMG, 0, response));
+                        obtainMessage(EVENT_READ_IMG_DONE, lc));
                 break;
 
             case EVENT_READ_IMG_DONE:
@@ -375,20 +374,36 @@ public abstract class IccFileHandler extends Handler implements IccConstants {
                 result = (IccIoResult) ar.result;
                 response = lc.onLoaded;
 
+                if (ar.exception != null) {
+                    sendResult(response, null, ar.exception);
+                    break;
+                }
+
                 iccException = result.getException();
                 if (iccException != null) {
-                    sendResult(response, result.payload, ar.exception);
+                    sendResult(response, null, iccException);
+                    break;
                 }
+
+                sendResult(response, result.payload, null);
                 break;
             case EVENT_READ_ICON_DONE:
                 ar = (AsyncResult) msg.obj;
                 response = (Message) ar.userObj;
                 result = (IccIoResult) ar.result;
 
+                if (ar.exception != null) {
+                    sendResult(response, null, ar.exception);
+                    break;
+                }
+
                 iccException = result.getException();
                 if (iccException != null) {
-                    sendResult(response, result.payload, ar.exception);
+                    sendResult(response, null, iccException);
+                    break;
                 }
+
+                sendResult(response, result.payload, null);
                 break;
             case EVENT_GET_EF_LINEAR_RECORD_SIZE_DONE:
                 ar = (AsyncResult)msg.obj;
