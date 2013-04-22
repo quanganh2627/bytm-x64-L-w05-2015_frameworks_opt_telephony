@@ -949,8 +949,8 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
             operatorNumeric = mSS.getOperatorNumeric();
             mPhone.setSystemProperty(TelephonyProperties.PROPERTY_OPERATOR_NUMERIC, operatorNumeric);
 
-            if (operatorNumeric == null) {
-                if (DBG) log("operatorNumeric is null");
+            if (operatorNumeric == null || operatorNumeric.length() < 3) {
+                if (DBG) log("operatorNumeric is Invalid");
                 mPhone.setSystemProperty(TelephonyProperties.PROPERTY_OPERATOR_ISO_COUNTRY, "");
                 mGotCountryCode = false;
                 mNitzUpdatedTime = false;
@@ -961,9 +961,7 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
                     mcc = operatorNumeric.substring(0, 3);
                     iso = MccTable.countryCodeForMcc(Integer.parseInt(mcc));
                 } catch ( NumberFormatException ex){
-                    loge("pollStateDone: countryCodeForMcc error" + ex);
-                } catch ( StringIndexOutOfBoundsException ex) {
-                    loge("pollStateDone: countryCodeForMcc error" + ex);
+                    loge("pollStateDone: Mcc Invalid(not a number)" + ex);
                 }
 
                 mPhone.setSystemProperty(TelephonyProperties.PROPERTY_OPERATOR_ISO_COUNTRY, iso);
