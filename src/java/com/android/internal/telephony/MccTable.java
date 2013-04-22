@@ -101,7 +101,7 @@ public final class MccTable
         } else {
             Locale locale;
             if (entry.mLanguage == null) {
-                locale = new Locale(entry.mIso);
+                locale = new Locale("", entry.mIso);
             } else {
                 locale = new Locale(entry.mLanguage, entry.mIso);
             }
