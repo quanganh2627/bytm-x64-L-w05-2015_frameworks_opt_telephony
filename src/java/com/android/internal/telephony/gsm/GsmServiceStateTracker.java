@@ -27,6 +27,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.res.Resources;
 import android.database.ContentObserver;
+import android.net.wifi.WifiManager;
 import android.os.AsyncResult;
 import android.os.Build;
 import android.os.Handler;
@@ -759,6 +760,21 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
         mSignalStrength = new SignalStrength(true);
     }
 
+    private void setWifiCountryCode(String countryCode) {
+        if (countryCode != null && !countryCode.isEmpty()) {
+            if (DBG) {
+                log("WIFI_COUNTRY_CODE set to " + countryCode);
+            }
+
+            WifiManager wm =
+                    (WifiManager) mPhone.getContext().getSystemService(Context.WIFI_SERVICE);
+            if (wm != null) {
+                //persist
+                wm.setCountryCode(countryCode, true);
+            }
+        }
+    }
+
     /**
      * A complete "service state" from our perspective is
      * composed of a handful of separate requests to the radio.
@@ -965,6 +981,8 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
 
                 mPhone.setSystemProperty(TelephonyProperties.PROPERTY_OPERATOR_ISO_COUNTRY, iso);
                 mGotCountryCode = true;
+
+                setWifiCountryCode(iso);
 
                 TimeZone zone = null;
 
