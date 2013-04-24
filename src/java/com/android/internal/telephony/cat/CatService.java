@@ -97,7 +97,7 @@ public class CatService extends Handler implements AppInterface {
     private static final int DEV_ID_KEYPAD      = 0x01;
     private static final int DEV_ID_UICC        = 0x81;
     private static final int DEV_ID_TERMINAL    = 0x82;
-    static final String STK_DEFAULT = "Defualt Message";
+    static final String STK_DEFAULT = "Default Message";
 
     /* Intentionally private for singleton */
     private CatService(CommandsInterface ci, UiccCardApplication ca, IccRecords ir,
