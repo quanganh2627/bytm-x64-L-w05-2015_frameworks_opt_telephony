@@ -1216,6 +1216,7 @@ public class GSMPhone extends PhoneBase {
         Message onComplete;
 
         switch (msg.what) {
+            case EVENT_RADIO_ON:
             case EVENT_RADIO_AVAILABLE: {
                 mCi.getBasebandVersion(
                         obtainMessage(EVENT_GET_BASEBAND_VERSION_DONE));
@@ -1223,9 +1224,6 @@ public class GSMPhone extends PhoneBase {
                 mCi.getIMEI(obtainMessage(EVENT_GET_IMEI_DONE));
                 mCi.getIMEISV(obtainMessage(EVENT_GET_IMEISV_DONE));
             }
-            break;
-
-            case EVENT_RADIO_ON:
             break;
 
             case EVENT_REGISTERED_TO_NETWORK:
