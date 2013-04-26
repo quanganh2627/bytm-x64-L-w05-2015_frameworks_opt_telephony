@@ -967,7 +967,7 @@ public final class DataConnection extends StateMachine {
                     log("DcInactiveState: enter notifyDisconnectCompleted +ALL failCause="
                             + mDcFailCause);
                 }
-                notifyDisconnectCompleted(mDisconnectParams, true);
+                notifyDisconnectCompleted(mDisconnectParams, false);
             }
             if (mDisconnectParams == null && mConnectionParams == null && mDcFailCause != null) {
                 if (DBG) {
