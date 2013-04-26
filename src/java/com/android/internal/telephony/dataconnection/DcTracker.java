@@ -959,6 +959,10 @@ public final class DcTracker extends DcTrackerBase {
                 }
             } while (cursor.moveToNext());
         }
+        if (cursor != null) {
+            cursor.close();
+        }
+
         if (DBG) log("createApnList: X result=" + result);
         return result;
     }
