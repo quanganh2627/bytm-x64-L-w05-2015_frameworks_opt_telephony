@@ -840,6 +840,7 @@ public class CatService extends Handler implements AppInterface {
         case PRFRMD_NAA_NOT_ACTIVE:
         case PRFRMD_TONE_NOT_PLAYED:
         case TERMINAL_CRNTLY_UNABLE_TO_PROCESS:
+        case LAUNCH_BROWSER_ERROR:
             switch (type) {
             case SET_UP_MENU:
                 helpRequired = resMsg.mResCode == ResultCode.HELP_INFO_REQUIRED;
