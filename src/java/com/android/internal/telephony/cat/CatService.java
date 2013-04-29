@@ -380,6 +380,10 @@ public class CatService extends Handler implements AppInterface {
 
                 sendTerminalResponse(cmdParams.mCmdDet, ResultCode.OK, false, 0, null);
                 break;
+           case ACTIVATE:
+                sendTerminalResponse(cmdParams.mCmdDet,
+                        ResultCode.BEYOND_TERMINAL_CAPABILITY, false, 0, null);
+                return;
             default:
                 CatLog.d(this, "Unsupported command");
                 return;
