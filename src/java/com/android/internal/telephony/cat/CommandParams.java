@@ -221,3 +221,10 @@ class EventListParams extends CommandParams {
     }
 }
 
+class ActivateParams extends CommandParams {
+    int target = 0;
+    ActivateParams(CommandDetails cmdDet, int target) {
+        super(cmdDet);
+        this.target = target;
+    }
+}

@@ -186,6 +186,9 @@ class CommandParamsFactory extends Handler {
             case SET_UP_EVENT_LIST:
                  cmdPending = processSetUpEventList(cmdDet, ctlvs);
                  break;
+            case ACTIVATE:
+                 cmdPending = processActivate(cmdDet, ctlvs);
+                 break;
             default:
                 // unsupported proactive commands
                 mCmdParams = new CommandParams(cmdDet);
@@ -999,6 +1002,34 @@ class CommandParamsFactory extends Handler {
                 eventList = null;
             }
             mCmdParams = new EventListParams(cmdDet, eventList);
+        }
+        return false;
+    }
+
+    /**
+     * Processes ACTIVATE proactive command from the SIM card.
+     *
+     * @param cmdDet Command Details object retrieved.
+     * @param ctlvs List of ComprehensionTlv objects following Command Details
+     *        object and Device Identities object within the proactive command
+     * @return true if the command is processing is pending and additional
+     *         asynchronous processing is required.
+     */
+    private boolean processActivate(CommandDetails cmdDet,
+            List<ComprehensionTlv> ctlvs) throws ResultException {
+        CatLog.d(this, "process Activate");
+
+        ComprehensionTlv ctlv = searchForTag(ComprehensionTlvTag.ACTIVATE_DESCRIPTOR, ctlvs);
+        if (ctlv != null) {
+            try {
+                if (ctlv.getLength() != 1) {
+                    throw new ResultException(ResultCode.CMD_DATA_NOT_UNDERSTOOD);
+                }
+                mCmdParams = new ActivateParams(cmdDet,
+                        (ctlv.getRawValue())[ctlv.getValueIndex()]);
+            } catch (IndexOutOfBoundsException e) {
+                throw new ResultException(ResultCode.CMD_DATA_NOT_UNDERSTOOD);
+            }
         }
         return false;
     }
