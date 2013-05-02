@@ -70,10 +70,6 @@ public class WapPushOverSms {
         public void onServiceDisconnected(ComponentName name) {
             mWapPushMan = null;
             if (DBG) Rlog.v(LOG_TAG, "wappush manager disconnected.");
-            // Detach the previous binder
-            mOwner.unbindService(mWapConn);
-            // WapPushManager must be always attached.
-            rebindWapPushManager();
         }
 
         /**
@@ -86,30 +82,6 @@ public class WapPushOverSms {
 
             mOwner.bindService(new Intent(IWapPushManager.class.getName()),
                     wapPushConnection, Context.BIND_AUTO_CREATE);
-        }
-
-        /**
-         * rebind WapPushManager
-         * This method is called when WapPushManager is disconnected unexpectedly.
-         */
-        private void rebindWapPushManager() {
-            if (mWapPushMan != null) return;
-
-            final ServiceConnection wapPushConnection = this;
-            new Thread() {
-                @Override
-                public void run() {
-                    while (mWapPushMan == null) {
-                        mOwner.bindService(new Intent(IWapPushManager.class.getName()),
-                                wapPushConnection, Context.BIND_AUTO_CREATE);
-                        try {
-                            Thread.sleep(BIND_RETRY_INTERVAL);
-                        } catch (InterruptedException e) {
-                            if (DBG) Rlog.v(LOG_TAG, "sleep interrupted.");
-                        }
-                    }
-                }
-            }.start();
         }
 
         /**
