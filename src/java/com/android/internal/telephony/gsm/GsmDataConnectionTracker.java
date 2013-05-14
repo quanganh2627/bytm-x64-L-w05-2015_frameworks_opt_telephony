@@ -1934,8 +1934,8 @@ public final class GsmDataConnectionTracker extends DataConnectionTracker {
             }
         }
 
-        // If APN is still enabled, try to bring it back up automatically
-        if (apnContext.isReady() && retryAfterDisconnected(apnContext.getReason())) {
+        // If data is still enabled and allowed, try to bring it back up automatically
+        if (isDataAllowed(apnContext) && retryAfterDisconnected(apnContext.getReason())) {
             SystemProperties.set("gsm.defaultpdpcontext.active", "false");  // TODO - what the heck?  This shoudld go
             // Wait a bit before trying the next APN, so that
             // we're not tying up the RIL command channel.
