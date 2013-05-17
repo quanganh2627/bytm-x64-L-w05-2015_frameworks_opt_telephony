@@ -1972,6 +1972,11 @@ public final class GsmDataConnectionTracker extends DataConnectionTracker {
     protected void onVoiceCallEnded() {
         if (DBG) log("onVoiceCallEnded");
         if (isConnected()) {
+            if (!getAnyDataEnabled()) {
+                 onCleanUpAllConnections(Phone.REASON_DATA_DISABLED);
+                return;
+            }
+
             if (!mPhone.getServiceStateTracker().isConcurrentVoiceAndDataAllowed()) {
                 startNetStatPoll();
                 startDataStallAlarm(DATA_STALL_NOT_SUSPECTED);
