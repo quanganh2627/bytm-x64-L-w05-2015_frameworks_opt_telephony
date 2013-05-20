@@ -396,6 +396,10 @@ public class BipGateWay {
                                 && netInfo.getState() == NetworkInfo.State.CONNECTED) {
                             CatLog.d(this, "Connected to APN: " + connectedApn);
                             onConnected();
+                        } else if ((TextUtils.equals(connectedApn, mToBeUsedApnType))
+                                && netInfo.getState() == NetworkInfo.State.DISCONNECTED) {
+                            CatLog.d(this, "DisConnected to APN: " + connectedApn);
+                            onDisconnected();
                         }
                     } else {
                         CatLog.d(this, "Error: No netInfo received from CONNECTIVITY_ACTION");
@@ -891,6 +895,7 @@ public class BipGateWay {
         }
 
         void sendChannelStatusEvent(int channelStatus) {
+            CatLog.d(this, "sendChannelStatusEvent with status= " + channelStatus);
             byte[] additionalInfo = {(byte)0xb8, 0x02, 0x00, 0x00};
             additionalInfo[2] = (byte) ((channelStatus >> 8) & 0xff);
             additionalInfo[3] = (byte) (channelStatus & 0xff);
@@ -971,8 +976,12 @@ public class BipGateWay {
                     // Failed to open channel, free resources
                     cleanupBipChannel(cmdMsg.getChannelSettings().channel);
                 }
+                CatLog.d(this, "Listening for disconnect events....");
                 Message resultMsg = obtainMessage(MSG_ID_DISCONNECTED_DATA_CALL, cmdMsg);
                 mDefaultBearerStateReceiver.setOngoingSetupMessage(resultMsg);
+                if (mDefaultBearerStateReceiver.isOnListening()) {
+                    mDefaultBearerStateReceiver.startListening();
+                }
             }
         }
 
@@ -1005,6 +1014,7 @@ public class BipGateWay {
         }
 
         private void onDataDisconnection(AsyncResult ar) {
+            CatLog.d(this, "onDataDisconnection");
             CatCmdMessage cmdMsg;
             int channel;
 
@@ -1013,7 +1023,7 @@ public class BipGateWay {
             }
 
             cmdMsg = (CatCmdMessage) ar.userObj;
-
+            ChannelSettings bipChannel = cmdMsg.getChannelSettings();
             if (cmdMsg.getCmdType() == CommandType.OPEN_CHANNEL) {
                 channel = cmdMsg.getChannelSettings().channel;
             } else if (cmdMsg.getCmdType() == CommandType.CLOSE_CHANNEL) {
@@ -1024,7 +1034,14 @@ public class BipGateWay {
             }
 
             if (mBipChannels[channel - 1] != null) {
+                BearerDescription bd = bipChannel.bearerDescription;
+                // Close the channel
                 mBipChannels[channel - 1].close(null);
+                if (bd.type != BearerType.DEFAULT_BEARER) {
+                    // Disable the bip apn if it is not the default apn
+                    int status = mDataConnectionTracker.disableApnType(mToBeUsedApnType);
+                    CatLog.d(this, "APN=" + mToBeUsedApnType + " Disable state= " + status);
+                }
             }
         }
     }
