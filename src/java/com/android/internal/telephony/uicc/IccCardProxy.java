@@ -313,7 +313,7 @@ public class IccCardProxy extends Handler implements IccCard {
         switch (mUiccApplication.getState()) {
             case APPSTATE_UNKNOWN:
             case APPSTATE_DETECTED:
-                setExternalState(State.UNKNOWN);
+                setExternalState(State.NOT_READY);
                 break;
             case APPSTATE_PIN:
                 setExternalState(State.PIN_REQUIRED);
