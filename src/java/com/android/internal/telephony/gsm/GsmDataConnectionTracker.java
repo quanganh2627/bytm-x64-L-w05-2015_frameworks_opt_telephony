@@ -613,7 +613,7 @@ public final class GsmDataConnectionTracker extends DataConnectionTracker {
             // update APN availability so that APN can be enabled.
             notifyOffApnsOfAvailability(Phone.REASON_DATA_ATTACHED);
         }
-        mAutoAttachOnCreation = true;
+
         setupDataOnReadyApns(Phone.REASON_DATA_ATTACHED);
     }
 
@@ -1441,8 +1441,7 @@ public final class GsmDataConnectionTracker extends DataConnectionTracker {
     private boolean retryAfterDisconnected(String reason) {
         boolean retry = true;
 
-        if (Phone.REASON_RADIO_TURNED_OFF.equals(reason)
-                || Phone.REASON_DATA_DISABLED.equals(reason)) {
+        if ( Phone.REASON_RADIO_TURNED_OFF.equals(reason) ) {
             retry = false;
         }
         return retry;
@@ -1935,8 +1934,8 @@ public final class GsmDataConnectionTracker extends DataConnectionTracker {
             }
         }
 
-        // If APN is still enabled, try to bring it back up automatically
-        if (apnContext.isReady() && retryAfterDisconnected(apnContext.getReason())) {
+        // If data is still enabled and allowed, try to bring it back up automatically
+        if (isDataAllowed(apnContext) && retryAfterDisconnected(apnContext.getReason())) {
             SystemProperties.set("gsm.defaultpdpcontext.active", "false");  // TODO - what the heck?  This shoudld go
             // Wait a bit before trying the next APN, so that
             // we're not tying up the RIL command channel.
@@ -1972,6 +1971,11 @@ public final class GsmDataConnectionTracker extends DataConnectionTracker {
     protected void onVoiceCallEnded() {
         if (DBG) log("onVoiceCallEnded");
         if (isConnected()) {
+            if (!getAnyDataEnabled()) {
+                 onCleanUpAllConnections(Phone.REASON_DATA_DISABLED);
+                return;
+            }
+
             if (!mPhone.getServiceStateTracker().isConcurrentVoiceAndDataAllowed()) {
                 startNetStatPoll();
                 startDataStallAlarm(DATA_STALL_NOT_SUSPECTED);
