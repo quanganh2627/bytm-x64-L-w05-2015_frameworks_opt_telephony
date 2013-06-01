@@ -1183,6 +1183,25 @@ public class PhoneProxy extends Handler implements Phone {
     }
 
     @Override
+    public void getCallBarring(String facility, Message onComplete,
+            int serviceClass) {
+        mActivePhone.getCallBarring(facility, onComplete, serviceClass);
+    }
+
+    @Override
+    public void setCallBarring(String facility, boolean lockState,
+            String password, Message onComplete, int serviceClass) {
+        mActivePhone.setCallBarring(facility, lockState, password, onComplete,
+                serviceClass);
+    }
+
+    @Override
+    public void changeBarringPassword(String facility, String oldpwd,
+            String newpwd, Message result) {
+        mActivePhone.changeBarringPassword(facility, oldpwd, newpwd, result);
+    }
+
+    @Override
     public void dispose() {
         mCommandsInterface.unregisterForOn(this);
         mCommandsInterface.unregisterForVoiceRadioTechChanged(this);

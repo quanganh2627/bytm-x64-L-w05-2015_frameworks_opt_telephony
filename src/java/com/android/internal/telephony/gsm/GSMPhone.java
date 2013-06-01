@@ -94,6 +94,8 @@ public class GSMPhone extends PhoneBase implements SupplementaryServiceSupport {
     // log.  (Use "adb logcat -b radio" to see them.)
     static final String LOG_TAG = "GSMPhone";
     private static final boolean LOCAL_DEBUG = true;
+    private int mCallBarringClass = SystemProperties.getInt("app.settings.barring.class", 7);
+    private int mVTCallBarringClass = SystemProperties.getInt("app.settings.VTbarring.class", 7);
     private static final boolean VDBG = false; /* STOPSHIP if true */
     private static final boolean DBG_PORT = false; /* STOPSHIP if true */
 
@@ -1629,6 +1631,39 @@ public class GSMPhone extends PhoneBase implements SupplementaryServiceSupport {
     public void getCellBroadcastSmsConfig(Message response) {
         Rlog.e(LOG_TAG, "[GSMPhone] getCellBroadcastSmsConfig() is obsolete; use SmsManager");
         response.sendToTarget();
+    }
+
+    @Override
+    public void getCallBarring(String facility, Message onComplete, int serviceClass) {
+        if (LOCAL_DEBUG) Rlog.d(LOG_TAG, "query call barring action serviceClass" + serviceClass);
+        if (serviceClass == CommandsInterface.SERVICE_CLASS_DATA_SYNC) {
+            mCi.queryFacilityLock(facility, "", mVTCallBarringClass, onComplete);
+        } else {
+            mCi.queryFacilityLock(facility, "", mCallBarringClass, onComplete);
+        }
+    }
+
+    @Override
+    public void setCallBarring(String facility,boolean lockState,
+            String password,Message onComplete, int serviceClass) {
+        if (LOCAL_DEBUG) Rlog.d(LOG_TAG, "set call barring action"
+                + facility + "serviceClass" + serviceClass);
+        if (serviceClass == CommandsInterface.SERVICE_CLASS_DATA_SYNC) {
+            mCi.setFacilityLock(facility, lockState, password,
+                    CommandsInterface.SERVICE_CLASS_DATA_SYNC,
+                    onComplete);
+        } else {
+            mCi.setFacilityLock(facility, lockState, password,
+                    CommandsInterface.SERVICE_CLASS_VOICE,
+                    onComplete);
+        }
+    }
+
+    @Override
+    public void changeBarringPassword( String facility, String oldpwd,
+            String newpwd, Message result) {
+        if (LOCAL_DEBUG) Rlog.d(LOG_TAG, "changeBarringPassword action" + facility);
+        mCi.changeBarringPassword(facility, oldpwd, newpwd, result);
     }
 
     /**

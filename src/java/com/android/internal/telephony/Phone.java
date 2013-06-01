@@ -1709,6 +1709,35 @@ public interface Phone {
     UsimServiceTable getUsimServiceTable();
 
     /**
+     * Gets the call barring options for the specified facility and service class.
+     * @param facility The facility
+     * @param onComplete A callback message with the String response in the obj field
+     * @param serviceClass The service class
+     */
+    void getCallBarring(String facility, Message onComplete, int serviceClass);
+
+    /**
+     * Sets the call barring options for the specified facility and service class.
+     * @param facility The facility
+     * @param lockState The lock state
+     * @param password The password to set
+     * @param onComplete A callback message with the String response in the obj field
+     * @param serviceClass The service class
+     */
+    void setCallBarring(String facility, boolean lockState, String password,
+            Message onComplete, int serviceClass);
+
+    /**
+     * Changes the password for call barring options.
+     * @param facility The facility
+     * @param oldpwd The old password
+     * @param newpwd The new password
+     * @param result A callback message with the String response in the obj field
+     */
+    void changeBarringPassword(String facility, String oldpwd, String newpwd,
+            Message result);
+
+    /**
      * Unregister from all events it registered for and dispose objects
      * created by this object.
      */

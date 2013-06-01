@@ -1415,6 +1415,24 @@ public abstract class PhoneBase extends Handler implements Phone {
         return (r != null) ? r.getUsimServiceTable() : null;
     }
 
+    @Override
+    public void getCallBarring(String facility, Message onComplete,
+            int serviceClass) {
+        Rlog.e(LOG_TAG, "This function only for GSMPhone.");
+    }
+
+    @Override
+    public void setCallBarring(String facility, boolean lockState,
+            String password, Message onComplete, int serviceClass) {
+        Rlog.e(LOG_TAG, "This function only for GSMPhone.");
+    }
+
+    @Override
+    public void changeBarringPassword(String facility, String oldpwd,
+            String newpwd, Message result) {
+        Rlog.e(LOG_TAG, "This function only for GSMPhone.");
+    }
+
     public void dump(FileDescriptor fd, PrintWriter pw, String[] args) {
         pw.println("PhoneBase:");
         pw.println(" mCi=" + mCi);
