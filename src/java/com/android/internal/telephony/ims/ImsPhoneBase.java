@@ -79,4 +79,17 @@ public abstract class ImsPhoneBase extends PhoneBase {
      *    - ServiceState.STATE_OUT_OF_SERVICE otherwise
      */
     public abstract int getImsRegStatus();
+
+    /**
+     * Query the Anonymous Call Reject state
+     * @param response to send back when the ACR status is read
+     */
+    public abstract void getACR(Message onComplete);
+
+    /**
+     * Set the Anonymous Call Reject state
+     * @param boolean to activate or deactivate ACR
+     * @param response to send back when the ACR status is written
+     */
+    public abstract void setACR(boolean setState, Message onComplete);
 }
