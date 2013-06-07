@@ -508,7 +508,7 @@ public class GsmConnection extends Connection {
      * HOLDING in the backgroundCall
      */
     void
-    fakeHoldBeforeDial() {
+    fakeHoldBeforeDialOrAccept() {
         if (parent != null) {
             parent.detach(this);
         }

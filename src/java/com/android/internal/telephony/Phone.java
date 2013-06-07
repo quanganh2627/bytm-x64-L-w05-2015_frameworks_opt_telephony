@@ -130,6 +130,7 @@ public interface Phone {
 
     int NT_MODE_LTE_ONLY     = RILConstants.NETWORK_MODE_LTE_ONLY;
     int NT_MODE_LTE_GSM_WCDMA     = RILConstants.NETWORK_MODE_LTE_GSM_WCDMA;
+    int NT_MODE_LTE_WCDMA     = RILConstants.NETWORK_MODE_LTE_WCDMA;
     int PREFERRED_NT_MODE    = RILConstants.PREFERRED_NETWORK_MODE;
 
 
