@@ -2648,9 +2648,7 @@ public final class RIL extends BaseCommands implements CommandsInterface {
             break;
 
             case RIL_UNSOL_SIGNAL_STRENGTH:
-                // Note this is set to "verbose" because it happens
-                // frequently
-                if (RILJ_LOGV) unsljLogvRet(response, ret);
+                if (RILJ_LOGD) unsljLogvRet(response, ret);
 
                 if (mSignalStrengthRegistrant != null) {
                     mSignalStrengthRegistrant.notifyRegistrant(
