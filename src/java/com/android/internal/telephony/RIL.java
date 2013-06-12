@@ -3293,40 +3293,48 @@ public final class RIL extends BaseCommands implements CommandsInterface {
     responseCellList(Parcel p) {
        int num, rssi;
        String location;
+       int version;
        ArrayList<NeighboringCellInfo> response;
        NeighboringCellInfo cell;
-
        num = p.readInt();
-       response = new ArrayList<NeighboringCellInfo>();
-
-       // Determine the radio access type
-       String radioString = SystemProperties.get(
-               TelephonyProperties.PROPERTY_DATA_NETWORK_TYPE, "unknown");
-       int radioType;
-       if (radioString.equals("GPRS")) {
-           radioType = NETWORK_TYPE_GPRS;
-       } else if (radioString.equals("EDGE")) {
-           radioType = NETWORK_TYPE_EDGE;
-       } else if (radioString.equals("UMTS")) {
-           radioType = NETWORK_TYPE_UMTS;
-       } else if (radioString.equals("HSDPA")) {
-           radioType = NETWORK_TYPE_HSDPA;
-       } else if (radioString.equals("HSUPA")) {
-           radioType = NETWORK_TYPE_HSUPA;
-       } else if (radioString.equals("HSPA")) {
-           radioType = NETWORK_TYPE_HSPA;
-       } else if (radioString.equals("HSPAP")) {
-           radioType = NETWORK_TYPE_HSPAP;
-       } else {
-           radioType = NETWORK_TYPE_UNKNOWN;
-       }
-
-       // Interpret the location based on radio access type
-       if (radioType != NETWORK_TYPE_UNKNOWN) {
+       version = p.readInt();
+       if (version == 1) {
+           response = new ArrayList<NeighboringCellInfo>();
+           // Determine the radio access type
+           String radioString = SystemProperties.get(
+                   TelephonyProperties.PROPERTY_DATA_NETWORK_TYPE, "unknown");
+           int radioType;
+           if (radioString.equals("GPRS")) {
+               radioType = NETWORK_TYPE_GPRS;
+           } else if (radioString.equals("EDGE")) {
+               radioType = NETWORK_TYPE_EDGE;
+           } else if (radioString.equals("UMTS")) {
+               radioType = NETWORK_TYPE_UMTS;
+           } else if (radioString.equals("HSDPA")) {
+               radioType = NETWORK_TYPE_HSDPA;
+           } else if (radioString.equals("HSUPA")) {
+               radioType = NETWORK_TYPE_HSUPA;
+           } else if (radioString.equals("HSPA")) {
+               radioType = NETWORK_TYPE_HSPA;
+           } else if (radioString.equals("HSPAP")) {
+               radioType = NETWORK_TYPE_HSPAP;
+           } else {
+               radioType = NETWORK_TYPE_UNKNOWN;
+           }
+           // Interpret the location based on radio access type
+           if (radioType != NETWORK_TYPE_UNKNOWN) {
+               for (int i = 0 ; i < num ; i++) {
+                   p.readInt(); // skip the version token
+                   rssi = p.readInt();
+                   location = p.readString();
+                   cell = new NeighboringCellInfo(rssi, location, radioType);
+                   response.add(cell);
+               }
+           }
+       } else { // Extended neighboring cell info with LTE support
+           response = new ArrayList<NeighboringCellInfo>(num);
            for (int i = 0 ; i < num ; i++) {
-               rssi = p.readInt();
-               location = p.readString();
-               cell = new NeighboringCellInfo(rssi, location, radioType);
+               cell = new NeighboringCellInfo(p);
                response.add(cell);
            }
        }
