@@ -1748,6 +1748,10 @@ public final class DcTracker extends DcTrackerBase {
         if (DBG) log("onVoiceCallEnded");
         mInVoiceCall = false;
         if (isConnected()) {
+            if (!getAnyDataEnabled()) {
+                 onCleanUpAllConnections(Phone.REASON_DATA_DISABLED);
+                return;
+            }
             if (!mPhone.getServiceStateTracker().isConcurrentVoiceAndDataAllowed()) {
                 startNetStatPoll();
                 startDataStallAlarm(DATA_STALL_NOT_SUSPECTED);
