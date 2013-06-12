@@ -550,7 +550,6 @@ public final class DcTracker extends DcTrackerBase {
             // update APN availability so that APN can be enabled.
             notifyOffApnsOfAvailability(Phone.REASON_DATA_ATTACHED);
         }
-        mAutoAttachOnCreation = true;
         setupDataOnConnectableApns(Phone.REASON_DATA_ATTACHED);
     }
 
