@@ -1688,8 +1688,8 @@ public final class DcTracker extends DcTrackerBase {
             }
         }
 
-        // If APN is still enabled, try to bring it back up automatically
-        if (apnContext.isReady() && retryAfterDisconnected(apnContext.getReason())) {
+        // If data is still enabled and allowed, try to bring it back up automaticall
+        if (isDataAllowed(apnContext) && retryAfterDisconnected(apnContext.getReason())) {
             SystemProperties.set(PUPPET_MASTER_RADIO_STRESS_TEST, "false");
             // Wait a bit before trying the next APN, so that
             // we're not tying up the RIL command channel.
