@@ -158,17 +158,17 @@ public final class GsmCallTracker extends CallTracker {
     }
 
     private void
-    fakeHoldForegroundBeforeDial() {
+    fakeHoldForegroundBeforeDialOrAccept() {
         List<Connection> connCopy;
 
-        // We need to make a copy here, since fakeHoldBeforeDial()
+        // We need to make a copy here, since fakeHoldBeforeDialOrAccept()
         // modifies the lists, and we don't want to reverse the order
         connCopy = (List<Connection>) mForegroundCall.mConnections.clone();
 
         for (int i = 0, s = connCopy.size() ; i < s ; i++) {
             GsmConnection conn = (GsmConnection)connCopy.get(i);
 
-            conn.fakeHoldBeforeDial();
+            conn.fakeHoldBeforeDialOrAccept();
         }
     }
 
@@ -198,7 +198,7 @@ public final class GsmCallTracker extends CallTracker {
             // a) foregroundCall is empty for the newly dialed connection
             // b) hasNonHangupStateChanged remains false in the
             // next poll, so that we don't clear a failed dialing call
-            fakeHoldForegroundBeforeDial();
+            fakeHoldForegroundBeforeDialOrAccept();
         }
 
         if (mForegroundCall.getState() != GsmCall.State.IDLE) {
@@ -260,6 +260,7 @@ public final class GsmCallTracker extends CallTracker {
             mCi.acceptCall(obtainCompleteMessage());
         } else if (mRingingCall.getState() == GsmCall.State.WAITING) {
             setMute(false);
+            fakeHoldForegroundBeforeDialOrAccept();
             switchWaitingOrHoldingAndActive();
         } else {
             throw new CallStateException("phone not ringing");
