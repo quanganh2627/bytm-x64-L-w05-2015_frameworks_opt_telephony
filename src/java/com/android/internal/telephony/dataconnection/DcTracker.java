@@ -527,6 +527,21 @@ public final class DcTracker extends DcTrackerBase {
     private void onDataConnectionAttached() {
         if (DBG) log("onDataConnectionAttached");
         if (getOverallState() == DctConstants.State.CONNECTED) {
+            if (!getAnyDataEnabled()) {
+                /*
+                 * If the user disables "Data enabled" in out of service state,
+                 * data deactivation request is ignored due to device out of
+                 * service. When the device gets back to registered state,
+                 * browsing is allowed even when the data is disabled by user.
+                 * Check the data enabled state and cleanup all connection if data
+                 * is disabled. ATTACHED state is notified as this may be needed
+                 * to update UI.
+                 */
+                onCleanUpAllConnections(Phone.REASON_DATA_DISABLED);
+                notifyDataConnection(Phone.REASON_DATA_ATTACHED);
+                return;
+            }
+
             if (DBG) log("onDataConnectionAttached: start polling notify attached");
             startNetStatPoll();
             startDataStallAlarm(DATA_STALL_NOT_SUSPECTED);
