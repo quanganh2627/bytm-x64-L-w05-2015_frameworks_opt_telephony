@@ -132,17 +132,25 @@ public class GSMPhone extends PhoneBase {
         this(context,ci,notifier, false);
     }
 
+    protected void initSst() {
+        mSST = new GsmServiceStateTracker(this);
+    }
+
     public
     GSMPhone (Context context, CommandsInterface ci, PhoneNotifier notifier, boolean unitTestMode) {
         super("GSM", notifier, context, ci, unitTestMode);
+        initSst();
+        init(context, ci, notifier, unitTestMode);
+    }
 
+    private void init(Context context, CommandsInterface ci, PhoneNotifier notifier,
+            boolean unitTestMode) {
         if (ci instanceof SimulatedRadioControl) {
             mSimulatedRadioControl = (SimulatedRadioControl) ci;
         }
 
         mCi.setPhoneType(PhoneConstants.PHONE_TYPE_GSM);
         mCT = new GsmCallTracker(this);
-        mSST = new GsmServiceStateTracker (this);
         mSMS = new GsmSMSDispatcher(this, mSmsStorageMonitor, mSmsUsageMonitor);
 
         mDcTracker = new DcTracker(this);

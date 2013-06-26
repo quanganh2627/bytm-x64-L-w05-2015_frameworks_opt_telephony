@@ -68,7 +68,7 @@ import java.util.HashMap;
 /**
  * {@hide}
  */
-public final class DcTracker extends DcTrackerBase {
+public class DcTracker extends DcTrackerBase {
     protected final String LOG_TAG = "DCT";
 
     /**
