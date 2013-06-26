@@ -865,6 +865,9 @@ public class SIMRecords extends IccRecords {
                                 mImsi.substring(0, 3 + mncLength));
                     }
                 }
+
+                mCi.getIMSIForApp(mParentApp.getAid(), obtainMessage(EVENT_GET_IMSI_DONE));
+                recordsToLoad++;
             break;
 
             case EVENT_GET_SPN_DONE:
@@ -1330,7 +1333,7 @@ public class SIMRecords extends IccRecords {
 
         if (DBG) log("fetchSimRecords " + recordsToLoad);
 
-        mCi.getIMSIForApp(mParentApp.getAid(), obtainMessage(EVENT_GET_IMSI_DONE));
+        mFh.loadEFTransparent(EF_AD, obtainMessage(EVENT_GET_AD_DONE));
         recordsToLoad++;
 
         mFh.loadEFTransparent(EF_ICCID, obtainMessage(EVENT_GET_ICCID_DONE));
@@ -1344,9 +1347,6 @@ public class SIMRecords extends IccRecords {
 
         // Record number is subscriber profile
         mFh.loadEFLinearFixed(EF_MBI, 1, obtainMessage(EVENT_GET_MBI_DONE));
-        recordsToLoad++;
-
-        mFh.loadEFTransparent(EF_AD, obtainMessage(EVENT_GET_AD_DONE));
         recordsToLoad++;
 
         // Record number is subscriber profile

@@ -83,7 +83,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * {@hide}
  */
-public final class GsmDataConnectionTracker extends DataConnectionTracker {
+public class GsmDataConnectionTracker extends DataConnectionTracker {
     protected final String LOG_TAG = "GSM";
 
     /**
