@@ -160,12 +160,6 @@ public class GsmLteServiceStateTracker extends GsmServiceStateTracker {
                 }
                 break;
 
-            case EVENT_RADIO_STATE_CHANGED:
-                if (!cm.getRadioState().isOn()) {
-                    mIsDefaultAPNSet = false;
-                }
-
-                // Fall through so that base class can take further actions.
             default:
                 super.handleMessage(msg);
                 break;
