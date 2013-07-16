@@ -864,10 +864,10 @@ public class SIMRecords extends IccRecords {
                         MccTable.updateMccMncConfiguration(mContext,
                                 mImsi.substring(0, 3 + mncLength));
                     }
-                }
 
-                mCi.getIMSIForApp(mParentApp.getAid(), obtainMessage(EVENT_GET_IMSI_DONE));
-                recordsToLoad++;
+                    mCi.getIMSIForApp(mParentApp.getAid(), obtainMessage(EVENT_GET_IMSI_DONE));
+                    recordsToLoad++;
+                }
             break;
 
             case EVENT_GET_SPN_DONE:
