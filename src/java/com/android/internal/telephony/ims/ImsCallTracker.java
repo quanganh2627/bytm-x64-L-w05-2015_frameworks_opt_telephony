@@ -42,6 +42,7 @@ public final class ImsCallTracker extends CallTracker {
     private boolean mUsePollingForCallStatus = true;
     private Phone mDefPhone = null;
     private ImsConnection mPendingMO = null;
+    private boolean mHangupPendingMO = false;
 
     boolean desiredMute = false; // false = mute off
     ImsConnection mConnections[] = new ImsConnection[MAX_CONNECTIONS];
@@ -123,6 +124,7 @@ public final class ImsCallTracker extends CallTracker {
         AsyncResult ar = null;
 
         Log.d(LOG_TAG, "what:  " + msg.what);
+
         switch (msg.what)
         {
             case ImsCommandsInterface.IMS_STATE:
@@ -132,36 +134,28 @@ public final class ImsCallTracker extends CallTracker {
 
                     if (msg.arg1 == ServiceState.STATE_IN_SERVICE) {
                         if (mDefPhone != null) {
-                            Log.d(LOG_TAG, "Unregistering default phone");
                             CallManager.getInstance().unregisterPhone(mDefPhone);
-                        } else {
-                            Log.d(LOG_TAG, "No default phone to unregister");
                         }
                         // ImsPhone to be the default
                         CallManager.getInstance().registerPhone(phone);
                     }
                     else {
-                        Log.d(LOG_TAG, "Unregistering phone");
                         CallManager.getInstance().unregisterPhone(phone);
                         if (mDefPhone != null) {
                             // GsmLtePhone to be the default
                             CallManager.getInstance().registerPhone(mDefPhone);
-                        } else {
-                            Log.d(LOG_TAG, "No phone to unregister");
                         }
                     }
                 }
                 break;
 
             case ImsCommandsInterface.VOIP_ACCEPT:
-                String number = (String) msg.obj;
-
-                Log.i(LOG_TAG, "VOIP_ACCEPT from number " + number);
+                Log.i(LOG_TAG, "VOIP_ACCEPT from " + (String) msg.obj);
 
                 ringingCall.setState(ImsCall.State.INCOMING);
 
                 pendingMT = new ImsConnection(phone.getContext(),
-                        number,
+                        (String) msg.obj,
                         this,
                         ringingCall,
                         true);
@@ -182,36 +176,89 @@ public final class ImsCallTracker extends CallTracker {
                     case ImsCommandsInterface.VOIP_STATE_ALERTING:
                         Log.i(LOG_TAG, "VOIP_STATE_ALERTING");
                         if (mPendingMO != null) {
-                            mPendingMO.index = 0;
+                            mPendingMO.setIMSIndex();
                             foregroundCall.setState(ImsCall.State.ALERTING);
                             phone.notifyPreciseCallStateChanged();
                         }
                         break;
                     case ImsCommandsInterface.VOIP_STATE_ACTIVE:
-                        Log.i(LOG_TAG, "VOIP_STATE_ACTIVE");
                         if (mPendingMO != null) {
-                            mPendingMO.index = 0;
+                            // Call has been accepted by peer
+                            Log.i(LOG_TAG, "VOIP_STATE_ACTIVE MO");
+
+                            mPendingMO.setIMSIndex();
                             mConnections[0] = mPendingMO;
                             mPendingMO = null;
+
+                            mConnections[0].onConnectedInOrOut();
+
                             foregroundCall.setState(ImsCall.State.ACTIVE);
                             phone.notifyPreciseCallStateChanged();
                         }
+                        else if (pendingMT != null) {
+                            Log.i(LOG_TAG, "VOIP_STATE_ACTIVE MT");
+                            foregroundCall.clearDisconnected();
+
+                            // Call accepted locally : enable foreground call
+                            mConnections[0] = new ImsConnection(phone.getContext(),
+                                    pendingMT.getAddress(),
+                                    this,
+                                    foregroundCall,
+                                    false);
+                            mConnections[0].setIMSIndex();
+                            mConnections[0].onConnectedInOrOut();
+
+                            foregroundCall.setState(ImsCall.State.ACTIVE);
+
+                            // Disable ringing call
+                            ringingCall.detach(pendingMT);
+                            pendingMT.setIMSIndex();
+                            pendingMT = null;
+
+                            updatePhoneState();
+                            phone.notifyPreciseCallStateChanged();
+                        }
+
                         break;
                     case ImsCommandsInterface.VOIP_STATE_DISCONNECTED:
                         Log.i(LOG_TAG, "VOIP_STATE_DISCONNECTED");
 
                         if (mPendingMO != null) {
-                            mPendingMO.onRemoteDisconnect(0);
+                            mPendingMO.onRemoteDisconnect();
                             mCi.hangupConnection(0, obtainCompleteMessage());
                             mPendingMO = null;
                         }
                         else {
-                            mConnections[0].onRemoteDisconnect(0);
+                            mConnections[0].onRemoteDisconnect();
                         }
 
                         foregroundCall.setState(ImsCall.State.DISCONNECTED);
+
+                        updatePhoneState();
                         phone.notifyPreciseCallStateChanged();
 
+                        break;
+                    case ImsCommandsInterface.VOIP_STATE_DESTROYED:
+                        Log.i(LOG_TAG, "VOIP_STATE_DESTROYED");
+                        // Incoming call has been rejected locally
+                        if (pendingMT != null) {
+
+                            pendingMT.onLocalDisconnect();
+
+                            ringingCall.detach(pendingMT);
+                            pendingMT.setIMSIndex();
+                            pendingMT = null;
+
+                            updatePhoneState();
+                            phone.notifyPreciseCallStateChanged();
+                        }
+                        else if (mPendingMO != null) {
+                            mPendingMO.onRemoteDisconnect();
+                            mCi.hangupConnection(0, obtainCompleteMessage());
+                            mPendingMO = null;
+                            updatePhoneState();
+                            phone.notifyPreciseCallStateChanged();
+                        }
                         break;
                     default:
                         break;
@@ -231,7 +278,6 @@ public final class ImsCallTracker extends CallTracker {
 
             case EVENT_OPERATION_COMPLETE:
                 ar = (AsyncResult) msg.obj;
-
                 if (ar.exception != null) {
                     mNeedsPoll = true;
                 }
@@ -283,6 +329,8 @@ public final class ImsCallTracker extends CallTracker {
                 this,
                 foregroundCall,
                 false);
+
+        mHangupPendingMO = false;
 
         if (mPendingMO.address == null || mPendingMO.address.length() == 0
                 || mPendingMO.address.indexOf(PhoneNumberUtils.WILD) >= 0) {
@@ -357,6 +405,7 @@ public final class ImsCallTracker extends CallTracker {
             // IMS index assigned yet
 
             Log.d(LOG_TAG, "hangup: set hangupPendingMO to true");
+            mHangupPendingMO = true;
         }
         // Close connection even if MO call has not been not connected yet
         try {
@@ -427,6 +476,8 @@ public final class ImsCallTracker extends CallTracker {
             mConnections[0].onLocalDisconnect();
         }
 
+        mHangupPendingMO = false;
+
         updatePhoneState();
         phone.notifyPreciseCallStateChanged();
     }
@@ -477,7 +528,7 @@ public final class ImsCallTracker extends CallTracker {
                 " fgalive " + foregroundCall.getState().isAlive() +
                 " bgalive " + backgroundCall.getState().isAlive());
 
-        ret = (serviceState != ServiceState.STATE_OUT_OF_SERVICE)
+        ret = serviceState != ServiceState.STATE_OUT_OF_SERVICE
                 && mPendingMO == null
                 && !ringingCall.isRinging()
                 && (!foregroundCall.getState().isAlive()
