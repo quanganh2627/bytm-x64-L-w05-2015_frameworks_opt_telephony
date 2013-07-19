@@ -44,7 +44,11 @@ import java.util.List;
 public class ImsPhone extends PhoneBase {
     private static final String LOG_TAG = "ImsPhone";
     private static final String PROPERTY_IMS_MSISDN = "persist.radio.ims.msisdn";
+    private static final boolean DBG = true;
 
+    private ImsCall mRingingCall = null;
+    private ImsCall mForegroundCall = null;
+    private ImsCall mBackgroundCall = null;
     private ImsCallTracker mImsCT = null;
     private ImsCommandsInterface mImsCM = null;
     private ServiceState mImsSS = null;
@@ -63,6 +67,10 @@ public class ImsPhone extends PhoneBase {
         mImsSS.setState(ServiceState.STATE_OUT_OF_SERVICE);
 
         mImsCT = new ImsCallTracker(this);
+
+        mRingingCall = new ImsCall(mImsCT);
+        mForegroundCall = new ImsCall(mImsCT);
+        mBackgroundCall = new ImsCall(mImsCT);
 
         mImsCM = (ImsCommandsInterface) mCM;
         mImsCM.setPhone(this);
@@ -114,11 +122,13 @@ public class ImsPhone extends PhoneBase {
     }
 
     @Override
-    public void acceptCall() {
+    public void acceptCall() throws CallStateException {
+        mImsCT.acceptCall();
     }
 
     @Override
-    public void rejectCall() {
+    public void rejectCall() throws CallStateException {
+        mImsCT.rejectCall();
     }
 
     @Override
@@ -281,6 +291,11 @@ public class ImsPhone extends PhoneBase {
     public void sendUssdResponse(String ussdMessge) {
     }
 
+    private boolean handleCcbsIncallSupplementaryService(String dialString)
+            throws CallStateException {
+        return false;
+    }
+
     public boolean handleInCallMmiCommands(String dialString)
             throws CallStateException {
 
@@ -298,11 +313,9 @@ public class ImsPhone extends PhoneBase {
     public void setVoiceMailNumber(String alphaTag,
             String voiceMailNumber,
             Message onComplete) {
-
     }
 
     public void getCallForwardingOption(int commandInterfaceCFReason, Message onComplete) {
-
     }
 
     public void setCallForwardingOption(int commandInterfaceCFAction,
@@ -310,7 +323,6 @@ public class ImsPhone extends PhoneBase {
             String dialingNumber,
             int timerSeconds,
             Message onComplete) {
-
     }
 
     public void getOutgoingCallerIdDisplay(Message onComplete) {
@@ -391,9 +403,9 @@ public class ImsPhone extends PhoneBase {
     public String getLine1Number() {
         if (mLtePhone != null) {
             String line1 = mLtePhone.getLine1Number();
-            // Workaround in case local MSISDN not presentt in SIM card: use
+            // Workaround in case local MSISDN not present in SIM card: use
             // property to get it
-            if (line1 == null) {
+            if (line1 == null || line1.length() == 0) {
                 line1 = SystemProperties.get(PROPERTY_IMS_MSISDN);
             }
             return line1;
@@ -404,9 +416,9 @@ public class ImsPhone extends PhoneBase {
     public String getMsisdn() {
         if (mLtePhone != null) {
             String msisdn = mLtePhone.getMsisdn();
-            // Workaround in case local MSISDN not presentt in SIM card: use
+            // Workaround in case local MSISDN not present in SIM card: use
             // property to get it
-            if (msisdn == null) {
+            if (msisdn == null || msisdn.length() == 0) {
                 msisdn = SystemProperties.get(PROPERTY_IMS_MSISDN);
             }
             return msisdn;

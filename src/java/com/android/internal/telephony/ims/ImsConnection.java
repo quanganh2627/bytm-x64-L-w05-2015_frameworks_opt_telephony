@@ -60,11 +60,6 @@ public class ImsConnection extends Connection {
      */
     private long mConnectTimeReal = 0;
     private long mDuration = 0;
-    private long mHoldingStartTime = 0; // The time when the Connection last
-                                        // transitioned
-    // into HOLDING
-
-    private int mNextPostDialChar; // index into postDialString
 
     private PostDialState mPostDialState = PostDialState.NOT_STARTED;
     private int mNumberPresentation = PhoneConstants.PRESENTATION_ALLOWED;
@@ -130,7 +125,7 @@ public class ImsConnection extends Connection {
     protected void finalize()
     {
         /**
-         * It is understood that This finializer is not guaranteed to be called
+         * It is understood that This finalizer is not guaranteed to be called
          * and the release lock call is here just in case there is some path
          * that doesn't call onDisconnect and or onConnectedInOrOut.
          */
@@ -229,6 +224,10 @@ public class ImsConnection extends Connection {
         onDisconnect(DisconnectCause.LOCAL);
     }
 
+    void onRemoteDisconnect() {
+        onDisconnect(DisconnectCause.NORMAL);
+    }
+
     void onRemoteDisconnect(int causeCode) {
         onDisconnect(disconnectCauseFromCode(causeCode));
     }
@@ -285,6 +284,20 @@ public class ImsConnection extends Connection {
         } else {
             throw new CallStateException("IMS index not yet assigned");
         }
+    }
+
+    public void setIMSIndex() {
+        index++;
+    }
+
+    void onConnectedInOrOut() {
+        mConnectTime = System.currentTimeMillis();
+        mConnectTimeReal = SystemClock.elapsedRealtime();
+        mDuration = 0;
+
+        Log.d(LOG_TAG, "onConnectedInOrOut: connectTime= " + mConnectTime);
+
+        releaseWakeLock();
     }
 
     void onHangupLocal() {
