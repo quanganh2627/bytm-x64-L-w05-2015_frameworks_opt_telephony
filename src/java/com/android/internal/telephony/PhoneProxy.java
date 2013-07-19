@@ -34,6 +34,7 @@ import android.telephony.ServiceState;
 import android.telephony.SignalStrength;
 import android.telephony.Rlog;
 
+import com.android.internal.telephony.ims.ImsPhoneBase;
 import com.android.internal.telephony.test.SimulatedRadioControl;
 import com.android.internal.telephony.uicc.IccCardProxy;
 import com.android.internal.telephony.uicc.IsimRecords;
@@ -46,6 +47,7 @@ public class PhoneProxy extends Handler implements Phone {
     public final static Object lockForRadioTechnologyChange = new Object();
 
     private Phone mActivePhone;
+    private ImsPhoneBase mImsPhone;
     private CommandsInterface mCommandsInterface;
     private IccSmsInterfaceManager mIccSmsInterfaceManager;
     private IccPhoneBookInterfaceManagerProxy mIccPhoneBookInterfaceManagerProxy;
@@ -87,6 +89,7 @@ public class PhoneProxy extends Handler implements Phone {
         } else if (phone.getPhoneType() == PhoneConstants.PHONE_TYPE_CDMA) {
             mIccCardProxy.setVoiceRadioTech(ServiceState.RIL_RADIO_TECHNOLOGY_1xRTT);
         }
+        mImsPhone = PhoneFactory.makeImsPhone(phone);
     }
 
     @Override
@@ -267,6 +270,10 @@ public class PhoneProxy extends Handler implements Phone {
 
         if(mActivePhone != null) {
             CallManager.getInstance().registerPhone(mActivePhone);
+        }
+
+        if (mImsPhone != null) {
+            mImsPhone.setParentPhone(mActivePhone);
         }
 
         oldPhone = null;
@@ -1180,6 +1187,10 @@ public class PhoneProxy extends Handler implements Phone {
         mCommandsInterface.unregisterForOn(this);
         mCommandsInterface.unregisterForVoiceRadioTechChanged(this);
         mCommandsInterface.unregisterForRilConnected(this);
+        if (mImsPhone != null) {
+            mImsPhone.dispose();
+            mImsPhone = null;
+        }
     }
 
     @Override
