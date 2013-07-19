@@ -22,22 +22,17 @@ import android.util.Log;
 import com.android.internal.telephony.CommandsInterface;
 import com.android.internal.telephony.PhoneNotifier;
 
-import java.io.FileDescriptor;
-import java.io.PrintWriter;
-
 /**
  * {@hide}
  */
 public class GsmLtePhone extends GSMPhone {
     static final String LOG_TAG = "GsmLte";
-    private static final boolean DBG = true;
 
     public GsmLtePhone(Context context, CommandsInterface ci, PhoneNotifier notifier) {
-        this(context,ci,notifier, false);
+        this(context, ci, notifier, false);
     }
 
-    public
-    GsmLtePhone(Context context, CommandsInterface ci,
+    public GsmLtePhone(Context context, CommandsInterface ci,
             PhoneNotifier notifier, boolean unitTestMode) {
         super(context, ci, notifier, unitTestMode);
     }
@@ -50,11 +45,5 @@ public class GsmLtePhone extends GSMPhone {
     @Override
     public void log(String log) {
         Log.d(LOG_TAG, log);
-    }
-
-    @Override
-    public void dump(FileDescriptor fd, PrintWriter pw, String[] args) {
-        pw.println("GsmLtePhone extends:");
-        super.dump(fd, pw, args);
     }
 }
