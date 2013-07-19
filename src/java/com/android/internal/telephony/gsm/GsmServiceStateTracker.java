@@ -82,7 +82,7 @@ import java.util.TimeZone;
 /**
  * {@hide}
  */
-final class GsmServiceStateTracker extends ServiceStateTracker {
+public class GsmServiceStateTracker extends ServiceStateTracker {
     static final String LOG_TAG = "GSM";
     static final boolean DBG = true;
 
@@ -278,6 +278,7 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
         return phone;
     }
 
+    @Override
     public void handleMessage (Message msg) {
         AsyncResult ar;
         int[] ints;
@@ -963,7 +964,7 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
      * and start over again if the radio notifies us that some
      * event has changed
      */
-    private void pollState() {
+    protected void pollState() {
         pollingContext = new int[1];
         pollingContext[0] = 0;
 
@@ -1223,7 +1224,7 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
         return guess;
     }
 
-    private void queueNextSignalStrengthPoll() {
+    protected void queueNextSignalStrengthPoll() {
         if (dontPollSignalStrength) {
             // The radio is telling us about signal strength changes
             // we don't have to ask it
