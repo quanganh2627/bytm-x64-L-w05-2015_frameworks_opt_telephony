@@ -2166,6 +2166,14 @@ public final class DcTracker extends DcTrackerBase {
             return RILConstants.DATA_PROFILE_FOTA;
         } else if (TextUtils.equals(apnType, PhoneConstants.APN_TYPE_CBS)) {
             return RILConstants.DATA_PROFILE_CBS;
+        } else if (TextUtils.equals(apnType, PhoneConstants.APN_TYPE_MMS)) {
+            return (RILConstants.DATA_PROFILE_MMS);
+        } else if (TextUtils.equals(apnType, PhoneConstants.APN_TYPE_DUN)) {
+            return RILConstants.DATA_PROFILE_TETHERED;
+        } else if (TextUtils.equals(apnType, PhoneConstants.APN_TYPE_SUPL)) {
+            return (RILConstants.DATA_PROFILE_SUPL);
+        } else if (TextUtils.equals(apnType, PhoneConstants.APN_TYPE_HIPRI)) {
+            return (RILConstants.DATA_PROFILE_HIPRI);
         } else {
             return RILConstants.DATA_PROFILE_DEFAULT;
         }
