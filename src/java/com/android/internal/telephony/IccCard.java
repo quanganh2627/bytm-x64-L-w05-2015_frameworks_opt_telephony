@@ -67,6 +67,12 @@ public interface IccCard {
     public void unregisterForNetworkLocked(Handler h);
 
     /**
+     * Notifies handler of any transition into IccCardConstants.State.NETWORK_LOCKED_PUK
+     */
+    public void registerForNetworkLockedPuk(Handler h, int what, Object obj);
+    public void unregisterForNetworkLockedPuk(Handler h);
+
+    /**
      * Notifies handler of any transition into IccCardConstants.State.isPinLocked()
      */
     public void registerForLocked(Handler h, int what, Object obj);
