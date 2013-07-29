@@ -122,6 +122,7 @@ public class GSMPhone extends PhoneBase {
     private String mImeiSv;
     private String mVmNumber;
 
+    private boolean mIsEmergencyCallOngoing;
 
     // Constructors
 
@@ -731,6 +732,16 @@ public class GSMPhone extends PhoneBase {
             // FIXME should this return null or something else?
             return null;
         }
+    }
+
+    public final void
+    setEmergencyCallOngoing(boolean isEmergencyCallOngoing) {
+        mIsEmergencyCallOngoing = isEmergencyCallOngoing;
+    }
+
+    public final boolean
+    isEmergencyCallOngoing() {
+        return mIsEmergencyCallOngoing;
     }
 
     @Override
