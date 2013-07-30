@@ -69,6 +69,9 @@ public final class GsmCallTracker extends CallTracker {
     static final int MAX_CONNECTIONS = 7;   // only 7 connections allowed in GSM
     static final int MAX_CONNECTIONS_PER_CALL = 5; // only 5 connections allowed per call
 
+    // Call status polling enabled flag.
+    private boolean mUsePollingForCallStatus = true;
+
     //***** Instance Variables
     GsmConnection mConnections[] = new GsmConnection[MAX_CONNECTIONS];
     RegistrantList mVoiceCallEndedRegistrants = new RegistrantList();
@@ -108,6 +111,8 @@ public final class GsmCallTracker extends CallTracker {
 
         mCi.registerForOn(this, EVENT_RADIO_AVAILABLE, null);
         mCi.registerForNotAvailable(this, EVENT_RADIO_NOT_AVAILABLE, null);
+        mUsePollingForCallStatus = mPhone.getContext().getResources().getBoolean(
+                com.android.internal.R.bool.gsm_call_status_polling_enable);
     }
 
     public void dispose() {
@@ -383,12 +388,13 @@ public final class GsmCallTracker extends CallTracker {
     private Message
     obtainCompleteMessage(int what) {
         mPendingOperations++;
-        mLastRelevantPoll = null;
-        mNeedsPoll = true;
+        if (mUsePollingForCallStatus) {
+            mLastRelevantPoll = null;
+            mNeedsPoll = true;
 
-        if (DBG_POLL) log("obtainCompleteMessage: pendingOperations=" +
-                mPendingOperations + ", needsPoll=" + mNeedsPoll);
-
+            if (DBG_POLL) log("obtainCompleteMessage: pendingOperations=" +
+                    mPendingOperations + ", needsPoll=" + mNeedsPoll);
+        }
         return obtainMessage(what);
     }
 
