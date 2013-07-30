@@ -827,6 +827,10 @@ public abstract class DcTrackerBase extends Handler {
             return DctConstants.APN_FOTA_ID;
         } else if (TextUtils.equals(type, PhoneConstants.APN_TYPE_CBS)) {
             return DctConstants.APN_CBS_ID;
+        } else if (TextUtils.equals(type, PhoneConstants.APN_TYPE_BIP_GPRS1)) {
+            return DctConstants.APN_BIP_GPRS1_ID;
+        } else if (TextUtils.equals(type, PhoneConstants.APN_TYPE_BIP_GPRS2)) {
+            return DctConstants.APN_BIP_GPRS2_ID;
         } else {
             return DctConstants.APN_INVALID_ID;
         }
@@ -850,6 +854,10 @@ public abstract class DcTrackerBase extends Handler {
             return PhoneConstants.APN_TYPE_FOTA;
         case DctConstants.APN_CBS_ID:
             return PhoneConstants.APN_TYPE_CBS;
+        case DctConstants.APN_BIP_GPRS1_ID:
+            return PhoneConstants.APN_TYPE_BIP_GPRS1;
+        case DctConstants.APN_BIP_GPRS2_ID:
+            return PhoneConstants.APN_TYPE_BIP_GPRS2;
         default:
             log("Unknown id (" + id + ") in apnIdToType");
             return PhoneConstants.APN_TYPE_DEFAULT;

@@ -213,6 +213,73 @@ class BIPClientParams extends CommandParams {
     }
 }
 
+/*
+ * BIP (Bearer Independent Protocol) is the mechanism for SIM card applications
+ * to access data connection through the mobile device.
+ * This is Intel Implementation
+ */
+class OpenChannelParams extends CommandParams {
+    TextMessage confirmMsg;
+    int bufSize;
+    InterfaceTransportLevel itl;
+    byte[] destinationAddress;
+    BearerDescription bearerDescription;
+    String networkAccessName;
+    String userLogin;
+    String userPassword;
+    OpenChannelParams(CommandDetails cmdDet, TextMessage confirmMsg,
+            int bufSize, InterfaceTransportLevel itl, byte[] destAddress,
+            BearerDescription bearerDesc, String netAccessName,
+            String usrLogin, String userPasswd) {
+        super(cmdDet);
+        this.confirmMsg = confirmMsg;
+        this.bufSize = bufSize;
+        this.itl = itl;
+        this.destinationAddress = destAddress;
+        this.bearerDescription = bearerDesc;
+        this.networkAccessName = netAccessName;
+        this.userLogin = usrLogin;
+        this.userPassword = userPasswd;
+    }
+}
+
+class CloseChannelParams extends CommandParams {
+    int channel;
+
+    CloseChannelParams(CommandDetails cmdDet, int channel) {
+        super(cmdDet);
+        this.channel = channel;
+    }
+}
+
+class ReceiveDataParams extends CommandParams {
+    int datLen;
+    int channel;
+
+    ReceiveDataParams(CommandDetails cmdDet, int channel, int datLen) {
+        super(cmdDet);
+        this.channel = channel;
+        this.datLen = datLen;
+    }
+}
+
+class SendDataParams extends CommandParams {
+    byte[] data;
+    int channel;
+
+    SendDataParams(CommandDetails cmdDet, int channel, byte[] data) {
+        super(cmdDet);
+        this.channel = channel;
+        this.data = data;
+    }
+}
+
+class GetChannelStatusParams extends CommandParams {
+    GetChannelStatusParams(CommandDetails cmdDet) {
+        super(cmdDet);
+     }
+}
+
 class EventListParams extends CommandParams {
     byte[] eventList = null;
     EventListParams(CommandDetails cmdDet, byte[] eventList) {
