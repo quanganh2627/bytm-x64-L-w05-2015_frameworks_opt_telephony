@@ -725,7 +725,8 @@ public class GsmServiceStateTracker extends ServiceStateTracker {
         final boolean voice_capable = phone.getContext().getResources().getBoolean(
                 com.android.internal.R.bool.config_voice_capable);
 
-        if (!voice_capable && newGPRSState == ServiceState.STATE_IN_SERVICE) {
+        if ((!voice_capable || newSS.getState() != ServiceState.STATE_IN_SERVICE)
+                && newGPRSState == ServiceState.STATE_IN_SERVICE) {
             newSS.setState (newGPRSState);
         }
 
