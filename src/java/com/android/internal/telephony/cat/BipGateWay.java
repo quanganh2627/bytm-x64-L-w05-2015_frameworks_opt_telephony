@@ -775,7 +775,7 @@ public class BipGateWay {
 
             newChannel = cmdMsg.getChannelSettings();
             // get MCC (first 3 chars) & MNC (2-3 chars)
-            String numeric = tm.getNetworkOperator();
+            String numeric = tm.getSimOperator();
 
             String mcc;
             String mnc;
