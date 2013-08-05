@@ -2223,6 +2223,31 @@ public final class DcTracker extends DcTrackerBase {
         }
     }
 
+    public void onDataSuspended() {
+        if (DBG) log("onDataSuspended");
+        if (isConnected()) {
+            if (DBG) log("onDataSuspended stop polling");
+            stopNetStatPoll();
+            stopDataStallAlarm();
+            notifyDataConnection(null);
+        }
+
+        notifyOffApnsOfAvailability(null);
+    }
+
+    public void onDataResumed() {
+        if (DBG) log("onDataResumed");
+        if (isConnected()) {
+            startNetStatPoll();
+            startDataStallAlarm(DATA_STALL_NOT_SUSPECTED);
+            notifyDataConnection(null);
+        } else {
+            // reset reconnect timer
+            setupDataOnConnectableApns(Phone.REASON_DATA_ATTACHED);
+        }
+        notifyOffApnsOfAvailability(null);
+    }
+
     @Override
     protected void log(String s) {
         Rlog.d(LOG_TAG, s);
