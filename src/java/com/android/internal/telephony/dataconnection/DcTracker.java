@@ -2404,9 +2404,6 @@ public final class DcTracker extends DcTrackerBase {
             startNetStatPoll();
             startDataStallAlarm(DATA_STALL_NOT_SUSPECTED);
             notifyDataConnection(null);
-        } else {
-            // reset reconnect timer
-            setupDataOnConnectableApns(Phone.REASON_DATA_ATTACHED);
         }
         notifyOffApnsOfAvailability(null);
     }
