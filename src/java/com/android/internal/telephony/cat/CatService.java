@@ -27,6 +27,7 @@ import android.content.res.Configuration;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.NetworkUtils;
+import android.nfc.NfcAdapter;
 import android.telephony.ServiceState;
 import android.os.AsyncResult;
 import android.os.Handler;
@@ -55,6 +56,7 @@ import com.android.internal.telephony.cat.InterfaceTransportLevel.TransportProto
 import com.android.internal.telephony.ITelephony;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.util.List;
 import java.util.Locale;
 
@@ -391,8 +393,22 @@ public class CatService extends Handler implements AppInterface {
                 mBipGateWay.handleBipCommand(cmdMsg);
                 return;
             case ACTIVATE:
-                sendTerminalResponse(cmdParams.mCmdDet,
-                        ResultCode.BEYOND_TERMINAL_CAPABILITY, false, 0, null);
+                ResultCode result = ResultCode.BEYOND_TERMINAL_CAPABILITY;
+                // Target - '01' = UICC-CLF interface according to TS 102 613
+                if ((((ActivateParams) cmdParams).target & 0x01) == 0x01) {
+                    NfcAdapter nfcAdapter = NfcAdapter.getDefaultAdapter(mContext);
+                    if (nfcAdapter != null) {
+                        try {
+                            nfcAdapter.activeSwp();
+                            result = ResultCode.OK;
+                        } catch (IllegalStateException e) {
+                            result = ResultCode.TERMINAL_CRNTLY_UNABLE_TO_PROCESS;
+                        } catch (IOException e) {
+                            result = ResultCode.TERMINAL_CRNTLY_UNABLE_TO_PROCESS;
+                        }
+                    }
+                }
+                sendTerminalResponse(cmdParams.mCmdDet, result, false, 0, null);
                 return;
             default:
                 CatLog.d(this, "Unsupported command");
