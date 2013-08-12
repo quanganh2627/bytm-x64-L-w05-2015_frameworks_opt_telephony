@@ -970,6 +970,16 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
         tmpSS.setRoaming(roaming);
 
         boolean hasChanged = !tmpSS.equals(mSS);
+        boolean hasRoamingOn = !mSS.getRoaming() && tmpSS.getRoaming();
+        boolean hasRoamingOff = mSS.getRoaming() && !tmpSS.getRoaming();
+
+        if (hasRoamingOn) {
+            mRoamingOnRegistrants.notifyRegistrants();
+        }
+
+        if (hasRoamingOff) {
+            mRoamingOffRegistrants.notifyRegistrants();
+        }
 
         if (hasChanged) {
             mSS.setRoaming(tmpSS.getRoaming());
@@ -1211,12 +1221,14 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
             mPhone.notifyDataConnection(null);
         }
 
-        if (hasRoamingOn) {
-            mRoamingOnRegistrants.notifyRegistrants();
-        }
+        if (mIsGetOperatorPollingTracked) {
+            if (hasRoamingOn) {
+                mRoamingOnRegistrants.notifyRegistrants();
+            }
 
-        if (hasRoamingOff) {
-            mRoamingOffRegistrants.notifyRegistrants();
+            if (hasRoamingOff) {
+                mRoamingOffRegistrants.notifyRegistrants();
+            }
         }
 
         if (hasLocationChanged) {
