@@ -733,6 +733,37 @@ class CommandParamsFactory extends Handler {
             }
         }
 
+        byte[] bearerList = null;
+        ctlv = searchForTag(ComprehensionTlvTag.BEARER, ctlvs);
+        if (ctlv != null) {
+            byte[] rawValue = ctlv.getRawValue();
+            int valueIndex = ctlv.getValueIndex();
+            int valueLength = ctlv.getLength();
+            if (valueLength > 0 && rawValue.length >= (valueIndex + valueLength)) {
+                bearerList = new byte[valueLength];
+                if (bearerList != null) {
+                    System.arraycopy(rawValue, valueIndex, bearerList, 0, valueLength);
+                }
+            }
+        }
+
+        if (bearerList != null) {
+            // Refer 3GPP TS 31.111 section 8.49 for coding of bearer values
+            final byte PACKET_SERVICE = 0x03; // GPRS/UTRAN packet service/E-UTRAN
+            for (byte b : bearerList) {
+                if (b != PACKET_SERVICE) {
+                    throw new ResultException(ResultCode.BEYOND_TERMINAL_CAPABILITY);
+                }
+            }
+        }
+
+        String proxy = null;
+        ctlv = searchForTag(ComprehensionTlvTag.TEXT_STRING, ctlvs);
+        if (ctlv != null) {
+            proxy = ValueParser.retrieveTextString(ctlv);
+        }
+        if (proxy != null) CatLog.d(this, "proxy: " + proxy);
+
         // parse alpha identifier.
         ctlv = searchForTag(ComprehensionTlvTag.ALPHA_ID, ctlvs);
         confirmMsg.text = ValueParser.retrieveAlphaId(ctlv);
@@ -759,7 +790,7 @@ class CommandParamsFactory extends Handler {
             break;
         }
 
-        mCmdParams = new LaunchBrowserParams(cmdDet, confirmMsg, url, mode);
+        mCmdParams = new LaunchBrowserParams(cmdDet, confirmMsg, url, mode, proxy);
 
         if (iconId != null) {
             mIconLoadState = LOAD_SINGLE_ICON;

@@ -44,6 +44,7 @@ public class CatCmdMessage implements Parcelable {
     public class BrowserSettings {
         public String url;
         public LaunchBrowserMode mode;
+        public String proxy;
     }
 
     /*
@@ -97,6 +98,7 @@ public class CatCmdMessage implements Parcelable {
             mBrowserSettings = new BrowserSettings();
             mBrowserSettings.url = ((LaunchBrowserParams) cmdParams).mUrl;
             mBrowserSettings.mode = ((LaunchBrowserParams) cmdParams).mMode;
+            mBrowserSettings.proxy = ((LaunchBrowserParams) cmdParams).mProxy;
             break;
         case PLAY_TONE:
             PlayToneParams params = (PlayToneParams) cmdParams;
@@ -168,6 +170,10 @@ public class CatCmdMessage implements Parcelable {
             mBrowserSettings = new BrowserSettings();
             mBrowserSettings.url = in.readString();
             mBrowserSettings.mode = LaunchBrowserMode.values()[in.readInt()];
+            mBrowserSettings.proxy = in.readString();
+            CatLog.d(this, "CatCmdMessage, url: " + mBrowserSettings.url
+                    + ", mode: " + mBrowserSettings.mode
+                    + ", proxy: " + mBrowserSettings.proxy);
             break;
         case PLAY_TONE:
             mToneSettings = in.readParcelable(null);
@@ -231,6 +237,7 @@ public class CatCmdMessage implements Parcelable {
         case LAUNCH_BROWSER:
             dest.writeString(mBrowserSettings.url);
             dest.writeInt(mBrowserSettings.mode.ordinal());
+            dest.writeString(mBrowserSettings.proxy);
             break;
         case PLAY_TONE:
             dest.writeParcelable(mToneSettings, 0);
