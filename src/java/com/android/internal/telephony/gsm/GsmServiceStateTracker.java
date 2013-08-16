@@ -725,7 +725,8 @@ public class GsmServiceStateTracker extends ServiceStateTracker {
         final boolean voice_capable = phone.getContext().getResources().getBoolean(
                 com.android.internal.R.bool.config_voice_capable);
 
-        if (!voice_capable && newGPRSState == ServiceState.STATE_IN_SERVICE) {
+        if ((!voice_capable || newSS.getState() != ServiceState.STATE_IN_SERVICE)
+                && newGPRSState == ServiceState.STATE_IN_SERVICE) {
             newSS.setState (newGPRSState);
         }
 
@@ -928,6 +929,16 @@ public class GsmServiceStateTracker extends ServiceStateTracker {
         tmpSS.setRoaming(roaming);
 
         boolean hasChanged = !tmpSS.equals(ss);
+        boolean hasRoamingOn = !ss.getRoaming() && tmpSS.getRoaming();
+        boolean hasRoamingOff = ss.getRoaming() && !tmpSS.getRoaming();
+
+        if (hasRoamingOn) {
+            mRoamingOnRegistrants.notifyRegistrants();
+        }
+
+        if (hasRoamingOff) {
+            mRoamingOffRegistrants.notifyRegistrants();
+        }
 
         if (hasChanged) {
             ss.setRoaming(tmpSS.getRoaming());
@@ -1150,12 +1161,14 @@ public class GsmServiceStateTracker extends ServiceStateTracker {
             phone.notifyDataConnection(Phone.REASON_NW_TYPE_CHANGED);
         }
 
-        if (hasRoamingOn) {
-            mRoamingOnRegistrants.notifyRegistrants();
-        }
+        if (mIsGetOperatorPollingTracked) {
+            if (hasRoamingOn) {
+                mRoamingOnRegistrants.notifyRegistrants();
+            }
 
-        if (hasRoamingOff) {
-            mRoamingOffRegistrants.notifyRegistrants();
+            if (hasRoamingOff) {
+                mRoamingOffRegistrants.notifyRegistrants();
+            }
         }
 
         if (hasLocationChanged) {
