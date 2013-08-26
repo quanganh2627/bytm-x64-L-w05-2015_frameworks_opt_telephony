@@ -24,9 +24,11 @@ import android.os.Message;
 import android.util.Log;
 
 import com.comneon.mas.gui.CRegister;
+import com.comneon.mas.gui.ILogger;
 import com.comneon.mas.gui.IRegister;
 import com.comneon.mas.gui.IRegisterCreateAsyncCB;
 import com.comneon.mas.gui.MasFactory;
+import com.comneon.mas.gui.RCSLogger;
 
 public final class ImsRegistration implements IRegisterCreateAsyncCB {
 
@@ -50,6 +52,13 @@ public final class ImsRegistration implements IRegisterCreateAsyncCB {
     public ImsRegistration(Context c, Handler h) {
         mMasFactory = new MasFactory();
         mCReg = new CRegister();
+
+        RCSLogger.getInstance().RegisteMASLogginCB(new ILogger() {
+            @Override
+            public void Log(int type, String method, String info) {
+                Log.d("MAS_API", method + " " + info);
+            }
+        });
         mHdlr = h;
         mCtx = c;
     }
