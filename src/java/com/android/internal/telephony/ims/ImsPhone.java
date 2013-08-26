@@ -86,8 +86,6 @@ public class ImsPhone extends PhoneBase {
             mImsCM = null;
         }
         mSubInfo.dispose();
-
-        super.dispose();
     }
 
     public void init(PhoneBase phone) {
