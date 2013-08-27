@@ -19,14 +19,13 @@ package com.android.internal.telephony.gsm;
 import android.os.AsyncResult;
 import android.os.Handler;
 import android.os.Message;
-import android.util.Log;
+import android.telephony.Rlog;
 
-import com.android.internal.telephony.AdnRecord;
-import com.android.internal.telephony.AdnRecordCache;
-import com.android.internal.telephony.IccConstants;
-import com.android.internal.telephony.IccFileHandler;
-import com.android.internal.telephony.IccUtils;
-import com.android.internal.telephony.PhoneBase;
+import com.android.internal.telephony.uicc.AdnRecord;
+import com.android.internal.telephony.uicc.AdnRecordCache;
+import com.android.internal.telephony.uicc.IccConstants;
+import com.android.internal.telephony.uicc.IccFileHandler;
+import com.android.internal.telephony.uicc.IccUtils;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -39,7 +38,7 @@ import java.util.Map;
  * {@hide}
  */
 public class UsimPhoneBookManager extends Handler implements IccConstants {
-    private static final String LOG_TAG = "GSM";
+    private static final String LOG_TAG = "UsimPhoneBookManager";
     private static final boolean DBG = true;
     private PbrFile mPbrFile;
     private Boolean mIsPbrPresent;
@@ -78,6 +77,9 @@ public class UsimPhoneBookManager extends Handler implements IccConstants {
     public UsimPhoneBookManager(IccFileHandler fh, AdnRecordCache cache) {
         mFh = fh;
         mPhoneBookRecords = new ArrayList<AdnRecord>();
+        mIapFileRecord = new ArrayList<byte[]>();
+        mEmailFileRecord = new ArrayList<byte[]>();
+
         mPbrFile = null;
         // We assume its present, after the first read this is updated.
         // So we don't have to read from UICC if its not present on subsequent reads.
@@ -87,8 +89,8 @@ public class UsimPhoneBookManager extends Handler implements IccConstants {
 
     public void reset() {
         mPhoneBookRecords.clear();
-        mIapFileRecord = null;
-        mEmailFileRecord = null;
+        mIapFileRecord.clear();
+        mEmailFileRecord.clear();
         mPbrFile = null;
         mIsPbrPresent = true;
         mRefreshCache = false;
@@ -143,7 +145,7 @@ public class UsimPhoneBookManager extends Handler implements IccConstants {
         try {
             mLock.wait();
         } catch (InterruptedException e) {
-            Log.e(LOG_TAG, "Interrupted Exception in readAdnFileAndWait");
+            Rlog.e(LOG_TAG, "Interrupted Exception in readAdnFileAndWait");
         }
     }
 
@@ -161,7 +163,7 @@ public class UsimPhoneBookManager extends Handler implements IccConstants {
             if (mEmailPresentInIap) {
                 readIapFileAndWait(fileIds.get(USIM_EFIAP_TAG));
                 if (mIapFileRecord == null) {
-                    Log.e(LOG_TAG, "Error: IAP file is empty");
+                    Rlog.e(LOG_TAG, "Error: IAP file is empty");
                     return;
                 }
             }
@@ -171,11 +173,11 @@ public class UsimPhoneBookManager extends Handler implements IccConstants {
             try {
                 mLock.wait();
             } catch (InterruptedException e) {
-                Log.e(LOG_TAG, "Interrupted Exception in readEmailFileAndWait");
+                Rlog.e(LOG_TAG, "Interrupted Exception in readEmailFileAndWait");
             }
 
             if (mEmailFileRecord == null) {
-                Log.e(LOG_TAG, "Error: Email file is empty");
+                Rlog.e(LOG_TAG, "Error: Email file is empty");
                 return;
             }
             updatePhoneAdnRecord();
@@ -188,7 +190,7 @@ public class UsimPhoneBookManager extends Handler implements IccConstants {
         try {
             mLock.wait();
         } catch (InterruptedException e) {
-            Log.e(LOG_TAG, "Interrupted Exception in readIapFileAndWait");
+            Rlog.e(LOG_TAG, "Interrupted Exception in readIapFileAndWait");
         }
     }
 
@@ -206,7 +208,7 @@ public class UsimPhoneBookManager extends Handler implements IccConstants {
                 try {
                     record = mIapFileRecord.get(i);
                 } catch (IndexOutOfBoundsException e) {
-                    Log.e(LOG_TAG, "Error: Improper ICC card: No IAP record for ADN, continuing");
+                    Rlog.e(LOG_TAG, "Error: Improper ICC card: No IAP record for ADN, continuing");
                     break;
                 }
                 int recNum = record[mEmailTagNumberInIap];
@@ -262,7 +264,7 @@ public class UsimPhoneBookManager extends Handler implements IccConstants {
             try {
                 emailRec = mEmailFileRecord.get(i);
             } catch (IndexOutOfBoundsException e) {
-                Log.e(LOG_TAG, "Error: Improper ICC card: No email record for ADN, continuing");
+                Rlog.e(LOG_TAG, "Error: Improper ICC card: No email record for ADN, continuing");
                 break;
             }
             int adnRecNum = emailRec[emailRec.length - 1];
@@ -318,7 +320,7 @@ public class UsimPhoneBookManager extends Handler implements IccConstants {
         try {
             mLock.wait();
         } catch (InterruptedException e) {
-            Log.e(LOG_TAG, "Interrupted Exception in readAdnFileAndWait");
+            Rlog.e(LOG_TAG, "Interrupted Exception in readAdnFileAndWait");
         }
     }
 
@@ -359,7 +361,7 @@ public class UsimPhoneBookManager extends Handler implements IccConstants {
             log("Loading USIM IAP records done");
             ar = (AsyncResult) msg.obj;
             if (ar.exception == null) {
-                mIapFileRecord = ((ArrayList<byte[]>)ar.result);
+                mIapFileRecord.addAll((ArrayList<byte[]>)ar.result);
             }
             synchronized (mLock) {
                 mLock.notify();
@@ -369,7 +371,7 @@ public class UsimPhoneBookManager extends Handler implements IccConstants {
             log("Loading USIM Email records done");
             ar = (AsyncResult) msg.obj;
             if (ar.exception == null) {
-                mEmailFileRecord = ((ArrayList<byte[]>)ar.result);
+                mEmailFileRecord.addAll((ArrayList<byte[]>)ar.result);
             }
 
             synchronized (mLock) {
@@ -448,6 +450,6 @@ public class UsimPhoneBookManager extends Handler implements IccConstants {
     }
 
     private void log(String msg) {
-        if(DBG) Log.d(LOG_TAG, msg);
+        if(DBG) Rlog.d(LOG_TAG, msg);
     }
 }

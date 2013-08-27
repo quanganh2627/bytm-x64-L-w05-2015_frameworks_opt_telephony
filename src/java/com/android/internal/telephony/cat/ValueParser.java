@@ -17,8 +17,10 @@
 package com.android.internal.telephony.cat;
 
 import com.android.internal.telephony.GsmAlphabet;
-import com.android.internal.telephony.IccUtils;
+import com.android.internal.telephony.cat.BearerDescription.BearerType;
 import com.android.internal.telephony.cat.Duration.TimeUnit;
+import com.android.internal.telephony.cat.InterfaceTransportLevel.TransportProtocol;
+import com.android.internal.telephony.uicc.IccUtils;
 
 import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
@@ -29,7 +31,7 @@ abstract class ValueParser {
     /**
      * Search for a Command Details object from a list.
      *
-     * @param ctlvs List of ComprehensionTlv objects used for search
+     * @param ctlv List of ComprehensionTlv objects used for search
      * @return An CtlvCommandDetails object found from the objects. If no
      *         Command Details object is found, ResultException is thrown.
      * @throws ResultException
@@ -54,7 +56,7 @@ abstract class ValueParser {
     /**
      * Search for a Device Identities object from a list.
      *
-     * @param ctlvs List of ComprehensionTlv objects used for search
+     * @param ctlv List of ComprehensionTlv objects used for search
      * @return An CtlvDeviceIdentities object found from the objects. If no
      *         Command Details object is found, ResultException is thrown.
      * @throws ResultException
@@ -149,6 +151,88 @@ abstract class ValueParser {
 
         return id;
     }
+
+    static int retrieveBufferSize(ComprehensionTlv ctlv) throws ResultException {
+        int sz = 0;
+
+        byte[] rawValue = ctlv.getRawValue();
+        int valueIndex = ctlv.getValueIndex();
+
+        try {
+            sz = (rawValue[valueIndex] & 0xff) << 8;
+            sz |= rawValue[valueIndex + 1] & 0xff;
+        } catch (IndexOutOfBoundsException e) {
+            throw new ResultException(ResultCode.CMD_DATA_NOT_UNDERSTOOD);
+        }
+
+       return sz;
+    }
+
+    static InterfaceTransportLevel retrieveInterfaceTransportLevel(ComprehensionTlv ctlv)
+            throws ResultException {
+        int port = 0;
+        TransportProtocol protocol = TransportProtocol.TCP_SERVER;
+
+        byte[] rawValue = ctlv.getRawValue();
+        int valueIndex = ctlv.getValueIndex();
+
+        try {
+            protocol = TransportProtocol.values()[(rawValue[valueIndex] & 0xff)];
+            port = (rawValue[valueIndex + 1] & 0xff) << 8;
+            port |= rawValue[valueIndex + 2] & 0xff;
+        } catch (IndexOutOfBoundsException e) {
+            throw new ResultException(ResultCode.CMD_DATA_NOT_UNDERSTOOD);
+        }
+        return new InterfaceTransportLevel(port, protocol);
+    }
+
+    static int retrieveChannelDataLength(ComprehensionTlv ctlv) throws ResultException {
+        int len = 0;
+        byte[] rawValue = ctlv.getRawValue();
+        int valueIndex = ctlv.getValueIndex();
+
+        try {
+            len = rawValue[valueIndex] & 0xff;
+        } catch (IndexOutOfBoundsException e) {
+            throw new ResultException(ResultCode.CMD_DATA_NOT_UNDERSTOOD);
+        }
+
+        return len;
+    }
+
+    static byte[] retrieveChannelData(ComprehensionTlv ctlv) throws ResultException {
+        byte[] rawValue = ctlv.getRawValue();
+        int valueIndex = ctlv.getValueIndex();
+
+        byte[] data = new byte[ctlv.getLength()];
+        System.arraycopy(rawValue, valueIndex, data, 0, data.length);
+        return data;
+    }
+
+    static byte[] retrieveOtherAddress(ComprehensionTlv ctlv) throws ResultException {
+        int addrType;
+
+        byte[] rawValue = ctlv.getRawValue();
+        int valueIndex = ctlv.getValueIndex();
+
+        try {
+            addrType = rawValue[valueIndex];
+        } catch (IndexOutOfBoundsException e) {
+            throw new ResultException(ResultCode.CMD_DATA_NOT_UNDERSTOOD);
+        }
+
+        if (!(addrType == 0x21 || addrType == 0x57))
+           throw new ResultException(ResultCode.CMD_DATA_NOT_UNDERSTOOD);
+
+        if ((addrType == 0x21 && ctlv.getLength() != 5) ||
+            (addrType == 0x57 && ctlv.getLength() != 17))
+            throw new ResultException(ResultCode.CMD_DATA_NOT_UNDERSTOOD);
+
+        byte[] addr = new byte[ctlv.getLength() - 1];
+        System.arraycopy(rawValue, valueIndex + 1, addr, 0, addr.length);
+        return addr;
+    }
+
 
     /**
      * Retrieves icon id from an Icon Identifier COMPREHENSION-TLV object
@@ -285,7 +369,7 @@ abstract class ValueParser {
                     throw new ResultException(ResultCode.CMD_DATA_NOT_UNDERSTOOD);
                 }
             } else {
-                return CatService.STK_DEFAULT;
+                return null;
             }
         } else {
             return CatService.STK_DEFAULT;
@@ -337,5 +421,79 @@ abstract class ValueParser {
             // This should never happen.
             throw new ResultException(ResultCode.CMD_DATA_NOT_UNDERSTOOD);
         }
+    }
+
+
+    /**
+     * Retrieves network access name from the Network Access Name
+     * COMPREHENSION-TLV object, and decodes it into a Java String.
+     *
+     * @param ctlv A Network Access Name COMPREHENSION-TLV object
+     * @return A Java String object decoded from the Text object
+     * @throws ResultException
+     */
+    static String retrieveNetworkAccessName(ComprehensionTlv ctlv) throws ResultException {
+        byte[] rawValue = ctlv.getRawValue();
+        int valueIndex = ctlv.getValueIndex();
+        String label;
+        byte labelLen = 0;
+        String networkAccessName = null;
+        int len = valueIndex + ctlv.getLength();
+
+       try {
+            while (valueIndex < len) {
+                labelLen = rawValue[valueIndex];
+                if (labelLen > 0) {
+                    label = GsmAlphabet.gsm8BitUnpackedToString(
+                            rawValue, valueIndex + 1, labelLen);
+                    valueIndex += labelLen + 1;
+                } else {
+                    return networkAccessName;
+                }
+
+                if (networkAccessName == null) {
+                    networkAccessName = label;
+                } else {
+                   networkAccessName += "." + label;
+                }
+            }
+            return networkAccessName;
+        } catch (IndexOutOfBoundsException e) {
+            throw new ResultException(ResultCode.CMD_DATA_NOT_UNDERSTOOD);
+        }
+    }
+
+    /**
+     * Retrieves bearer description from the Bearer Description
+     * COMPREHENSION-TLV object, and decodes it into a BearerDescription.
+     *
+     * @param ctlv A Bearer Description COMPREHENSION-TLV object
+     * @return BearerDescription decoded from the Bearer Description TLV
+     * @throws ResultException
+     */
+    static BearerDescription retrieveBearerDescription(ComprehensionTlv ctlv)
+            throws ResultException {
+        BearerType type = null;
+
+        byte[] rawValue = ctlv.getRawValue();
+        int valueIndex = ctlv.getValueIndex();
+
+        try {
+            for (BearerType bt : BearerType.values()) {
+                if (bt.value() == rawValue[valueIndex]) {
+                    type = bt;
+                    break;
+                }
+            }
+            if (type == null) {
+                throw new ResultException(ResultCode.CMD_DATA_NOT_UNDERSTOOD);
+            }
+        } catch (IndexOutOfBoundsException e) {
+            throw new ResultException(ResultCode.CMD_DATA_NOT_UNDERSTOOD);
+        }
+
+        byte[] parameters = new byte[ctlv.getLength() - 1];
+        System.arraycopy(rawValue, valueIndex + 1, parameters, 0, parameters.length);
+        return new BearerDescription(type, parameters);
     }
 }

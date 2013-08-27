@@ -44,7 +44,7 @@ public class Menu implements Parcelable {
         items = new ArrayList<Item>();
         title = null;
         titleAttrs = null;
-        defaultItem = 0;
+        defaultItem = -1;
         softKeyPreferred = false;
         helpAvailable = false;
         titleIconSelfExplanatory = false;
@@ -72,10 +72,12 @@ public class Menu implements Parcelable {
         presentationType = PresentationType.values()[in.readInt()];
     }
 
+    @Override
     public int describeContents() {
         return 0;
     }
 
+    @Override
     public void writeToParcel(Parcel dest, int flags) {
         dest.writeString(title);
         dest.writeParcelable(titleIcon, flags);
@@ -94,10 +96,12 @@ public class Menu implements Parcelable {
     }
 
     public static final Parcelable.Creator<Menu> CREATOR = new Parcelable.Creator<Menu>() {
+        @Override
         public Menu createFromParcel(Parcel in) {
             return new Menu(in);
         }
 
+        @Override
         public Menu[] newArray(int size) {
             return new Menu[size];
         }

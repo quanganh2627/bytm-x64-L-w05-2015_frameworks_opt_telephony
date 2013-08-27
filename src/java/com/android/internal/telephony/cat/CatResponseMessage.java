@@ -17,38 +17,62 @@
 package com.android.internal.telephony.cat;
 
 public class CatResponseMessage {
-        CommandDetails cmdDet = null;
-        ResultCode resCode  = ResultCode.OK;
-        int usersMenuSelection = 0;
-        String usersInput  = null;
-        boolean usersYesNoSelection = false;
-        boolean usersConfirm = false;
+        CommandDetails mCmdDet = null;
+        ResultCode mResCode  = ResultCode.OK;
+        int mUsersMenuSelection = 0;
+        String mUsersInput  = null;
+        boolean mUsersYesNoSelection = false;
+        boolean mUsersConfirm = false;
+        boolean mIncludeAdditionalInfo = false;
+        int mAdditionalInfo = 0;
+        String mEnvelopeCmd;
+        byte[] mChannelData;
+        int mChannelDataLength;
+        int[] mChannelStatus;
+
+        public CatResponseMessage(String envCmd) {
+            this.mEnvelopeCmd = envCmd;
+        }
 
         public CatResponseMessage(CatCmdMessage cmdMsg) {
-            this.cmdDet = cmdMsg.mCmdDet;
+            mCmdDet = cmdMsg.mCmdDet;
         }
 
         public void setResultCode(ResultCode resCode) {
-            this.resCode = resCode;
+            mResCode = resCode;
         }
 
         public void setMenuSelection(int selection) {
-            this.usersMenuSelection = selection;
+            mUsersMenuSelection = selection;
         }
 
         public void setInput(String input) {
-            this.usersInput = input;
+            mUsersInput = input;
         }
 
         public void setYesNo(boolean yesNo) {
-            usersYesNoSelection = yesNo;
+            mUsersYesNoSelection = yesNo;
         }
 
         public void setConfirmation(boolean confirm) {
-            usersConfirm = confirm;
+            mUsersConfirm = confirm;
+        }
+
+        public void setChannelData(byte[] data, int len) {
+            this.mChannelData = data;
+            this.mChannelDataLength = len;
+        }
+
+        public void setChannelStatus(int[] status) {
+            this.mChannelStatus = status;
+        }
+
+        public void setAdditionalInfo(int info) {
+            mIncludeAdditionalInfo = true;
+            mAdditionalInfo = info;
         }
 
         CommandDetails getCmdDetails() {
-            return cmdDet;
+            return mCmdDet;
         }
     }

@@ -18,13 +18,13 @@ package com.android.internal.telephony;
 
 import com.android.internal.telephony.RILConstants;
 
-import android.util.Log;
+import android.telephony.Rlog;
 
 /**
  * {@hide}
  */
 public class CommandException extends RuntimeException {
-    private Error e;
+    private Error mError;
 
     public enum Error {
         INVALID_RESPONSE,
@@ -42,11 +42,15 @@ public class CommandException extends RuntimeException {
         MODE_NOT_SUPPORTED,
         FDN_CHECK_FAILURE,
         ILLEGAL_SIM_OR_ME,
+        NETWORK_PUK_REQUIRED,
+        MISSING_RESOURCE,
+        NO_SUCH_ELEMENT,
+        INVALID_PARAMETER,
     }
 
     public CommandException(Error e) {
         super(e.toString());
-        this.e = e;
+        mError = e;
     }
 
     public static CommandException
@@ -83,14 +87,22 @@ public class CommandException extends RuntimeException {
                 return new CommandException(Error.FDN_CHECK_FAILURE);
             case RILConstants.ILLEGAL_SIM_OR_ME:
                 return new CommandException(Error.ILLEGAL_SIM_OR_ME);
+            case RILConstants.NETWORK_PUK_REQUIRED:
+                return new CommandException(Error.NETWORK_PUK_REQUIRED);
+            case RILConstants.MISSING_RESOURCE:
+                return new CommandException(Error.MISSING_RESOURCE);
+            case RILConstants.NO_SUCH_ELEMENT:
+                return new CommandException(Error.NO_SUCH_ELEMENT);
+            case RILConstants.INVALID_PARAMETER:
+                return new CommandException(Error.INVALID_PARAMETER);
             default:
-                Log.e("GSM", "Unrecognized RIL errno " + ril_errno);
+                Rlog.e("GSM", "Unrecognized RIL errno " + ril_errno);
                 return new CommandException(Error.INVALID_RESPONSE);
         }
     }
 
     public Error getCommandError() {
-        return e;
+        return mError;
     }
 
 

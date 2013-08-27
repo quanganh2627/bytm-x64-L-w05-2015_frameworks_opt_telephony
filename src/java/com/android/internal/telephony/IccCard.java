@@ -20,6 +20,9 @@ import android.os.Handler;
 import android.os.Message;
 
 import com.android.internal.telephony.IccCardConstants.State;
+import com.android.internal.telephony.uicc.IccCardApplicationStatus;
+import com.android.internal.telephony.uicc.IccFileHandler;
+import com.android.internal.telephony.uicc.IccRecords;
 
 /**
  * {@hide}
@@ -62,6 +65,12 @@ public interface IccCard {
      */
     public void registerForNetworkLocked(Handler h, int what, Object obj);
     public void unregisterForNetworkLocked(Handler h);
+
+    /**
+     * Notifies handler of any transition into IccCardConstants.State.NETWORK_LOCKED_PUK
+     */
+    public void registerForNetworkLockedPuk(Handler h, int what, Object obj);
+    public void unregisterForNetworkLockedPuk(Handler h);
 
     /**
      * Notifies handler of any transition into IccCardConstants.State.isPinLocked()
@@ -211,4 +220,11 @@ public interface IccCard {
      * @return true if a ICC card is present
      */
     public boolean hasIccCard();
+
+    public void exchangeAPDU(int cla, int command, int channel, int p1, int p2,
+            int p3, String data, Message onComplete);
+    public void openLogicalChannel(String aid, Message onComplete);
+    public void closeLogicalChannel(int channel, Message onComplete);
+    public void exchangeSimIO(int fileID, int command,
+            int p1, int p2, int p3, String pathID, Message onComplete);
 }
