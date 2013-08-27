@@ -221,14 +221,8 @@ public class SIMRecords extends IccRecords {
         iccid = null;
         // -1 means no EF_SPN found; treat accordingly.
         spnDisplayCondition = -1;
-        spn = null;
         efMWIS = null;
         efCPHS_MWI = null;
-        setVoiceMessageWaiting(1, 0);
-        mEfCfis = null;
-        mEfCff = null;
-        setVoiceCallForwardingFlag(1, false);
-
         spdiNetworks = null;
         pnnHomeName = null;
 
@@ -864,9 +858,6 @@ public class SIMRecords extends IccRecords {
                         MccTable.updateMccMncConfiguration(mContext,
                                 mImsi.substring(0, 3 + mncLength));
                     }
-
-                    mCi.getIMSIForApp(mParentApp.getAid(), obtainMessage(EVENT_GET_IMSI_DONE));
-                    recordsToLoad++;
                 }
             break;
 
@@ -1333,7 +1324,7 @@ public class SIMRecords extends IccRecords {
 
         if (DBG) log("fetchSimRecords " + recordsToLoad);
 
-        mFh.loadEFTransparent(EF_AD, obtainMessage(EVENT_GET_AD_DONE));
+        mCi.getIMSIForApp(mParentApp.getAid(), obtainMessage(EVENT_GET_IMSI_DONE));
         recordsToLoad++;
 
         mFh.loadEFTransparent(EF_ICCID, obtainMessage(EVENT_GET_ICCID_DONE));
@@ -1347,6 +1338,9 @@ public class SIMRecords extends IccRecords {
 
         // Record number is subscriber profile
         mFh.loadEFLinearFixed(EF_MBI, 1, obtainMessage(EVENT_GET_MBI_DONE));
+        recordsToLoad++;
+
+        mFh.loadEFTransparent(EF_AD, obtainMessage(EVENT_GET_AD_DONE));
         recordsToLoad++;
 
         // Record number is subscriber profile

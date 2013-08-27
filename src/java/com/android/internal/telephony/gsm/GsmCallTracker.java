@@ -16,17 +16,12 @@
 
 package com.android.internal.telephony.gsm;
 
-import static android.Manifest.permission.READ_PHONE_STATE;
-
-import android.app.ActivityManagerNative;
-import android.content.Intent;
 import android.os.AsyncResult;
 import android.os.Handler;
 import android.os.Message;
 import android.os.Registrant;
 import android.os.RegistrantList;
 import android.os.SystemProperties;
-import android.os.UserHandle;
 import android.telephony.PhoneNumberUtils;
 import android.telephony.ServiceState;
 import android.telephony.TelephonyManager;
@@ -42,7 +37,6 @@ import com.android.internal.telephony.DriverCall;
 import com.android.internal.telephony.EventLogTags;
 import com.android.internal.telephony.Phone;
 import com.android.internal.telephony.PhoneConstants;
-import com.android.internal.telephony.TelephonyIntents;
 import com.android.internal.telephony.TelephonyProperties;
 import com.android.internal.telephony.UUSInfo;
 import com.android.internal.telephony.gsm.CallFailCause;
@@ -70,8 +64,6 @@ public final class GsmCallTracker extends CallTracker {
     static final int MAX_CONNECTIONS_PER_CALL = 5; // only 5 connections allowed per call
 
     //***** Instance Variables
-    // Call status polling enabled flag.
-    private boolean mUsePollingForCallStatus = true;
     GsmConnection connections[] = new GsmConnection[MAX_CONNECTIONS];
     RegistrantList voiceCallEndedRegistrants = new RegistrantList();
     RegistrantList voiceCallStartedRegistrants = new RegistrantList();
@@ -110,8 +102,6 @@ public final class GsmCallTracker extends CallTracker {
 
         cm.registerForOn(this, EVENT_RADIO_AVAILABLE, null);
         cm.registerForNotAvailable(this, EVENT_RADIO_NOT_AVAILABLE, null);
-        mUsePollingForCallStatus = phone.getContext().getResources().getBoolean(
-                com.android.internal.R.bool.gsm_call_status_polling_enable);
     }
 
     public void dispose() {
@@ -163,17 +153,17 @@ public final class GsmCallTracker extends CallTracker {
     }
 
     private void
-    fakeHoldForegroundBeforeDialOrAccept() {
+    fakeHoldForegroundBeforeDial() {
         List<Connection> connCopy;
 
-        // We need to make a copy here, since fakeHoldBeforeDialOrAccept()
+        // We need to make a copy here, since fakeHoldBeforeDial()
         // modifies the lists, and we don't want to reverse the order
         connCopy = (List<Connection>) foregroundCall.connections.clone();
 
         for (int i = 0, s = connCopy.size() ; i < s ; i++) {
             GsmConnection conn = (GsmConnection)connCopy.get(i);
 
-            conn.fakeHoldBeforeDialOrAccept();
+            conn.fakeHoldBeforeDial();
         }
     }
 
@@ -203,7 +193,7 @@ public final class GsmCallTracker extends CallTracker {
             // a) foregroundCall is empty for the newly dialed connection
             // b) hasNonHangupStateChanged remains false in the
             // next poll, so that we don't clear a failed dialing call
-            fakeHoldForegroundBeforeDialOrAccept();
+            fakeHoldForegroundBeforeDial();
         }
 
         if (foregroundCall.getState() != GsmCall.State.IDLE) {
@@ -265,8 +255,6 @@ public final class GsmCallTracker extends CallTracker {
             cm.acceptCall(obtainCompleteMessage());
         } else if (ringingCall.getState() == GsmCall.State.WAITING) {
             setMute(false);
-
-            fakeHoldForegroundBeforeDialOrAccept();
             switchWaitingOrHoldingAndActive();
         } else {
             throw new CallStateException("phone not ringing");
@@ -279,8 +267,6 @@ public final class GsmCallTracker extends CallTracker {
         // so if the phone isn't ringing, this could hang up held
         if (ringingCall.getState().isRinging()) {
             cm.rejectCall(obtainCompleteMessage());
-            ringingCall.onHangupLocal();
-            phone.notifyPreciseCallStateChanged();
         } else {
             throw new CallStateException("phone not ringing");
         }
@@ -371,13 +357,12 @@ public final class GsmCallTracker extends CallTracker {
     private Message
     obtainCompleteMessage(int what) {
         pendingOperations++;
-        if (mUsePollingForCallStatus) {
-            lastRelevantPoll = null;
-            needsPoll = true;
+        lastRelevantPoll = null;
+        needsPoll = true;
 
-            if (DBG_POLL) log("obtainCompleteMessage: pendingOperations=" +
-                    pendingOperations + ", needsPoll=" + needsPoll);
-        }
+        if (DBG_POLL) log("obtainCompleteMessage: pendingOperations=" +
+                pendingOperations + ", needsPoll=" + needsPoll);
+
         return obtainMessage(what);
     }
 
@@ -398,60 +383,6 @@ public final class GsmCallTracker extends CallTracker {
         }
     }
 
-    private boolean
-    isEmergencyCall(GsmConnection c) {
-        if (c == null) {
-            return false;
-        }
-
-        String number = c.getAddress();
-        if (number != null && c.getState().isAlive()
-                && PhoneNumberUtils.isLocalEmergencyNumber(number, phone.getContext())) {
-            return true;
-        }
-
-        return false;
-    }
-
-    private void
-    checkAndBroadcastEmergencyCallStarted() {
-        boolean emergencyCall;
-
-        if (pendingMO != null) {
-            emergencyCall = isEmergencyCall(pendingMO);
-        } else if (ringingCall.isRinging()) {
-            emergencyCall =
-                    isEmergencyCall((GsmConnection)ringingCall.getLatestConnection());
-        } else {
-            emergencyCall = false;
-        }
-
-        if (emergencyCall) {
-            phone.setEmergencyCallOngoing(true);
-
-            Intent intent = new Intent(TelephonyIntents.ACTION_EMERGENCY_CALL_STATUS_CHANGED);
-            if (intent != null) {
-                intent.putExtra(PhoneConstants.EMERGENCY_CALL_STATUS_KEY, true);
-                ActivityManagerNative.broadcastStickyIntent(
-                        intent, READ_PHONE_STATE, UserHandle.myUserId());
-            }
-        }
-    }
-
-    private void
-    checkAndBroadcastEmergencyCallEnded() {
-        if (phone.isEmergencyCallOngoing()) {
-            phone.setEmergencyCallOngoing(false);
-
-            Intent intent = new Intent(TelephonyIntents.ACTION_EMERGENCY_CALL_STATUS_CHANGED);
-            if (intent != null) {
-                intent.putExtra(PhoneConstants.EMERGENCY_CALL_STATUS_KEY, false);
-                ActivityManagerNative.broadcastStickyIntent(
-                        intent, READ_PHONE_STATE, UserHandle.myUserId());
-            }
-        }
-    }
-
     private void
     updatePhoneState() {
         PhoneConstants.State oldState = state;
@@ -468,11 +399,9 @@ public final class GsmCallTracker extends CallTracker {
         if (state == PhoneConstants.State.IDLE && oldState != state) {
             voiceCallEndedRegistrants.notifyRegistrants(
                 new AsyncResult(null, null, null));
-            checkAndBroadcastEmergencyCallEnded();
         } else if (oldState == PhoneConstants.State.IDLE && oldState != state) {
             voiceCallStartedRegistrants.notifyRegistrants (
                     new AsyncResult(null, null, null));
-            checkAndBroadcastEmergencyCallStarted();
         }
 
         if (state != oldState) {
@@ -786,10 +715,8 @@ public final class GsmCallTracker extends CallTracker {
 
     /*package*/ void
     setMute(boolean mute) {
-        if (desiredMute != mute && foregroundCall.getState().isAlive()) {
-            desiredMute = mute;
-            cm.setMute(desiredMute, null);
-        }
+        desiredMute = mute;
+        cm.setMute(desiredMute, null);
     }
 
     /*package*/ boolean
@@ -815,8 +742,6 @@ public final class GsmCallTracker extends CallTracker {
                     log("(foregnd) hangup dialing or alerting...");
                 }
                 hangup((GsmConnection)(call.getConnections().get(0)));
-            } else if (backgroundCall.isIdle()) {
-                hangupAllConnections(call);
             } else {
                 hangupForegroundResumeBackground();
             }
@@ -925,9 +850,6 @@ public final class GsmCallTracker extends CallTracker {
 
             case EVENT_OPERATION_COMPLETE:
                 ar = (AsyncResult)msg.obj;
-                if (ar.exception != null) {
-                    needsPoll = true;
-                }
                 operationComplete();
             break;
 
@@ -938,7 +860,6 @@ public final class GsmCallTracker extends CallTracker {
                 ar = (AsyncResult)msg.obj;
                 if (ar.exception != null) {
                     phone.notifySuppServiceFailed(getFailedService(msg.what));
-                    needsPoll = true;
                 }
                 operationComplete();
             break;

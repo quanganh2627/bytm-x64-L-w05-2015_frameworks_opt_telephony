@@ -83,7 +83,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * {@hide}
  */
-public class GsmDataConnectionTracker extends DataConnectionTracker {
+public final class GsmDataConnectionTracker extends DataConnectionTracker {
     protected final String LOG_TAG = "GSM";
 
     /**
@@ -328,12 +328,6 @@ public class GsmDataConnectionTracker extends DataConnectionTracker {
                 break;
             case ConnectivityManager.TYPE_MOBILE_CBS:
                 apnContext = addApnContext(PhoneConstants.APN_TYPE_CBS);
-                break;
-            case ConnectivityManager.TYPE_MOBILE_BIP_GPRS1:
-                apnContext = addApnContext(PhoneConstants.APN_TYPE_BIP_GPRS1);
-                break;
-            case ConnectivityManager.TYPE_MOBILE_BIP_GPRS2:
-                apnContext = addApnContext(PhoneConstants.APN_TYPE_BIP_GPRS2);
                 break;
             default:
                 // skip unknown types
@@ -605,21 +599,6 @@ public class GsmDataConnectionTracker extends DataConnectionTracker {
     private void onDataConnectionAttached() {
         if (DBG) log("onDataConnectionAttached");
         if (getOverallState() == DctConstants.State.CONNECTED) {
-            if (!getAnyDataEnabled()) {
-                /*
-                 * If the user disables "Data enabled" in out of service state,
-                 * data deactivation request is ignored due to device out of
-                 * service. When the device gets back to registered state,
-                 * browsing is allowed even when the data is disabled by user.
-                 * Check the data enabled state and cleanup all connection if data
-                 * is disabled. ATTACHED state is notified as this may be needed
-                 * to update UI.
-                 */
-                onCleanUpAllConnections(Phone.REASON_DATA_DISABLED);
-                notifyDataConnection(Phone.REASON_DATA_ATTACHED);
-                return;
-            }
-
             if (DBG) log("onDataConnectionAttached: start polling notify attached");
             startNetStatPoll();
             startDataStallAlarm(DATA_STALL_NOT_SUSPECTED);
@@ -628,7 +607,7 @@ public class GsmDataConnectionTracker extends DataConnectionTracker {
             // update APN availability so that APN can be enabled.
             notifyOffApnsOfAvailability(Phone.REASON_DATA_ATTACHED);
         }
-
+        mAutoAttachOnCreation = true;
         setupDataOnReadyApns(Phone.REASON_DATA_ATTACHED);
     }
 
@@ -1006,9 +985,6 @@ public class GsmDataConnectionTracker extends DataConnectionTracker {
                         cursor.getInt(cursor.getColumnIndexOrThrow(Telephony.Carriers.BEARER)));
                 result.add(apn);
             } while (cursor.moveToNext());
-        }
-        if (cursor != null) {
-            cursor.close();
         }
         if (DBG) log("createApnList: X result=" + result);
         return result;
@@ -1388,12 +1364,6 @@ public class GsmDataConnectionTracker extends DataConnectionTracker {
         if (DBG) log("onDataStateChange(ar): apnsToCleanup=" + apnsToCleanup);
         for (ApnContext apnContext : apnsToCleanup) {
             cleanUpConnection(true, apnContext);
-        }
-
-        if (dataCallStates.size() == 0) {
-            if (DBG) log("onDataStateChange(ar): NoData calls Stop stall alarm");
-            stopNetStatPoll();
-            stopDataStallAlarm();
         }
 
         if (DBG) log("onDataStateChanged(ar): X");
@@ -1949,8 +1919,8 @@ public class GsmDataConnectionTracker extends DataConnectionTracker {
             }
         }
 
-        // If data is still enabled and allowed, try to bring it back up automatically
-        if (isDataAllowed(apnContext) && retryAfterDisconnected(apnContext.getReason())) {
+        // If APN is still enabled, try to bring it back up automatically
+        if (apnContext.isReady() && retryAfterDisconnected(apnContext.getReason())) {
             SystemProperties.set("gsm.defaultpdpcontext.active", "false");  // TODO - what the heck?  This shoudld go
             // Wait a bit before trying the next APN, so that
             // we're not tying up the RIL command channel.
@@ -1986,11 +1956,6 @@ public class GsmDataConnectionTracker extends DataConnectionTracker {
     protected void onVoiceCallEnded() {
         if (DBG) log("onVoiceCallEnded");
         if (isConnected()) {
-            if (!getAnyDataEnabled()) {
-                 onCleanUpAllConnections(Phone.REASON_DATA_DISABLED);
-                return;
-            }
-
             if (!mPhone.getServiceStateTracker().isConcurrentVoiceAndDataAllowed()) {
                 startNetStatPoll();
                 startDataStallAlarm(DATA_STALL_NOT_SUSPECTED);
@@ -2403,14 +2368,6 @@ public class GsmDataConnectionTracker extends DataConnectionTracker {
             return RILConstants.DATA_PROFILE_FOTA;
         } else if (TextUtils.equals(apnType, PhoneConstants.APN_TYPE_CBS)) {
             return RILConstants.DATA_PROFILE_CBS;
-        } else if (TextUtils.equals(apnType, PhoneConstants.APN_TYPE_MMS)) {
-            return RILConstants.DATA_PROFILE_MMS;
-        } else if (TextUtils.equals(apnType, PhoneConstants.APN_TYPE_DUN)) {
-            return RILConstants.DATA_PROFILE_TETHERED;
-        } else if (TextUtils.equals(apnType, PhoneConstants.APN_TYPE_SUPL)) {
-            return RILConstants.DATA_PROFILE_SUPL;
-        } else if (TextUtils.equals(apnType, PhoneConstants.APN_TYPE_HIPRI)) {
-            return RILConstants.DATA_PROFILE_HIPRI;
         } else {
             return RILConstants.DATA_PROFILE_DEFAULT;
         }
@@ -2452,28 +2409,6 @@ public class GsmDataConnectionTracker extends DataConnectionTracker {
                         this, DctConstants.EVENT_RECORDS_LOADED, null);
             }
         }
-    }
-
-    public void onDataSuspended() {
-        if (DBG) log("onDataSuspended");
-        if (isConnected()) {
-            if (DBG) log("onDataSuspended stop polling");
-            stopNetStatPoll();
-            stopDataStallAlarm();
-            notifyDataConnection(null);
-        }
-
-        notifyOffApnsOfAvailability(null);
-    }
-
-    public void onDataResumed() {
-        if (DBG) log("onDataResumed");
-        if (isConnected()) {
-            startNetStatPoll();
-            startDataStallAlarm(DATA_STALL_NOT_SUSPECTED);
-            notifyDataConnection(null);
-        }
-        notifyOffApnsOfAvailability(null);
     }
 
     @Override

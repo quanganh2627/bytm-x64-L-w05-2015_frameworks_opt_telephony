@@ -49,7 +49,6 @@ import com.android.internal.telephony.cdma.CDMAPhone;
 import com.android.internal.telephony.cdma.CdmaSubscriptionSourceManager;
 import com.android.internal.telephony.cdma.RuimFileHandler;
 import com.android.internal.telephony.cdma.RuimRecords;
-import com.android.internal.telephony.TelephonyProperties;
 
 import android.os.SystemProperties;
 
@@ -78,19 +77,12 @@ public class UiccCard {
 
     private RegistrantList mAbsentRegistrants = new RegistrantList();
 
-    private boolean mHotSwapSupported;
-
     private static final int EVENT_CARD_REMOVED = 13;
     private static final int EVENT_CARD_ADDED = 14;
 
     public UiccCard(Context c, CommandsInterface ci, IccCardStatus ics) {
         if (DBG) log("Creating");
         mCardState = ics.mCardState;
-
-        // This persistant property is read only during UiccCard Creation.
-        mHotSwapSupported = SystemProperties.getBoolean(
-                TelephonyProperties.PROPERTY_HOT_SWAP_SUPPORT, false);
-
         update(c, ci, ics);
     }
 
@@ -147,7 +139,9 @@ public class UiccCard {
                                                      mContext,
                                                      this);
             } else {
-                // Just set the member variable to null.
+                if (mCatService != null) {
+                    mCatService.dispose();
+                }
                 mCatService = null;
             }
 
@@ -290,14 +284,10 @@ public class UiccCard {
 
             switch (msg.what) {
                 case EVENT_CARD_REMOVED:
-                    if (!mHotSwapSupported) {
-                        onIccSwap(false);
-                    }
+                    onIccSwap(false);
                     break;
                 case EVENT_CARD_ADDED:
-                    if (!mHotSwapSupported) {
-                        onIccSwap(true);
-                    }
+                    onIccSwap(true);
                     break;
                 default:
                     loge("Unknown Event " + msg.what);

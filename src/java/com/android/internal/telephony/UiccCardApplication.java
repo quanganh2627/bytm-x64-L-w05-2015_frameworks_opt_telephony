@@ -72,7 +72,6 @@ public class UiccCardApplication {
     private RegistrantList mReadyRegistrants = new RegistrantList();
     private RegistrantList mPinLockedRegistrants = new RegistrantList();
     private RegistrantList mNetworkLockedRegistrants = new RegistrantList();
-    private RegistrantList mNetworkLockedPukRegistrants = new RegistrantList();
 
     UiccCardApplication(UiccCard uiccCard,
                         IccCardApplicationStatus as,
@@ -129,12 +128,9 @@ public class UiccCardApplication {
                 mIccRecords = createIccRecords(as.app_type, c, ci);
             }
 
-            if (mPersoSubState != oldPersoSubState ) {
-                if (mPersoSubState == PersoSubState.PERSOSUBSTATE_SIM_NETWORK) {
-                    notifyNetworkLockedRegistrantsIfNeeded(null);
-                } else if (mPersoSubState == PersoSubState.PERSOSUBSTATE_SIM_NETWORK_PUK) {
-                    notifyNetworkLockedPukRegistrantsIfNeeded(null);
-                }
+            if (mPersoSubState != oldPersoSubState &&
+                    mPersoSubState == PersoSubState.PERSOSUBSTATE_SIM_NETWORK) {
+                notifyNetworkLockedRegistrantsIfNeeded(null);
             }
 
             if (mAppState != oldAppState) {
@@ -394,23 +390,6 @@ public class UiccCardApplication {
     }
 
     /**
-     * Notifies handler of any transition into State.NETWORK_LOCKED_PUK
-     */
-    public void registerForNetworkLockedPuk(Handler h, int what, Object obj) {
-        synchronized (mLock) {
-            Registrant r = new Registrant (h, what, obj);
-            mNetworkLockedPukRegistrants.add(r);
-            notifyNetworkLockedPukRegistrantsIfNeeded(r);
-        }
-    }
-
-    public void unregisterForNetworkLockedPuk(Handler h) {
-        synchronized (mLock) {
-            mNetworkLockedPukRegistrants.remove(h);
-        }
-    }
-
-    /**
      * Notifies specified registrant, assume mLock is held.
      *
      * @param r Registrant to be notified. If null - all registrants will be notified
@@ -432,28 +411,6 @@ public class UiccCardApplication {
                 mReadyRegistrants.notifyRegistrants();
             } else {
                 if (DBG) log("Notifying 1 registrant: READY");
-                r.notifyRegistrant(new AsyncResult(null, null, null));
-            }
-        }
-    }
-
-    /**
-     * Notifies specified registrant, assume mLock is held.
-     *
-     * @param r Registrant to be notified. If null - all registrants will be notified
-    */
-    private void notifyNetworkLockedPukRegistrantsIfNeeded(Registrant r) {
-        if (mDestroyed) {
-            return;
-        }
-
-        if (mAppState == AppState.APPSTATE_SUBSCRIPTION_PERSO &&
-                mPersoSubState == PersoSubState.PERSOSUBSTATE_SIM_NETWORK_PUK) {
-            if (r == null) {
-                if (DBG) log("Notifying registrants: NETWORK_LOCKED_PUK");
-                mNetworkLockedPukRegistrants.notifyRegistrants();
-            } else {
-                if (DBG) log("Notifying 1 registrant: NETWORK_LOCKED_PUK");
                 r.notifyRegistrant(new AsyncResult(null, null, null));
             }
         }

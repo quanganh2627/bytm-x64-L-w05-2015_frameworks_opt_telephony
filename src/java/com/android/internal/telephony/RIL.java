@@ -24,7 +24,6 @@ import static android.telephony.TelephonyManager.NETWORK_TYPE_UMTS;
 import static android.telephony.TelephonyManager.NETWORK_TYPE_HSDPA;
 import static android.telephony.TelephonyManager.NETWORK_TYPE_HSUPA;
 import static android.telephony.TelephonyManager.NETWORK_TYPE_HSPA;
-import static android.telephony.TelephonyManager.NETWORK_TYPE_HSPAP;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -33,7 +32,6 @@ import android.content.IntentFilter;
 import android.net.ConnectivityManager;
 import android.net.LocalSocket;
 import android.net.LocalSocketAddress;
-import android.provider.Settings;
 import android.os.AsyncResult;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -1381,27 +1379,8 @@ public final class RIL extends BaseCommands implements CommandsInterface {
     setRadioPower(boolean on, Message result) {
         RILRequest rr = RILRequest.obtain(RIL_REQUEST_RADIO_POWER, result);
 
-        rr.mp.writeInt(2);
+        rr.mp.writeInt(1);
         rr.mp.writeInt(on ? 1 : 0);
-
-        int radioOffReason = RILConstants.RADIO_OFF_REASON_NONE;
-
-        if (!on) {
-            String rebootOrShutdownRequested =
-                    SystemProperties.get("sys.shutdown.requested", null);
-            if (rebootOrShutdownRequested != null
-                    && rebootOrShutdownRequested.length() > 0) {
-                char reason = rebootOrShutdownRequested.charAt(0);
-                if (reason == '0' || reason == '1') {
-                    radioOffReason = RILConstants.RADIO_OFF_REASON_SHUTDOWN;
-                }
-            } else if (Settings.Global.getInt(mContext.getContentResolver(),
-                    Settings.Global.AIRPLANE_MODE_ON, 0) != 0) {
-                radioOffReason = RILConstants.RADIO_OFF_REASON_AIRPLANE_MODE;
-            }
-        }
-
-        rr.mp.writeInt(radioOffReason);
 
         if (RILJ_LOGD) {
             riljLog(rr.serialString() + "> " + requestToString(rr.mRequest)
@@ -2067,10 +2046,10 @@ public final class RIL extends BaseCommands implements CommandsInterface {
     onRadioAvailable() {
         // In case screen state was lost (due to process crash),
         // this ensures that the RIL knows the correct screen state.
-       PowerManager pm = (PowerManager)mContext.getSystemService(Context.POWER_SERVICE);
-       if (pm != null) {
-           sendScreenState(pm.isScreenOn());
-       }
+
+        // TODO: Should query Power Manager and send the actual
+        // screen state.  Just send true for now.
+        sendScreenState(true);
    }
 
     private RadioState getRadioStateFromInt(int stateInt) {
@@ -2349,10 +2328,6 @@ public final class RIL extends BaseCommands implements CommandsInterface {
             case RIL_REQUEST_ACKNOWLEDGE_INCOMING_GSM_SMS_WITH_PDU: ret = responseVoid(p); break;
             case RIL_REQUEST_STK_SEND_ENVELOPE_WITH_STATUS: ret = responseICC_IO(p); break;
             case RIL_REQUEST_VOICE_RADIO_TECH: ret = responseInts(p); break;
-            case RIL_REQUEST_SIM_TRANSMIT_BASIC: ret =  responseICC_IO(p); break;
-            case RIL_REQUEST_SIM_OPEN_CHANNEL: ret  = responseInts(p); break;
-            case RIL_REQUEST_SIM_CLOSE_CHANNEL: ret  = responseVoid(p); break;
-            case RIL_REQUEST_SIM_TRANSMIT_CHANNEL: ret = responseICC_IO(p); break;
             default:
                 throw new RuntimeException("Unrecognized solicited response: " + rr.mRequest);
             //break;
@@ -2648,7 +2623,9 @@ public final class RIL extends BaseCommands implements CommandsInterface {
             break;
 
             case RIL_UNSOL_SIGNAL_STRENGTH:
-                if (RILJ_LOGD) unsljLogvRet(response, ret);
+                // Note this is set to "verbose" because it happens
+                // frequently
+                if (RILJ_LOGV) unsljLogvRet(response, ret);
 
                 if (mSignalStrengthRegistrant != null) {
                     mSignalStrengthRegistrant.notifyRegistrant(
@@ -3293,48 +3270,38 @@ public final class RIL extends BaseCommands implements CommandsInterface {
     responseCellList(Parcel p) {
        int num, rssi;
        String location;
-       int version;
        ArrayList<NeighboringCellInfo> response;
        NeighboringCellInfo cell;
+
        num = p.readInt();
-       version = p.readInt();
-       if (version == 1) {
-           response = new ArrayList<NeighboringCellInfo>();
-           // Determine the radio access type
-           String radioString = SystemProperties.get(
-                   TelephonyProperties.PROPERTY_DATA_NETWORK_TYPE, "unknown");
-           int radioType;
-           if (radioString.equals("GPRS")) {
-               radioType = NETWORK_TYPE_GPRS;
-           } else if (radioString.equals("EDGE")) {
-               radioType = NETWORK_TYPE_EDGE;
-           } else if (radioString.equals("UMTS")) {
-               radioType = NETWORK_TYPE_UMTS;
-           } else if (radioString.equals("HSDPA")) {
-               radioType = NETWORK_TYPE_HSDPA;
-           } else if (radioString.equals("HSUPA")) {
-               radioType = NETWORK_TYPE_HSUPA;
-           } else if (radioString.equals("HSPA")) {
-               radioType = NETWORK_TYPE_HSPA;
-           } else if (radioString.equals("HSPAP")) {
-               radioType = NETWORK_TYPE_HSPAP;
-           } else {
-               radioType = NETWORK_TYPE_UNKNOWN;
-           }
-           // Interpret the location based on radio access type
-           if (radioType != NETWORK_TYPE_UNKNOWN) {
-               for (int i = 0 ; i < num ; i++) {
-                   p.readInt(); // skip the version token
-                   rssi = p.readInt();
-                   location = p.readString();
-                   cell = new NeighboringCellInfo(rssi, location, radioType);
-                   response.add(cell);
-               }
-           }
-       } else { // Extended neighboring cell info with LTE support
-           response = new ArrayList<NeighboringCellInfo>(num);
+       response = new ArrayList<NeighboringCellInfo>();
+
+       // Determine the radio access type
+       String radioString = SystemProperties.get(
+               TelephonyProperties.PROPERTY_DATA_NETWORK_TYPE, "unknown");
+       int radioType;
+       if (radioString.equals("GPRS")) {
+           radioType = NETWORK_TYPE_GPRS;
+       } else if (radioString.equals("EDGE")) {
+           radioType = NETWORK_TYPE_EDGE;
+       } else if (radioString.equals("UMTS")) {
+           radioType = NETWORK_TYPE_UMTS;
+       } else if (radioString.equals("HSDPA")) {
+           radioType = NETWORK_TYPE_HSDPA;
+       } else if (radioString.equals("HSUPA")) {
+           radioType = NETWORK_TYPE_HSUPA;
+       } else if (radioString.equals("HSPA")) {
+           radioType = NETWORK_TYPE_HSPA;
+       } else {
+           radioType = NETWORK_TYPE_UNKNOWN;
+       }
+
+       // Interpret the location based on radio access type
+       if (radioType != NETWORK_TYPE_UNKNOWN) {
            for (int i = 0 ; i < num ; i++) {
-               cell = new NeighboringCellInfo(p);
+               rssi = p.readInt();
+               location = p.readString();
+               cell = new NeighboringCellInfo(rssi, location, radioType);
                response.add(cell);
            }
        }
@@ -3634,10 +3601,6 @@ public final class RIL extends BaseCommands implements CommandsInterface {
             case RIL_REQUEST_ACKNOWLEDGE_INCOMING_GSM_SMS_WITH_PDU: return "RIL_REQUEST_ACKNOWLEDGE_INCOMING_GSM_SMS_WITH_PDU";
             case RIL_REQUEST_STK_SEND_ENVELOPE_WITH_STATUS: return "RIL_REQUEST_STK_SEND_ENVELOPE_WITH_STATUS";
             case RIL_REQUEST_VOICE_RADIO_TECH: return "RIL_REQUEST_VOICE_RADIO_TECH";
-            case RIL_REQUEST_SIM_TRANSMIT_BASIC: return "SIM_TRANSMIT_BASIC";
-            case RIL_REQUEST_SIM_OPEN_CHANNEL: return "SIM_OPEN_CHANNEL";
-            case RIL_REQUEST_SIM_CLOSE_CHANNEL: return "SIM_CLOSE_CHANNEL";
-            case RIL_REQUEST_SIM_TRANSMIT_CHANNEL: return "SIM_TRANSMIT_CHANNEL";
             default: return "<unknown request>";
         }
     }
@@ -3922,66 +3885,5 @@ public final class RIL extends BaseCommands implements CommandsInterface {
         }
         pw.println(" mLastNITZTimeInfo=" + mLastNITZTimeInfo);
         pw.println(" mTestingEmergencyCall=" + mTestingEmergencyCall.get());
-    }
-
-    public void
-    iccExchangeAPDU(int cla, int command, int channel, int p1, int p2, int p3,
-            String data, Message result) {
-        RILRequest rr;
-        if (channel == 0) {
-            rr = RILRequest.obtain(RIL_REQUEST_SIM_TRANSMIT_BASIC, result);
-        } else {
-            rr = RILRequest.obtain(RIL_REQUEST_SIM_TRANSMIT_CHANNEL, result);
-        }
-
-        rr.mp.writeInt(cla);
-        rr.mp.writeInt(command);
-        rr.mp.writeInt(channel);
-        rr.mp.writeString(null);
-        rr.mp.writeInt(p1);
-        rr.mp.writeInt(p2);
-        rr.mp.writeInt(p3);
-        rr.mp.writeString(data);
-        rr.mp.writeString(null);
-
-        if (RILJ_LOGD) {
-            riljLog(rr.serialString() + "> iccExchangeAPDU: "
-                    + requestToString(rr.mRequest)
-                    + " 0x" + Integer.toHexString(cla)
-                    + " 0x" + Integer.toHexString(command)
-                    + " 0x" + Integer.toHexString(channel) + " "
-                    + p1 + "," + p2 + "," + p3);
-        }
-
-        send(rr);
-    }
-
-    public void
-    iccOpenChannel(String aid, Message result) {
-        RILRequest rr = RILRequest.obtain(RIL_REQUEST_SIM_OPEN_CHANNEL, result);
-
-        rr.mp.writeString(aid);
-
-        if (RILJ_LOGD) {
-            riljLog(rr.serialString() + "> iccOpenChannel: "
-                    + requestToString(rr.mRequest) + " " + aid);
-        }
-
-        send(rr);
-    }
-
-    public void
-    iccCloseChannel(int channel, Message result) {
-        RILRequest rr = RILRequest.obtain(RIL_REQUEST_SIM_CLOSE_CHANNEL, result);
-
-        rr.mp.writeInt(1);
-        rr.mp.writeInt(channel);
-
-        if (RILJ_LOGD) {
-            riljLog(rr.serialString() + "> iccCloseChannel: "
-                    + requestToString(rr.mRequest) + " " + channel);
-        }
-
-        send(rr);
     }
 }
