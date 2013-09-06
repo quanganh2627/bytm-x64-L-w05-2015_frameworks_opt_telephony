@@ -498,6 +498,79 @@ public final class GsmCallTracker extends CallTracker {
     }
 
     @Override
+    public void
+    onCallDisconnected(int callId) {
+        Message msg = obtainMessage(EVENT_CALL_DISCONNECTED, callId, 0);
+        this.sendMessage(msg);
+    }
+
+    private void
+    handleCallDisconnected(int callId) {
+        if (Phone.DEBUG_PHONE) {
+            log("handleCallDisconnected - CallId=" + callId);
+        }
+
+        for (int i = 0; i < mConnections.length; i++) {
+            GsmConnection conn = mConnections[i];
+            if (conn != null) {
+                try {
+                    if (conn.getGSMIndex() == callId) {
+                        mDroppedDuringPoll.add(conn);
+                        mConnections[i] = null;
+                        break;
+                    }
+                } catch (CallStateException ex) {
+                    log("Call state exception in getting the call index");
+                }
+            }
+        }
+
+        // Connection appeared in disconnect. So, this can be a pending MO call or
+        // incoming call disconnected before polling.
+        if (mDroppedDuringPoll.size() <= 0) {
+            pollCallsWhenSafe();
+            return;
+        }
+
+        GsmConnection conn = mDroppedDuringPoll.get(0);
+
+        if (conn.isIncoming() && conn.getConnectTime() == 0) {
+            // Missed or rejected call
+            Connection.DisconnectCause cause;
+            if (conn.mCause == Connection.DisconnectCause.LOCAL) {
+                cause = Connection.DisconnectCause.INCOMING_REJECTED;
+            } else {
+                cause = Connection.DisconnectCause.INCOMING_MISSED;
+            }
+
+            if (Phone.DEBUG_PHONE) {
+                log("missed/rejected call, conn.cause=" + conn.mCause
+                        + " setting cause to " + cause);
+            }
+            mDroppedDuringPoll.remove(0);
+            conn.onDisconnect(cause);
+        } else if (conn.mCause == Connection.DisconnectCause.LOCAL) {
+            // Local hangup
+            mDroppedDuringPoll.remove(0);
+            conn.onDisconnect(Connection.DisconnectCause.LOCAL);
+        } else if (conn.mCause == Connection.DisconnectCause.INVALID_NUMBER) {
+            mDroppedDuringPoll.remove(0);
+            conn.onDisconnect(Connection.DisconnectCause.INVALID_NUMBER);
+        }
+
+        // Any non-local disconnects: determine cause. This needs to be done to
+        // determine whether the remote side rejected the call or call got dropped
+        // by network for some other reasons
+        if (mDroppedDuringPoll.size() > 0) {
+            mCi.getLastCallFailCause(
+                obtainNoPollCompleteMessage(EVENT_GET_LAST_CALL_FAIL_CAUSE));
+        }
+
+        updatePhoneState();
+        mPhone.notifyPreciseCallStateChanged();
+    }
+
+    @Override
     protected synchronized void
     handlePollCalls(AsyncResult ar) {
         List polledCalls;
@@ -1020,6 +1093,10 @@ public final class GsmCallTracker extends CallTracker {
 
             case EVENT_RADIO_NOT_AVAILABLE:
                 handleRadioNotAvailable();
+            break;
+
+            case EVENT_CALL_DISCONNECTED:
+                handleCallDisconnected(msg.arg1);
             break;
         }
     }
