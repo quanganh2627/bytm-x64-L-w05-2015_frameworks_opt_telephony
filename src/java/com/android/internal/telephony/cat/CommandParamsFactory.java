@@ -1069,6 +1069,11 @@ class CommandParamsFactory extends Handler {
 
         BearerDescription bearerDescription = null;
         ctlv = searchForTag(ComprehensionTlvTag.BEARER_DESC, ctlvs);
+        if (ctlv != null) {
+            bearerDescription = ValueParser.retrieveBearerDescription(ctlv);
+            CatLog.d(this, "processOpenChannel bearer: " + bearerDescription.type.value()
+                    + " param.len: " + bearerDescription.parameters.length);
+        }
 
         iter = ctlvs.iterator();
         // network access name
