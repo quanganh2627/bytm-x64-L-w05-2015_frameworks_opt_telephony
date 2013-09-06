@@ -80,7 +80,7 @@ public class GsmLtePhone extends GSMPhone {
     }
 
     private void createImsPhone() {
-        if (SystemProperties.getInt(GsmLtePhone.IMS_ENABLED_PROPERTY, 0) != 0) {
+        if (SystemProperties.getInt(GsmLtePhone.IMS_ENABLED_PROPERTY, 0) == 2) {
             if (mImsPhone == null) {
                 Log.d(LOG_TAG, "Creating ImsPhone");
 
@@ -97,7 +97,7 @@ public class GsmLtePhone extends GSMPhone {
     }
 
     private void destroyImsPhone() {
-        if (SystemProperties.getInt(GsmLtePhone.IMS_ENABLED_PROPERTY, 0) != 0) {
+        if (SystemProperties.getInt(GsmLtePhone.IMS_ENABLED_PROPERTY, 0) == 2) {
             if (mImsPhone != null) {
                 Log.d(LOG_TAG, "Destroying ImsPhone");
 
