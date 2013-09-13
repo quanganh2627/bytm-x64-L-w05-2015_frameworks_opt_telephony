@@ -40,7 +40,6 @@ public final class ImsCallTracker extends CallTracker {
     static final int MAX_CONNECTIONS_PER_CALL = 5;
 
     private boolean mUsePollingForCallStatus = true;
-    private Phone mDefPhone = null;
     private ImsConnection mPendingMO = null;
     private boolean mHangupPendingMO = false;
 
@@ -61,10 +60,6 @@ public final class ImsCallTracker extends CallTracker {
         if (imsPhone != null) {
             phone = imsPhone;
             mCi = phone.mCi;
-            mDefPhone = CallManager.getInstance().getDefaultPhone();
-            if (mDefPhone == null) {
-                Log.e(LOG_TAG, "No default phone");
-            }
         } else {
             throw new IllegalArgumentException("imsPhone");
         }
@@ -109,7 +104,7 @@ public final class ImsCallTracker extends CallTracker {
         if (ringingCall.isRinging()) {
             state = PhoneConstants.State.RINGING;
         } else if (mPendingMO != null
-                || !(foregroundCall.isIdle() && backgroundCall.isIdle())) {
+                || !(foregroundCall.isIdle())) {
             state = PhoneConstants.State.OFFHOOK;
         } else {
             state = PhoneConstants.State.IDLE;
@@ -133,18 +128,12 @@ public final class ImsCallTracker extends CallTracker {
                     phone.getServiceState().setState(msg.arg1);
 
                     if (msg.arg1 == ServiceState.STATE_IN_SERVICE) {
-                        if (mDefPhone != null) {
-                            CallManager.getInstance().unregisterPhone(mDefPhone);
-                        }
-                        // ImsPhone to be the default
+                        CallManager.getInstance().unregisterPhone(phone.getParentPhone());
                         CallManager.getInstance().registerPhone(phone);
                     }
                     else {
                         CallManager.getInstance().unregisterPhone(phone);
-                        if (mDefPhone != null) {
-                            // GsmLtePhone to be the default
-                            CallManager.getInstance().registerPhone(mDefPhone);
-                        }
+                        CallManager.getInstance().registerPhone(phone.getParentPhone());
                     }
                 }
                 break;
@@ -193,6 +182,7 @@ public final class ImsCallTracker extends CallTracker {
                             mConnections[0].onConnectedInOrOut();
 
                             foregroundCall.setState(ImsCall.State.ACTIVE);
+                            updatePhoneState();
                             phone.notifyPreciseCallStateChanged();
                         }
                         else if (pendingMT != null) {

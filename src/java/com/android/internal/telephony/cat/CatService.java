@@ -38,8 +38,10 @@ import android.os.SystemProperties;
 import android.telephony.ServiceState;
 
 import com.android.internal.telephony.CommandsInterface;
+import com.android.internal.telephony.dataconnection.DcTrackerBase;
 import com.android.internal.telephony.Phone;
 import com.android.internal.telephony.PhoneBase;
+import com.android.internal.telephony.PhoneConstants;
 import com.android.internal.telephony.PhoneFactory;
 import com.android.internal.telephony.PhoneProxy;
 import com.android.internal.telephony.uicc.IccFileHandler;
@@ -308,6 +310,15 @@ public class CatService extends Handler implements AppInterface {
                 // No need to start STK app here.
                 return;
             case LAUNCH_BROWSER:
+                ConnectivityManager cm = (ConnectivityManager) mContext
+                        .getSystemService(Context.CONNECTIVITY_SERVICE);
+
+                if (cm != null && !cm.getMobileDataEnabled()) {
+                    sendTerminalResponse(cmdParams.mCmdDet, ResultCode.BEYOND_TERMINAL_CAPABILITY,
+                            false, 0, null);
+                    return;
+                }
+
                 if ((((LaunchBrowserParams) cmdParams).mConfirmMsg.text != null)
                         && (((LaunchBrowserParams) cmdParams).mConfirmMsg.text.equals(STK_DEFAULT))) {
                     message = mContext.getText(com.android.internal.R.string.launchBrowserDefault);
@@ -896,7 +907,12 @@ public class CatService extends Handler implements AppInterface {
                 }
                 break;
             case DISPLAY_TEXT:
+                break;
             case LAUNCH_BROWSER:
+                if (resMsg.mResCode == ResultCode.OK && resMsg.mUsersConfirm) {
+                    PhoneFactory.getDefaultPhone()
+                            .enableApnType(PhoneConstants.APN_TYPE_DEFAULT);
+                }
                 break;
             case SET_UP_CALL:
                 mCmdIf.handleCallSetupRequestFromSim(resMsg.mUsersConfirm, null);

@@ -63,13 +63,15 @@ class LaunchBrowserParams extends CommandParams {
     TextMessage mConfirmMsg;
     LaunchBrowserMode mMode;
     String mUrl;
+    String mProxy;
 
     LaunchBrowserParams(CommandDetails cmdDet, TextMessage confirmMsg,
-            String url, LaunchBrowserMode mode) {
+            String url, LaunchBrowserMode mode, String proxy) {
         super(cmdDet);
         mConfirmMsg = confirmMsg;
         mMode = mode;
         mUrl = url;
+        mProxy = proxy;
     }
 
     @Override

@@ -33,6 +33,7 @@ import com.android.internal.telephony.IccPhoneBookInterfaceManager;
 import com.android.internal.telephony.IccSmsInterfaceManager;
 import com.android.internal.telephony.MmiCode;
 import com.android.internal.telephony.OperatorInfo;
+import com.android.internal.telephony.Phone;
 import com.android.internal.telephony.PhoneBase;
 import com.android.internal.telephony.PhoneConstants;
 import com.android.internal.telephony.PhoneNotifier;
@@ -52,16 +53,21 @@ public class ImsPhone extends PhoneBase {
     private ImsCallTracker mImsCT = null;
     private ImsCommandsInterface mImsCM = null;
     private ServiceState mImsSS = null;
-    private PhoneBase mLtePhone = null;
+    private Phone mParentPhone = null;
     private PhoneSubInfo mSubInfo = null;
 
-    ImsPhone(Context context, CommandsInterface ci, PhoneNotifier notifier) {
-        this(context, ci, notifier, false);
+    ImsPhone(Context context, CommandsInterface ci, PhoneNotifier notifier,
+            Phone parentPhone) {
+        this(context, ci, notifier, parentPhone, false);
     }
 
     public ImsPhone(Context context, CommandsInterface ci, PhoneNotifier notifier,
-            boolean unitTestMode) {
+            Phone parentPhone, boolean unitTestMode) {
         super("IMS", notifier, context, ci, unitTestMode);
+
+        mImsCM = (ImsCommandsInterface) mCi;
+
+        setParentPhone(parentPhone);
 
         mImsSS = new ServiceState();
         mImsSS.setState(ServiceState.STATE_OUT_OF_SERVICE);
@@ -72,7 +78,6 @@ public class ImsPhone extends PhoneBase {
         mForegroundCall = new ImsCall(mImsCT);
         mBackgroundCall = new ImsCall(mImsCT);
 
-        mImsCM = (ImsCommandsInterface) mCi;
         mImsCM.setPhone(this);
         mImsCM.registerForServiceState(mImsCT);
 
@@ -88,13 +93,23 @@ public class ImsPhone extends PhoneBase {
         mSubInfo.dispose();
     }
 
-    public void init(PhoneBase phone) {
-        mLtePhone = phone;
-        Log.d(LOG_TAG, "LTE Phone IMEI " + mLtePhone.getImei() +
-                " IMSI " + mLtePhone.getSubscriberId() +
-                " MSISDN " + mLtePhone.getMsisdn());
+    public void setParentPhone(Phone phone) {
+
+        if (phone == null) {
+            throw new IllegalArgumentException("phone");
+        }
+        mParentPhone = phone;
+        Log.d(LOG_TAG, "Setting parent phone = " + phone.getPhoneName());
+
+        Log.d(LOG_TAG, "Parent Phone IMEI " + mParentPhone.getImei() +
+                " IMSI " + mParentPhone.getSubscriberId() +
+                " MSISDN " + mParentPhone.getMsisdn());
 
         mImsCM.initiateImsRegistration(true);
+    }
+
+    public Phone getParentPhone() {
+        return mParentPhone;
     }
 
     public void handleMessage(Message msg) {
@@ -245,15 +260,15 @@ public class ImsPhone extends PhoneBase {
     }
 
     public CellLocation getCellLocation() {
-        if (mLtePhone != null) {
-            mLtePhone.getCellLocation();
+        if (mParentPhone != null) {
+            mParentPhone.getCellLocation();
         }
         return null;
     }
 
     public PhoneConstants.DataState getDataConnectionState(String apnType) {
-        if (mLtePhone != null) {
-            return (mLtePhone.getDataConnectionState(apnType));
+        if (mParentPhone != null) {
+            return (mParentPhone.getDataConnectionState(apnType));
         }
 
         PhoneConstants.DataState ret = PhoneConstants.DataState.CONNECTED;
@@ -357,50 +372,50 @@ public class ImsPhone extends PhoneBase {
     }
 
     public String getDeviceId() {
-        if (mLtePhone != null) {
-            return mLtePhone.getDeviceId();
+        if (mParentPhone != null) {
+            return mParentPhone.getDeviceId();
         }
         return "0";
     }
 
     public String getDeviceSvn() {
-        if (mLtePhone != null) {
-            return mLtePhone.getDeviceSvn();
+        if (mParentPhone != null) {
+            return mParentPhone.getDeviceSvn();
         }
         return "0";
     }
 
     public String getImei() {
-        if (mLtePhone != null) {
-            return mLtePhone.getImei();
+        if (mParentPhone != null) {
+            return mParentPhone.getImei();
         }
         return "0";
     }
 
     public String getEsn() {
-        if (mLtePhone != null) {
-            return mLtePhone.getEsn();
+        if (mParentPhone != null) {
+            return mParentPhone.getEsn();
         }
         return "0";
     }
 
     public String getMeid() {
-        if (mLtePhone != null) {
-            return mLtePhone.getMeid();
+        if (mParentPhone != null) {
+            return mParentPhone.getMeid();
         }
         return "0";
     }
 
     public String getSubscriberId() {
-        if (mLtePhone != null) {
-            return mLtePhone.getSubscriberId();
+        if (mParentPhone != null) {
+            return mParentPhone.getSubscriberId();
         }
         return "0";
     }
 
     public String getLine1Number() {
-        if (mLtePhone != null) {
-            String line1 = mLtePhone.getLine1Number();
+        if (mParentPhone != null) {
+            String line1 = mParentPhone.getLine1Number();
             // Workaround in case local MSISDN not present in SIM card: use
             // property to get it
             if (line1 == null || line1.length() == 0) {
@@ -412,8 +427,8 @@ public class ImsPhone extends PhoneBase {
     }
 
     public String getMsisdn() {
-        if (mLtePhone != null) {
-            String msisdn = mLtePhone.getMsisdn();
+        if (mParentPhone != null) {
+            String msisdn = mParentPhone.getMsisdn();
             // Workaround in case local MSISDN not present in SIM card: use
             // property to get it
             if (msisdn == null || msisdn.length() == 0) {
@@ -425,15 +440,15 @@ public class ImsPhone extends PhoneBase {
     }
 
     public String getLine1AlphaTag() {
-        if (mLtePhone != null) {
-            return mLtePhone.getLine1AlphaTag();
+        if (mParentPhone != null) {
+            return mParentPhone.getLine1AlphaTag();
         }
         return "0";
     }
 
     public void setLine1Number(String alphaTag, String number, Message onComplete) {
-        if (mLtePhone != null) {
-            mLtePhone.setLine1Number(alphaTag, number, onComplete);
+        if (mParentPhone != null) {
+            mParentPhone.setLine1Number(alphaTag, number, onComplete);
         }
     }
 

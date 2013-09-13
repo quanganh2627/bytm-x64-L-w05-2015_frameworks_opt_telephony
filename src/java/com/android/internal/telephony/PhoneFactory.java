@@ -27,6 +27,8 @@ import com.android.internal.telephony.cdma.CDMALTEPhone;
 import com.android.internal.telephony.cdma.CdmaSubscriptionSourceManager;
 import com.android.internal.telephony.gsm.GSMPhone;
 import com.android.internal.telephony.gsm.GsmLtePhone;
+import com.android.internal.telephony.ims.ImsPhone;
+import com.android.internal.telephony.ims.ImsPhoneFactory;
 import com.android.internal.telephony.sip.SipPhone;
 import com.android.internal.telephony.sip.SipPhoneFactory;
 import com.android.internal.telephony.uicc.UiccController;
@@ -223,5 +225,19 @@ public class PhoneFactory {
      */
     public static SipPhone makeSipPhone(String sipUri) {
         return SipPhoneFactory.makePhone(sipUri, sContext, sPhoneNotifier);
+    }
+
+    public static ImsPhone makeImsPhone(PhoneBase parentPhone) {
+        ImsPhone ret = null;
+
+        if (parentPhone == null) {
+            throw new IllegalArgumentException("parentPhone");
+        }
+        if (TelephonyManager.getImsOnApStatic()) {
+            Rlog.i(LOG_TAG, "Creating ImsPhone");
+            ret = ImsPhoneFactory.makePhone(sContext, sPhoneNotifier, parentPhone,
+                parentPhone.getUnitTestMode());
+        }
+        return ret;
     }
 }
