@@ -77,6 +77,7 @@ public class CatService extends Handler implements AppInterface {
     // Class members
     private static IccRecords mIccRecords;
     private static UiccCardApplication mUiccApplication;
+    private static boolean sRegisterForRilEvents = true;
 
     // Service members.
     // Protects singleton instance lazy initialization.
@@ -136,11 +137,9 @@ public class CatService extends Handler implements AppInterface {
         mMsgDecoder = RilMessageDecoder.getInstance(this, fh);
 
         // Register ril events handling.
-        mCmdIf.setOnCatSessionEnd(this, MSG_ID_SESSION_END, null);
-        mCmdIf.setOnCatProactiveCmd(this, MSG_ID_PROACTIVE_COMMAND, null);
-        mCmdIf.setOnCatEvent(this, MSG_ID_EVENT_NOTIFY, null);
-        mCmdIf.setOnCatCallSetUp(this, MSG_ID_CALL_SETUP, null);
-        //mCmdIf.setOnSimRefresh(this, MSG_ID_REFRESH, null);
+        if (sRegisterForRilEvents) {
+            registerForRilEvents();
+        }
 
         mIccRecords = ir;
         mUiccApplication = ca;
@@ -168,11 +167,20 @@ public class CatService extends Handler implements AppInterface {
 
         removeCallbacksAndMessages(null);
         PhoneFactory.getDefaultPhone().unregisterForServiceStateChanged(this);
+        sRegisterForRilEvents = true;
     }
 
     @Override
     protected void finalize() {
         CatLog.d(this, "Service finalized");
+    }
+
+    private void registerForRilEvents() {
+        mCmdIf.setOnCatSessionEnd(this, MSG_ID_SESSION_END, null);
+        mCmdIf.setOnCatProactiveCmd(this, MSG_ID_PROACTIVE_COMMAND, null);
+        mCmdIf.setOnCatEvent(this, MSG_ID_EVENT_NOTIFY, null);
+        mCmdIf.setOnCatCallSetUp(this, MSG_ID_CALL_SETUP, null);
+        sRegisterForRilEvents = false;
     }
 
     private void handleRilMsg(RilMessage rilMsg) {
@@ -645,6 +653,12 @@ public class CatService extends Handler implements AppInterface {
             } else {
                 CatLog.d(sInstance, "Return current sInstance");
             }
+
+            // Register ril events handling.
+            if (sRegisterForRilEvents) {
+                sInstance.registerForRilEvents();
+            }
+
             return sInstance;
         }
     }
