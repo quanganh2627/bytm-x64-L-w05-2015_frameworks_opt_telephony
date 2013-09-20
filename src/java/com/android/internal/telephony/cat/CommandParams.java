@@ -177,6 +177,14 @@ class GetInputParams extends CommandParams {
     }
 }
 
+class LanguageParams extends CommandParams {
+    String lang;
+    LanguageParams(CommandDetails cmdDet, String lang) {
+        super(cmdDet);
+        this.lang = lang;
+    }
+}
+
 /*
  * BIP (Bearer Independent Protocol) is the mechanism for SIM card applications
  * to access data connection through the mobile device.

@@ -16,15 +16,19 @@
 
 package com.android.internal.telephony.cat;
 
+import android.app.ActivityManagerNative;
+import android.app.IActivityManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.content.res.Configuration;
 import android.content.res.Resources.NotFoundException;
 import android.os.AsyncResult;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Message;
+import android.os.RemoteException;
 import android.os.SystemProperties;
 
 import com.android.internal.telephony.CommandsInterface;
@@ -289,6 +293,19 @@ public class CatService extends Handler implements AppInterface {
                     ((CallSetupParams) cmdParams).mConfirmMsg.text = message.toString();
                 }
                 break;
+            case LANGUAGE_NOTIFICATION:
+                String preLang = SystemProperties.get("persist.sys.language");
+                if ((cmdParams.mCmdDet.commandQualifier & 0x01) == 0x01) {
+                   String language = ((LanguageParams)cmdParams).lang;
+                    if (language != null && language.length() == 2
+                            && !language.equals(preLang)) {
+                        updateLanguage(new Locale(language));
+                    }
+                } else {
+                    updateLanguage(new Locale(preLang));
+                }
+                sendTerminalResponse(cmdParams.mCmdDet, ResultCode.OK, false, 0, null);
+                return;
             case OPEN_CHANNEL:
             case CLOSE_CHANNEL:
             case RECEIVE_DATA:
@@ -767,5 +784,18 @@ public class CatService extends Handler implements AppInterface {
         int numReceiver = broadcastReceivers == null ? 0 : broadcastReceivers.size();
 
         return (numReceiver > 0);
+    }
+
+    private void updateLanguage(Locale locale) {
+        CatLog.d(this, "change locale language to: " + locale);
+        IActivityManager am = ActivityManagerNative.getDefault();
+        try {
+            Configuration config = am.getConfiguration();
+            config.locale = locale;
+            config.userSetLocale = false;
+            am.updateConfiguration(config);
+        } catch (RemoteException e) {
+            CatLog.d(this, "failed to change locale language");
+        }
     }
 }
