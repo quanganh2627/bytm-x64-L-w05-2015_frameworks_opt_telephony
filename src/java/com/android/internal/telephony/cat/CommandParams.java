@@ -212,3 +212,12 @@ class BIPClientParams extends CommandParams {
         return false;
     }
 }
+
+class EventListParams extends CommandParams {
+    byte[] eventList = null;
+    EventListParams(CommandDetails cmdDet, byte[] eventList) {
+        super(cmdDet);
+        this.eventList = eventList;
+    }
+}
+
