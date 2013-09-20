@@ -23,6 +23,7 @@ import android.content.Context;
 import android.os.AsyncResult;
 import android.os.Message;
 import android.os.SystemProperties;
+import android.telephony.PhoneNumberUtils;
 import android.text.TextUtils;
 import android.telephony.Rlog;
 
@@ -122,6 +123,13 @@ public class SIMRecords extends IccRecords {
     // CPHS Service Table (See CPHS 4.2 B.3.1)
     private static final int CPHS_SST_MBN_MASK = 0x30;
     private static final int CPHS_SST_MBN_ENABLED = 0x30;
+
+    // EF_CFIS related constants
+    // Spec reference TS 51.011 section 10.3.46.
+    private static final int CFIS_BCD_NUMBER_LENGTH_OFFSET = 2;
+    private static final int CFIS_TON_NPI_OFFSET = 3;
+    private static final int CFIS_ADN_CAPABILITY_ID_OFFSET = 14;
+    private static final int CFIS_ADN_EXTENSION_ID_OFFSET = 15;
 
     // ***** Event Constants
     private static final int EVENT_GET_IMSI_DONE = 3;
@@ -460,6 +468,15 @@ public class SIMRecords extends IccRecords {
      */
     @Override
     public void setVoiceCallForwardingFlag(int line, boolean enable) {
+        setVoiceCallForwardingFlag(line, enable, null);
+    }
+
+    /**
+     * {@inheritDoc}
+     * {@hide}
+     */
+    @Override
+    public void setVoiceCallForwardingFlag(int line, boolean enable, String dialNumber) {
 
         if (line != 1) return; // only line 1 is supported
 
@@ -468,7 +485,8 @@ public class SIMRecords extends IccRecords {
         mRecordsEventsRegistrants.notifyResult(EVENT_CFI);
 
         try {
-            if (validEfCfis(mEfCfis)) {
+            if (validEfCfis(mEfCfis) &&
+                     mUsimServiceTable.isAvailable(UsimServiceTable.UsimService.CFI_STATUS)) {
                 // lsb is of byte 1 is voice status
                 if (enable) {
                     mEfCfis[1] |= 1;
@@ -476,11 +494,18 @@ public class SIMRecords extends IccRecords {
                     mEfCfis[1] &= 0xfe;
                 }
 
-                log("setVoiceCallForwardingFlag: enable=" + enable
-                        + " mEfCfis=" + IccUtils.bytesToHexString(mEfCfis));
+                // Update dialNumber if not empty and CFU is enabled.
+                // Spec reference for EF_CFIS contents, TS 51.011 section 10.3.46.
+               if (enable && !TextUtils.isEmpty(dialNumber)) {
+                    log("EF_CFIS: updating cf number, " + dialNumber);
+                    byte[] bcdNumber = PhoneNumberUtils.numberToCalledPartyBCD(dialNumber);
 
-                // TODO: Should really update other fields in EF_CFIS, eg,
-                // dialing number.  We don't read or use it right now.
+                    System.arraycopy(bcdNumber, 0, mEfCfis, CFIS_TON_NPI_OFFSET, bcdNumber.length);
+
+                    mEfCfis[CFIS_BCD_NUMBER_LENGTH_OFFSET] = (byte) (bcdNumber.length);
+                    mEfCfis[CFIS_ADN_CAPABILITY_ID_OFFSET] = (byte) 0xFF;
+                    mEfCfis[CFIS_ADN_EXTENSION_ID_OFFSET] = (byte) 0xFF;
+                }
 
                 mFh.updateEFLinearFixed(
                         EF_CFIS, 1, mEfCfis, null,

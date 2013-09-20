@@ -40,6 +40,9 @@ import com.android.internal.telephony.PhoneNotifier;
 import com.android.internal.telephony.PhoneSubInfo;
 import com.android.internal.telephony.UUSInfo;
 
+import dalvik.system.DexClassLoader;
+
+import java.lang.reflect.InvocationTargetException;
 import java.util.List;
 
 public class ImsPhone extends PhoneBase {
@@ -55,6 +58,11 @@ public class ImsPhone extends PhoneBase {
     private ServiceState mImsSS = null;
     private Phone mParentPhone = null;
     private PhoneSubInfo mSubInfo = null;
+
+    private final static String IMS_SERVICES_CLASS_NAME =
+            "com.intel.imsservices.ImsServiceCreator";
+    private final static String IMS_SERVICES_LIBRARY_PATH =
+            "/system/framework/com.intel.imsservices.jar";
 
     ImsPhone(Context context, CommandsInterface ci, PhoneNotifier notifier,
             Phone parentPhone) {
@@ -82,6 +90,8 @@ public class ImsPhone extends PhoneBase {
         mImsCM.registerForServiceState(mImsCT);
 
         mSubInfo = new PhoneSubInfo(this);
+
+        loadImsServices(context);
     }
 
     public void dispose() {
@@ -91,6 +101,18 @@ public class ImsPhone extends PhoneBase {
             mImsCM = null;
         }
         mSubInfo.dispose();
+    }
+
+    public void loadImsServices(Context context) {
+        try {
+            DexClassLoader classLoader = new DexClassLoader(IMS_SERVICES_LIBRARY_PATH,
+                    context.getCacheDir().getAbsolutePath(),
+                    null, ClassLoader.getSystemClassLoader());
+                classLoader.loadClass( IMS_SERVICES_CLASS_NAME ).
+                        getMethod("create", Context.class).invoke(null, context);
+        } catch (Exception e) {
+            Log.e(LOG_TAG, "Error loading Imsservices library " + e.toString());
+        }
     }
 
     public void setParentPhone(Phone phone) {
