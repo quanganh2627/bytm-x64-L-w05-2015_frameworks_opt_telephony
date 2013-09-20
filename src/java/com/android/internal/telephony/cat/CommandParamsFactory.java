@@ -183,6 +183,9 @@ class CommandParamsFactory extends Handler {
              case LANGUAGE_NOTIFICATION:
                 cmdPending = processLanguageNotification(cmdDet, ctlvs);
                 break;
+            case SET_UP_EVENT_LIST:
+                 cmdPending = processSetUpEventList(cmdDet, ctlvs);
+                 break;
             default:
                 // unsupported proactive commands
                 mCmdParams = new CommandParams(cmdDet);
@@ -963,6 +966,38 @@ class CommandParamsFactory extends Handler {
             mIconLoadState = LOAD_SINGLE_ICON;
             mIconLoader.loadIcon(iconId.recordNumber, obtainMessage(MSG_ID_LOAD_ICON_DONE));
             return true;
+        }
+        return false;
+    }
+
+    /**
+     * Processes SET_UP_EVENT_LIST proactive command from the SIM card.
+     *
+     * @param cmdDet Command Details object retrieved.
+     * @param ctlvs List of ComprehensionTlv objects following Command Details
+     *        object and Device Identities object within the proactive command
+     * @return true if the command is processing is pending and additional
+     *         asynchronous processing is required.
+     */
+    private boolean processSetUpEventList(CommandDetails cmdDet,
+            List<ComprehensionTlv> ctlvs) {
+
+        CatLog.d(this, "process SetUpEventList");
+        ComprehensionTlv ctlv = searchForTag(ComprehensionTlvTag.EVENT_LIST,ctlvs);
+        if (ctlv != null) {
+            byte[] rawValue = ctlv.getRawValue();
+            int valueIndex = ctlv.getValueIndex();
+            int valueLength = ctlv.getLength();
+            byte[] eventList;
+            if (valueLength > 0 && rawValue.length >= (valueIndex + valueLength)) {
+                eventList = new byte[valueLength];
+                if (eventList != null) {
+                    System.arraycopy(rawValue, valueIndex, eventList, 0, valueLength);
+                }
+            } else {
+                eventList = null;
+            }
+            mCmdParams = new EventListParams(cmdDet, eventList);
         }
         return false;
     }

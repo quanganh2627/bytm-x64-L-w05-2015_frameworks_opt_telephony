@@ -25,6 +25,12 @@ public class CatResponseMessage {
         boolean mUsersConfirm = false;
         boolean mIncludeAdditionalInfo = false;
         int mAdditionalInfo = 0;
+        String mEnvelopeCmd;
+
+        public CatResponseMessage(String envCmd) {
+            this.mEnvelopeCmd = envCmd;
+        }
+
         public CatResponseMessage(CatCmdMessage cmdMsg) {
             mCmdDet = cmdMsg.mCmdDet;
         }

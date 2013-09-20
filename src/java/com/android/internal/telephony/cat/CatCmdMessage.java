@@ -33,6 +33,7 @@ public class CatCmdMessage implements Parcelable {
     private BrowserSettings mBrowserSettings = null;
     private ToneSettings mToneSettings = null;
     private CallSettings mCallSettings = null;
+    private byte[] mEventList = null;
 
     /*
      * Container for Launch Browser command settings.
@@ -97,7 +98,10 @@ public class CatCmdMessage implements Parcelable {
             break;
         case PROVIDE_LOCAL_INFORMATION:
         case REFRESH:
+            break;
         case SET_UP_EVENT_LIST:
+            mEventList = ((EventListParams) cmdParams).eventList;
+            break;
         default:
             break;
         }
@@ -122,6 +126,14 @@ public class CatCmdMessage implements Parcelable {
             mCallSettings.confirmMsg = in.readParcelable(null);
             mCallSettings.callMsg = in.readParcelable(null);
             break;
+        case SET_UP_EVENT_LIST:
+            mEventList = null;
+            int len = in.readInt();
+            if (len > 0) {
+                mEventList = new byte[len];
+                in.readByteArray(mEventList);
+            }
+            break;
         default:
             break;
         }
@@ -144,6 +156,16 @@ public class CatCmdMessage implements Parcelable {
         case SET_UP_CALL:
             dest.writeParcelable(mCallSettings.confirmMsg, 0);
             dest.writeParcelable(mCallSettings.callMsg, 0);
+            break;
+        case SET_UP_EVENT_LIST:
+            int len = 0;
+            if (mEventList != null) {
+                len = mEventList.length;
+            }
+            dest.writeInt(len);
+            if (len > 0) {
+                dest.writeByteArray(mEventList);
+            }
             break;
         default:
             break;
@@ -194,5 +216,9 @@ public class CatCmdMessage implements Parcelable {
 
     public CallSettings getCallSettings() {
         return mCallSettings;
+    }
+
+    public byte[] getEventList() {
+        return mEventList;
     }
 }
