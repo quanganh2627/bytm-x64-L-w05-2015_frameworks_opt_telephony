@@ -500,11 +500,14 @@ public class SIMRecords extends IccRecords {
                     log("EF_CFIS: updating cf number, " + dialNumber);
                     byte[] bcdNumber = PhoneNumberUtils.numberToCalledPartyBCD(dialNumber);
 
-                    System.arraycopy(bcdNumber, 0, mEfCfis, CFIS_TON_NPI_OFFSET, bcdNumber.length);
+                    if (bcdNumber != null) {
+                        System.arraycopy(bcdNumber, 0, mEfCfis, CFIS_TON_NPI_OFFSET,
+                                bcdNumber.length);
 
-                    mEfCfis[CFIS_BCD_NUMBER_LENGTH_OFFSET] = (byte) (bcdNumber.length);
-                    mEfCfis[CFIS_ADN_CAPABILITY_ID_OFFSET] = (byte) 0xFF;
-                    mEfCfis[CFIS_ADN_EXTENSION_ID_OFFSET] = (byte) 0xFF;
+                        mEfCfis[CFIS_BCD_NUMBER_LENGTH_OFFSET] = (byte) (bcdNumber.length);
+                        mEfCfis[CFIS_ADN_CAPABILITY_ID_OFFSET] = (byte) 0xFF;
+                        mEfCfis[CFIS_ADN_EXTENSION_ID_OFFSET] = (byte) 0xFF;
+                    }
                 }
 
                 mFh.updateEFLinearFixed(
