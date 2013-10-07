@@ -548,8 +548,8 @@ public class SIMRecords extends IccRecords {
         if (fileChanged) {
             // A future optimization would be to inspect fileList and
             // only reload those files that we care about.  For now,
-            // just re-fetch all SIM records that we cache.
-            fetchSimRecords();
+            // just re-fetch all SIM records that we cache starting with EFad.
+            getEFad();
         }
     }
 
@@ -596,6 +596,9 @@ public class SIMRecords extends IccRecords {
             /* IO events */
             case EVENT_GET_IMSI_DONE:
                 isRecordLoadResponse = true;
+
+                // Now fetch all the SIM files.
+                fetchSimRecords();
 
                 ar = (AsyncResult)msg.obj;
 
@@ -1215,7 +1218,7 @@ public class SIMRecords extends IccRecords {
                 // voicemail number.
                 // TODO: Handle other cases, instead of fetching all.
                 mAdnCache.reset();
-                fetchSimRecords();
+                getEFad();
                 break;
         }
     }
@@ -1389,16 +1392,23 @@ public class SIMRecords extends IccRecords {
 
     @Override
     public void onReady() {
-        fetchSimRecords();
+        getEFad();
+    }
+
+    protected void getEFad() {
+        /*
+         * Upon sim refresh or sim ready, EFad and EFimsi files will be read first.
+         * Once the EFad and EFimsi files are read, other SIM files will be read.
+         */
+        mRecordsRequested = true;
+        mFh.loadEFTransparent(EF_AD, obtainMessage(EVENT_GET_AD_DONE));
+        mRecordsToLoad++;
     }
 
     protected void fetchSimRecords() {
         mRecordsRequested = true;
 
         if (DBG) log("fetchSimRecords " + mRecordsToLoad);
-
-        mFh.loadEFTransparent(EF_AD, obtainMessage(EVENT_GET_AD_DONE));
-        mRecordsToLoad++;
 
         mFh.loadEFTransparent(EF_ICCID, obtainMessage(EVENT_GET_ICCID_DONE));
         mRecordsToLoad++;
