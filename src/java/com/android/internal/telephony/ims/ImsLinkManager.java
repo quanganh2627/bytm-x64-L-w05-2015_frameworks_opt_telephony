@@ -80,6 +80,12 @@ public final class ImsLinkManager extends IImsLinkCallbacks.Stub {
     }
 
     private void initImsFwInterface() {
+        try {
+            Log.i(LOG_TAG, "Setting ImsLinkFwImpl interface to link interface");
+            ImsLinkManager.this.mLinkInterface.setImsFwInterface(new ImsLinkFwImpl(mPhone));
+        } catch (RemoteException ex) {
+            Log.e(LOG_TAG, "Could not set ImsLinkFwImpl interface to link interface");
+        }
     }
 
     private void initSimAccessApi() {
