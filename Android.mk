@@ -24,21 +24,16 @@ LOCAL_SRC_FILES := $(call all-java-files-under, src/java) \
 	$(call all-Iaidl-files-under, src/java) \
 	$(call all-logtags-files-under, src/java)
 
-LOCAL_STATIC_JAVA_LIBRARIES := libmas_api
-
 LOCAL_JAVA_LIBRARIES := voip-common
+
+LOCAL_STATIC_JAVA_LIBRARIES := \
+	com.intel.imsservices \
+	org.gsma.joyn
+
 LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE := telephony-common
 
 include $(BUILD_JAVA_LIBRARY)
-
-######################################
-include $(CLEAR_VARS)
-
-LOCAL_PREBUILT_STATIC_JAVA_LIBRARIES := \
-        libmas_api:libs/mas_api.jar
-
-include $(BUILD_MULTI_PREBUILT)
 
 # Include subdirectory makefiles
 # ============================================================

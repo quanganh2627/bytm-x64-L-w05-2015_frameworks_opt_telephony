@@ -17,9 +17,6 @@
 package com.android.internal.telephony.ims;
 
 import android.content.Context;
-import android.os.Handler;
-import android.os.Looper;
-import android.os.Message;
 import android.os.PowerManager;
 import android.os.SystemClock;
 import android.telephony.PhoneNumberUtils;
@@ -38,12 +35,12 @@ public class ImsConnection extends Connection {
     String address = null;
     String dialString = null; // outgoing calls only
     String postDialString = null; // outgoing calls only
-    int index = 0;
     DisconnectCause cause = DisconnectCause.NOT_DISCONNECTED;
 
     private ImsCall mParent = null;
     private boolean mIsIncoming = false;
     private boolean mDisconnected = false;
+    private int mCallId = -1;
 
     /*
      * These time/timespan values are based on System.currentTimeMillis(), i.e.,
@@ -67,46 +64,23 @@ public class ImsConnection extends Connection {
 
     private PowerManager.WakeLock mPartialWakeLock;
 
-    private Handler h = null;
-
-    private static final int EVENT_DTMF_DONE = 1;
-    private static final int EVENT_PAUSE_DONE = 2;
-    private static final int EVENT_NEXT_POST_DIAL = 3;
-    private static final int EVENT_WAKE_LOCK_TIMEOUT = 4;
-
-    private class MyHandler extends Handler {
-        MyHandler(Looper l) {
-            super(l);
-        }
-
-        public void handleMessage(Message msg) {
-
-            switch (msg.what) {
-                case EVENT_NEXT_POST_DIAL:
-                case EVENT_DTMF_DONE:
-                case EVENT_PAUSE_DONE:
-                    break;
-                case EVENT_WAKE_LOCK_TIMEOUT:
-                    releaseWakeLock();
-                    break;
-            }
-        }
-    }
-
     ImsConnection(Context context, String dialString, ImsCallTracker ct, ImsCall parent,
-            boolean incoming) {
+            boolean incoming, int callId) {
         createWakeLock(context);
         acquireWakeLock();
 
+        if (callId < 0) {
+            throw new IllegalArgumentException("callId");
+        }
+
+        mCallId = callId;
+
         owner = ct;
-        h = new MyHandler(owner.getLooper());
 
         this.dialString = dialString;
 
         this.address = PhoneNumberUtils.extractNetworkPortionAlt(dialString);
         this.postDialString = PhoneNumberUtils.extractPostDialPortion(dialString);
-
-        index = -1;
 
         mIsIncoming = incoming;
         mCreateTime = System.currentTimeMillis();
@@ -185,7 +159,6 @@ public class ImsConnection extends Connection {
 
     @Override
     public long getHoldDurationMillis() {
-        // TODO Auto-generated method stub
         return 0;
     }
 
@@ -236,7 +209,7 @@ public class ImsConnection extends Connection {
         this.cause = cause;
 
         if (!mDisconnected) {
-            index = -1;
+            mCallId = -1;
 
             mDisconnectTime = System.currentTimeMillis();
             mDuration = SystemClock.elapsedRealtime() - mConnectTimeReal;
@@ -270,24 +243,14 @@ public class ImsConnection extends Connection {
 
     @Override
     public void proceedAfterWaitChar() {
-        // TODO Auto-generated method stub
     }
 
     @Override
     public void cancelPostDial() {
-        // TODO Auto-generated method stub
     }
 
-    int getIMSIndex() throws CallStateException {
-        if (index >= 0) {
-            return index + 1;
-        } else {
-            throw new CallStateException("IMS index not yet assigned");
-        }
-    }
-
-    public void setIMSIndex() {
-        index++;
+    int getCallId() {
+        return mCallId;
     }
 
     void onConnectedInOrOut() {

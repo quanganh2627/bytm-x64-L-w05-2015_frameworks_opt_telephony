@@ -40,9 +40,10 @@ import com.android.internal.telephony.PhoneNotifier;
 import com.android.internal.telephony.PhoneSubInfo;
 import com.android.internal.telephony.UUSInfo;
 
+import com.intel.imsservices.ImsServiceCreator;
+
 import dalvik.system.DexClassLoader;
 
-import java.lang.reflect.InvocationTargetException;
 import java.util.List;
 
 public class ImsPhone extends PhoneBase {
@@ -58,11 +59,6 @@ public class ImsPhone extends PhoneBase {
     private ServiceState mImsSS = null;
     private Phone mParentPhone = null;
     private PhoneSubInfo mSubInfo = null;
-
-    private final static String IMS_SERVICES_CLASS_NAME =
-            "com.intel.imsservices.ImsServiceCreator";
-    private final static String IMS_SERVICES_LIBRARY_PATH =
-            "/system/framework/com.intel.imsservices.jar";
 
     ImsPhone(Context context, CommandsInterface ci, PhoneNotifier notifier,
             Phone parentPhone) {
@@ -91,28 +87,17 @@ public class ImsPhone extends PhoneBase {
 
         mSubInfo = new PhoneSubInfo(this);
 
-        loadImsServices(context);
+        ImsServiceCreator.create(context);
+
+        mImsCM.initiateImsRegistration(true);
     }
 
     public void dispose() {
         if (mImsCM != null) {
             mImsCM.initiateImsRegistration(false);
-            mImsCM.finalize();
             mImsCM = null;
         }
         mSubInfo.dispose();
-    }
-
-    public void loadImsServices(Context context) {
-        try {
-            DexClassLoader classLoader = new DexClassLoader(IMS_SERVICES_LIBRARY_PATH,
-                    context.getCacheDir().getAbsolutePath(),
-                    null, ClassLoader.getSystemClassLoader());
-                classLoader.loadClass( IMS_SERVICES_CLASS_NAME ).
-                        getMethod("create", Context.class).invoke(null, context);
-        } catch (Exception e) {
-            Log.e(LOG_TAG, "Error loading Imsservices library " + e.toString());
-        }
     }
 
     public void setParentPhone(Phone phone) {
@@ -126,8 +111,6 @@ public class ImsPhone extends PhoneBase {
         Log.d(LOG_TAG, "Parent Phone IMEI " + mParentPhone.getImei() +
                 " IMSI " + mParentPhone.getSubscriberId() +
                 " MSISDN " + mParentPhone.getMsisdn());
-
-        mImsCM.initiateImsRegistration(true);
     }
 
     public Phone getParentPhone() {
@@ -534,5 +517,10 @@ public class ImsPhone extends PhoneBase {
     @Override
     public String getGroupIdLevel1() {
         return null;
+    }
+
+    @Override
+    public void requestIsimAuthentication(String nonce, Message result) {
+        mParentPhone.requestIsimAuthentication(nonce, result);
     }
 }

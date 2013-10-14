@@ -36,12 +36,10 @@ public final class ImsCallTracker extends CallTracker {
 
     private final String LOG_TAG = "ImsCallTracker";
 
-    static final int MAX_CONNECTIONS = 7;
-    static final int MAX_CONNECTIONS_PER_CALL = 5;
+    static final int MAX_CONNECTIONS = 1;
 
     private boolean mUsePollingForCallStatus = true;
     private ImsConnection mPendingMO = null;
-    private boolean mHangupPendingMO = false;
 
     boolean desiredMute = false; // false = mute off
     ImsConnection mConnections[] = new ImsConnection[MAX_CONNECTIONS];
@@ -118,11 +116,11 @@ public final class ImsCallTracker extends CallTracker {
     public void handleMessage(Message msg) {
         AsyncResult ar = null;
 
-        Log.d(LOG_TAG, "what:  " + msg.what);
+        Log.d(LOG_TAG, "what: " + msg.what);
 
         switch (msg.what)
         {
-            case ImsCommandsInterface.IMS_STATE:
+            case ImsCommandsInterface.VOIP_REG_STATE:
                 if (phone.getServiceState().getState() != msg.arg1) {
                     Log.i(LOG_TAG, "Service state " + msg.arg1);
                     phone.getServiceState().setState(msg.arg1);
@@ -138,23 +136,22 @@ public final class ImsCallTracker extends CallTracker {
                 }
                 break;
 
-            case ImsCommandsInterface.VOIP_ACCEPT:
-                Log.i(LOG_TAG, "VOIP_ACCEPT from " + (String) msg.obj);
-
-                ringingCall.setState(ImsCall.State.INCOMING);
-
-                pendingMT = new ImsConnection(phone.getContext(),
-                        (String) msg.obj,
-                        this,
-                        ringingCall,
-                        true);
-                updatePhoneState();
-                phone.notifyNewRingingConnection(pendingMT);
-                break;
-
             case ImsCommandsInterface.VOIP_STATE:
                 switch (msg.arg1)
                 {
+                    case ImsCommandsInterface.VOIP_STATE_INCOMING: {
+                        Log.i(LOG_TAG, "VOIP_STATE_INCOMING");
+                        ringingCall.setState(ImsCall.State.INCOMING);
+                        int callId = (int) msg.arg2;
+                        Log.i(LOG_TAG, "VOIP_STATE_INCOMING, callId = " + callId);
+                        // TODO: replace null by remote address in ImsConnection
+                        // ctor
+                        pendingMT = new ImsConnection(phone.getContext(), null, this, ringingCall,
+                                true, callId);
+                        updatePhoneState();
+                        phone.notifyNewRingingConnection(pendingMT);
+                    }
+                        break;
                     case ImsCommandsInterface.VOIP_STATE_DIALING:
                         Log.i(LOG_TAG, "VOIP_STATE_DIALING");
                         if (mPendingMO != null) {
@@ -165,17 +162,18 @@ public final class ImsCallTracker extends CallTracker {
                     case ImsCommandsInterface.VOIP_STATE_ALERTING:
                         Log.i(LOG_TAG, "VOIP_STATE_ALERTING");
                         if (mPendingMO != null) {
-                            mPendingMO.setIMSIndex();
+
+                            // mPendingMO.setIMSIndex();
                             foregroundCall.setState(ImsCall.State.ALERTING);
                             phone.notifyPreciseCallStateChanged();
                         }
                         break;
                     case ImsCommandsInterface.VOIP_STATE_ACTIVE:
+                        int callId = (int) msg.arg2;
                         if (mPendingMO != null) {
                             // Call has been accepted by peer
-                            Log.i(LOG_TAG, "VOIP_STATE_ACTIVE MO");
+                            Log.i(LOG_TAG, "VOIP_STATE_ACTIVE MO, callId = " + callId);
 
-                            mPendingMO.setIMSIndex();
                             mConnections[0] = mPendingMO;
                             mPendingMO = null;
 
@@ -186,7 +184,7 @@ public final class ImsCallTracker extends CallTracker {
                             phone.notifyPreciseCallStateChanged();
                         }
                         else if (pendingMT != null) {
-                            Log.i(LOG_TAG, "VOIP_STATE_ACTIVE MT");
+                            Log.i(LOG_TAG, "VOIP_STATE_ACTIVE MT, callId = " + callId);
                             foregroundCall.clearDisconnected();
 
                             // Call accepted locally : enable foreground call
@@ -194,15 +192,14 @@ public final class ImsCallTracker extends CallTracker {
                                     pendingMT.getAddress(),
                                     this,
                                     foregroundCall,
-                                    false);
-                            mConnections[0].setIMSIndex();
+                                    false,
+                                    callId);
                             mConnections[0].onConnectedInOrOut();
 
                             foregroundCall.setState(ImsCall.State.ACTIVE);
 
                             // Disable ringing call
                             ringingCall.detach(pendingMT);
-                            pendingMT.setIMSIndex();
                             pendingMT = null;
 
                             updatePhoneState();
@@ -236,7 +233,6 @@ public final class ImsCallTracker extends CallTracker {
                             pendingMT.onLocalDisconnect();
 
                             ringingCall.detach(pendingMT);
-                            pendingMT.setIMSIndex();
                             pendingMT = null;
 
                             updatePhoneState();
@@ -314,13 +310,15 @@ public final class ImsCallTracker extends CallTracker {
 
         foregroundCall.setState(ImsCall.State.DIALING);
 
+        // TODO: callId generation
+        int callId = 1;
+
         mPendingMO = new ImsConnection(phone.getContext(),
                 checkForTestEmergencyNumber(dialString),
                 this,
                 foregroundCall,
-                false);
-
-        mHangupPendingMO = false;
+                false,
+                callId);
 
         if (mPendingMO.address == null || mPendingMO.address.length() == 0
                 || mPendingMO.address.indexOf(PhoneNumberUtils.WILD) >= 0) {
@@ -354,11 +352,16 @@ public final class ImsCallTracker extends CallTracker {
     void acceptCall() throws CallStateException {
         if ((ringingCall.getState() == ImsCall.State.INCOMING) ||
                 (ringingCall.getState() == ImsCall.State.WAITING)) {
-            Log.i(LOG_TAG, "acceptCall");
+            int callId = ringingCall.getCallId();
+            Log.d(LOG_TAG, "acceptCall, callId = " + callId);
 
             setMute(false);
 
-            mCi.acceptCall(obtainCompleteMessage());
+            Message msg = obtainCompleteMessage();
+
+            msg.arg1 = callId;
+
+            mCi.acceptCall(msg);
 
         } else {
             throw new CallStateException("phone not ringing");
@@ -367,7 +370,8 @@ public final class ImsCallTracker extends CallTracker {
 
     void rejectCall() throws CallStateException {
         if (ringingCall.getState().isRinging()) {
-            Log.i(LOG_TAG, "rejectCall");
+            int callId = ringingCall.getCallId();
+            Log.d(LOG_TAG, "rejectCall, callId = " + callId);
 
             mCi.rejectCall(obtainCompleteMessage());
             pendingMT = null;
@@ -390,22 +394,9 @@ public final class ImsCallTracker extends CallTracker {
 
         Log.i(LOG_TAG, "hangup " + conn);
 
-        if (conn == mPendingMO) {
-            // We're hanging up an outgoing call that doesn't have it's
-            // IMS index assigned yet
-
-            Log.d(LOG_TAG, "hangup: set hangupPendingMO to true");
-            mHangupPendingMO = true;
-        }
         // Close connection even if MO call has not been not connected yet
-        try {
-            mCi.hangupConnection(conn.getIMSIndex(), obtainCompleteMessage());
-        } catch (CallStateException ex) {
-            // Ignore "connection not found"
-            // Call may have hung up already
-            Log.w(LOG_TAG, "ImsCallTracker WARN: hangup() on absent connection "
-                    + conn);
-        }
+        mCi.hangupConnection(conn.getCallId(), obtainCompleteMessage());
+
         conn.onHangupLocal();
     }
 
@@ -414,15 +405,8 @@ public final class ImsCallTracker extends CallTracker {
             throw new CallStateException("ImsConnection " + conn
                     + "does not belong to ImsCallTracker " + this);
         }
-        try {
-            mCi.separateConnection(conn.getIMSIndex(),
+        mCi.separateConnection(conn.getCallId(),
                     obtainCompleteMessage(EVENT_SEPARATE_RESULT));
-        } catch (CallStateException ex) {
-            // Ignore "connection not found"
-            // Call may have hung up already
-            Log.w(LOG_TAG, "ImsCallTracker WARN: separate() on absent connection "
-                    + conn);
-        }
     }
 
     void hangup(ImsCall call) throws CallStateException {
@@ -466,8 +450,6 @@ public final class ImsCallTracker extends CallTracker {
             mConnections[0].onLocalDisconnect();
         }
 
-        mHangupPendingMO = false;
-
         updatePhoneState();
         phone.notifyPreciseCallStateChanged();
     }
@@ -485,14 +467,10 @@ public final class ImsCallTracker extends CallTracker {
     }
 
     void hangupAllConnections(ImsCall call) throws CallStateException {
-        try {
-            int count = call.getConnections().size();
-            for (int i = 0; i < count; i++) {
-                ImsConnection cn = (ImsConnection) call.getConnections().get(i);
-                mCi.hangupConnection(cn.getIMSIndex(), obtainCompleteMessage());
-            }
-        } catch (CallStateException ex) {
-            Log.e(LOG_TAG, "hangupConnectionByIndex caught " + ex);
+        int count = call.getConnections().size();
+        for (int i = 0; i < count; i++) {
+            ImsConnection cn = (ImsConnection) call.getConnections().get(i);
+            mCi.hangupConnection(cn.getCallId(), obtainCompleteMessage());
         }
     }
 
@@ -501,7 +479,7 @@ public final class ImsCallTracker extends CallTracker {
         int count = call.getConnections().size();
         for (int i = 0; i < count; i++) {
             ImsConnection cn = (ImsConnection) call.getConnections().get(i);
-            if (cn.getIMSIndex() == index) {
+            if (cn.getCallId() == index) {
                 return cn;
             }
         }
