@@ -518,6 +518,12 @@ public class BipGateWay {
             if (handleDataConnection(cmdMsg)) {
                 /* The default APN is ongoing - Check its state */
                 defaultBearerNetInfo = cm.getActiveNetworkInfo();
+                if (defaultBearerNetInfo == null) {
+                    setupFailedException =
+                            new ConnectionSetupFailedException("Default bearer is not active");
+                    throw setupFailedException;
+                }
+
                 NetworkInfo.State state = defaultBearerNetInfo.getState();
 
                 switch (state) {
