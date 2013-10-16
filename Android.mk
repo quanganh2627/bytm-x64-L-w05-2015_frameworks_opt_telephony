@@ -35,6 +35,15 @@ LOCAL_MODULE := telephony-common
 
 include $(BUILD_JAVA_LIBRARY)
 
+######################################
+include $(CLEAR_VARS)
+
+LOCAL_MODULE := org.gsma.joyn
+LOCAL_PREBUILT_STATIC_JAVA_LIBRARIES := \
+	org.gsma.joyn:libs/org.gsma.joyn.jar
+
+include $(BUILD_MULTI_PREBUILT)
+
 # Include subdirectory makefiles
 # ============================================================
 include $(call all-makefiles-under,$(LOCAL_PATH))
