@@ -40,6 +40,7 @@ import android.provider.Telephony;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
 
+import com.android.internal.telephony.DctConstants;
 import com.android.internal.telephony.Phone;
 import com.android.internal.telephony.PhoneBase;
 import com.android.internal.telephony.PhoneConstants;
@@ -88,6 +89,35 @@ public class BipGateWay {
     private long mNotAvailableRetryTimeElapse;
     private static CatService mCatService;
     private static BipTransport mBipTransport;
+    private static boolean mIsDataCallRetry;
+
+    /*
+     * Additional information for Bearer Independent Protocol.
+     * See ETSI 102 223 - 8.12.11
+     */
+    public enum ResultAddInfoForBip {
+        NO_SPECIFIC_CAUSE(0x00),
+        NO_CHANNEL_AVAILABLE(0x01),
+        CHANNEL_CLOSE(0x02),
+        CHANNEL_IDENTIFIER_NOT_VALID(0x03),
+        REQUESTED_BUFFER_SIZE_NOT_AVAILABLE(0x04),
+        SECURITY_ERROR(0x05),
+        REQUESTED_UICC_NOT_AVAILABLE(0x06),
+        REMOTE_NOT_REACHABLE(0x07),
+        SERVICE_ERROR(0x08),
+        SERVICE_ID_UNKNOWN(0x09),
+        PORT_NOT_AVAILABLE(0x10);
+
+        private int mInfo;
+
+        ResultAddInfoForBip(int info) {
+            mInfo = info;
+        }
+
+        public int value() {
+            return mInfo;
+        }
+    }
 
     public static BipTransport getBipTransport() {
         return mBipTransport;
@@ -96,6 +126,7 @@ public class BipGateWay {
     public BipGateWay(CatService catService, CommandsInterface cmdIf, Context context) {
         mCatService = catService;
         mBipTransport = new BipTransport(cmdIf, context);
+        mIsDataCallRetry = false;
     }
 
     public boolean available() {
@@ -177,7 +208,8 @@ public class BipGateWay {
                         if (channelSettings.channel == 0) {
                             // Send TR No channel available
                             mCatService.sendTerminalResponse(cmdMsg.mCmdDet,
-                                    ResultCode.BIP_ERROR, true, 0x01, null);
+                                    ResultCode.BIP_ERROR, true,
+                                    ResultAddInfoForBip.NO_CHANNEL_AVAILABLE.value(), null);
                             return;
                         }
 
@@ -232,13 +264,17 @@ public class BipGateWay {
                             } else {
                                 // Send TR Channel identifier not valid
                                 mCatService.sendTerminalResponse(cmdMsg.mCmdDet,
-                                        ResultCode.BIP_ERROR, true, 0x03, null);
+                                        ResultCode.BIP_ERROR, true,
+                                        ResultAddInfoForBip.CHANNEL_IDENTIFIER_NOT_VALID.value(),
+                                        null);
                                 return;
                             }
                         } catch (ArrayIndexOutOfBoundsException e) {
                             // Send TR Channel identifier not valid
                             mCatService.sendTerminalResponse(cmdMsg.mCmdDet,
-                                    ResultCode.BIP_ERROR, true, 0x03, null);
+                                    ResultCode.BIP_ERROR, true,
+                                    ResultAddInfoForBip.CHANNEL_IDENTIFIER_NOT_VALID.value(),
+                                    null);
                             return;
                         }
                     }
@@ -336,6 +372,16 @@ public class BipGateWay {
 
             private void onDisconnected() {
                 CatLog.d(this, "onDisconnected");
+                /*
+                 * When we are in the RETRYING state, enabling the default APN trigger
+                 * a first disconnect before the retry tentative. So we ignore the first
+                 * disconnect event in this case.
+                 */
+                if (mIsDataCallRetry) {
+                    CatLog.d(this, "Disconnect due to retrying state");
+                    mIsDataCallRetry = false;
+                    return;
+                }
                 Message msg = null;
                 synchronized (mSetupMessageLock) {
                     if (mOngoingSetupMessage == null)
@@ -352,6 +398,7 @@ public class BipGateWay {
             private void onConnected() {
                 CatLog.d(this, "onConnected");
                 Message msg = null;
+                mIsDataCallRetry = false;
                 synchronized (mSetupMessageLock) {
                     if (mOngoingSetupMessage == null)
                         return;
@@ -454,105 +501,62 @@ public class BipGateWay {
             }
         };
 
-        private NetworkInfo findAvailableDefaultBearer(NetworkInfo[] networkInfos) {
-            ArrayList<NetworkInfo> availableBearers = new ArrayList<NetworkInfo>();
-            CatLog.d(this, "apn " + ConnectivityManager.TYPE_MOBILE + ""
-                    + ConnectivityManager.TYPE_MOBILE_BIP_GPRS1 + "");
-            for (NetworkInfo info : networkInfos) {
-                if (info != null && info.isAvailable()) {
-                    CatLog.d(this, info.getType() + " " + info.toString());
-                    switch (info.getType()) {
-                        case ConnectivityManager.TYPE_MOBILE:
-                        case ConnectivityManager.TYPE_WIFI:
-                        case ConnectivityManager.TYPE_WIMAX:
-                            availableBearers.add(info);
-                            break;
-                        default:
-                            break;  // Unusable type
-                    }
-                }
-            }
-
-            if (availableBearers.size() == 0) {
-                return null; /* No default bearers available. */
-            }
-
-            NetworkInfo candidateBearer = null;
-            for (NetworkInfo info : availableBearers) {
-                NetworkInfo.State state = info.getState();
-                if (state == NetworkInfo.State.CONNECTED) {
-                    candidateBearer = info; /* Found a connected bearer. We are happy */
-                    break;
-                } else if (state == NetworkInfo.State.CONNECTING
-                        || state == NetworkInfo.State.SUSPENDED) {
-                    /* Found a possible bearer. Look further in case there are better. */
-                    candidateBearer = info;
-                }
-            }
-            return candidateBearer;
-        }
-
         private boolean setupDefaultDataConnection(CatCmdMessage cmdMsg)
                 throws ConnectionSetupFailedException {
             ConnectivityManager cm = (ConnectivityManager) mContext
                     .getSystemService(Context.CONNECTIVITY_SERVICE);
-            NetworkInfo[] netInfos = cm.getAllNetworkInfo();
             ChannelSettings newChannel = cmdMsg.getChannelSettings();
             boolean result = false;
             NetworkInfo defaultBearerNetInfo = null;
-
-            if (netInfos == null) {
-                mCatService.sendTerminalResponse(cmdMsg.mCmdDet,
-                        ResultCode.BEYOND_TERMINAL_CAPABILITY, false, 0, null);
-                throw new ConnectionSetupFailedException("No networks available");
-            }
-
-            defaultBearerNetInfo = findAvailableDefaultBearer(netInfos);
-
-            if (defaultBearerNetInfo == null) {
-                mCatService.sendTerminalResponse(cmdMsg.mCmdDet,
-                        ResultCode.BEYOND_TERMINAL_CAPABILITY, false, 0, null);
-                throw new ConnectionSetupFailedException("No default bearer available");
-            }
-
-            mToBeUsedApnType = MobileDataStateTracker
-                    .networkTypeToApnType(defaultBearerNetInfo.getType());
-            NetworkInfo.State state = defaultBearerNetInfo.getState();
             ConnectionSetupFailedException setupFailedException = null;
 
-            switch (state) {
-                case CONNECTED:
-                    CatLog.d(this, "Default bearer is connected");
-                    result = true;
-                    break;
-                case CONNECTING:
-                    CatLog.d(this, "Default bearer is connecting.  Waiting for connect");
-                    Message resultMsg = obtainMessage(MSG_ID_SETUP_DATA_CALL, cmdMsg);
-                    mDefaultBearerStateReceiver.setOngoingSetupMessage(resultMsg);
-                    result = false;
-                    break;
-                case SUSPENDED:
-                    /*
-                     * Suspended state is only possible for mobile data accounts
-                     * during voice calls.
-                     */
-                    CatLog.d(this, "Default bearer not connected, busy on voice call");
-                    ResponseData resp = new OpenChannelResponseData(newChannel.bufSize,
-                            null, newChannel.bearerDescription);
-                    mCatService.sendTerminalResponse(cmdMsg.mCmdDet,
-                            ResultCode.TERMINAL_CRNTLY_UNABLE_TO_PROCESS, true, 0x02, resp);
-                    setupFailedException =
-                            new ConnectionSetupFailedException("Default bearer suspended");
-                    break;
-                default:
-                    /* The default bearer is disconnected either due to error or user preference.
-                     * Either way, there's nothing we can do. */
-                    CatLog.d(this, "Default bearer is Disconnected");
-                    mCatService.sendTerminalResponse(cmdMsg.mCmdDet,
-                            ResultCode.BEYOND_TERMINAL_CAPABILITY, false, 0, null);
-                    setupFailedException =
-                            new ConnectionSetupFailedException("Default bearer is disconnected");
-                    break;
+            mToBeUsedApnType = PhoneConstants.APN_TYPE_DEFAULT;
+
+            /* Enable the default APN */
+            mIsDataCallRetry = mDataConnectionTracker
+                    .getState(mToBeUsedApnType) == DctConstants.State.RETRYING;
+            if (handleDataConnection(cmdMsg)) {
+                /* The default APN is ongoing - Check its state */
+                defaultBearerNetInfo = cm.getActiveNetworkInfo();
+                NetworkInfo.State state = defaultBearerNetInfo.getState();
+
+                switch (state) {
+                    case CONNECTED:
+                        CatLog.d(this, "Default bearer is connected");
+                        result = true;
+                        break;
+                    case CONNECTING:
+                        CatLog.d(this, "Default bearer is connecting.  Waiting for connect");
+                        Message resultMsg = obtainMessage(MSG_ID_SETUP_DATA_CALL, cmdMsg);
+                        mDefaultBearerStateReceiver.setOngoingSetupMessage(resultMsg);
+                        result = false;
+                        break;
+                    case SUSPENDED:
+                        /*
+                         * Suspended state is only possible for mobile data accounts
+                         * during voice calls.
+                         */
+                        CatLog.d(this, "Default bearer not connected, busy on voice call");
+                        ResponseData resp = new OpenChannelResponseData(newChannel.bufSize,
+                                null, newChannel.bearerDescription);
+                        mCatService.sendTerminalResponse(cmdMsg.mCmdDet,
+                                ResultCode.TERMINAL_CRNTLY_UNABLE_TO_PROCESS, true,
+                                ResultAddInfoForMeProblem.TERMINAL_CURRENTLY_BUSY_ON_CALL.value(),
+                                resp);
+                        setupFailedException =
+                                new ConnectionSetupFailedException("Default bearer suspended");
+                        break;
+                    default:
+                        /* The default bearer is disconnected either due to error or user preference
+                         * Either way, there's nothing we can do. */
+                        CatLog.d(this, "Default bearer is Disconnected");
+                        mCatService.sendTerminalResponse(cmdMsg.mCmdDet,
+                                ResultCode.BEYOND_TERMINAL_CAPABILITY, false, 0, null);
+                        setupFailedException =
+                                new ConnectionSetupFailedException("Default bearer" +
+                                        "is disconnected");
+                        break;
+                }
             }
 
             if (setupFailedException != null) {
@@ -588,7 +592,9 @@ public class BipGateWay {
                 ResponseData resp = new OpenChannelResponseData(newChannel.bufSize,
                         null, newChannel.bearerDescription);
                 mCatService.sendTerminalResponse(cmdMsg.mCmdDet,
-                        ResultCode.TERMINAL_CRNTLY_UNABLE_TO_PROCESS, true, 0x02, resp);
+                            ResultCode.TERMINAL_CRNTLY_UNABLE_TO_PROCESS, true,
+                            ResultAddInfoForMeProblem.TERMINAL_CURRENTLY_BUSY_ON_CALL.value(),
+                            resp);
                 throw new ConnectionSetupFailedException("Busy on voice call");
             }
 
