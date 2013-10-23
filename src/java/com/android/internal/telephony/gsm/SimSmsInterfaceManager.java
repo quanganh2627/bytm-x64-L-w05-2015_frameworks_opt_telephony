@@ -171,13 +171,9 @@ public class SimSmsInterfaceManager extends IccSmsInterfaceManager {
          */
         @Override
         protected boolean finishUpdate() {
-            if (mConfigList.isEmpty()) {
-                return true;
-            } else {
-                SmsBroadcastConfigInfo[] configs =
-                        mConfigList.toArray(new SmsBroadcastConfigInfo[mConfigList.size()]);
-                return setCellBroadcastConfig(configs);
-            }
+            SmsBroadcastConfigInfo[] configs =
+                    mConfigList.toArray(new SmsBroadcastConfigInfo[mConfigList.size()]);
+            return setCellBroadcastConfig(configs);
         }
     }
 
