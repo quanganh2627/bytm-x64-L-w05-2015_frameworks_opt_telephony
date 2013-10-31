@@ -23,13 +23,11 @@ import com.android.internal.telephony.CallStateException;
 import com.android.internal.telephony.Connection;
 import com.android.internal.telephony.Phone;
 
-import java.util.ArrayList;
 import java.util.List;
 
 public class ImsCall extends Call {
     private final String LOG_TAG = "ImsCall";
 
-    private ArrayList<Connection> mConnections = new ArrayList<Connection>();
     private ImsCallTracker mOwner = null;
 
     ImsCall(ImsCallTracker owner) {
@@ -44,6 +42,14 @@ public class ImsCall extends Call {
     public void dispose() {
     }
 
+    public int getCallId() throws CallStateException {
+        if (mConnections.size() > 0) {
+            return ((ImsConnection) mConnections.get(0)).getCallId();
+        }
+        throw new CallStateException("No ImsConnection in this call");
+    }
+
+    @Override
     public List<Connection> getConnections() {
         return mConnections;
     }
@@ -55,6 +61,8 @@ public class ImsCall extends Call {
 
     @Override
     public boolean isMultiparty() {
+        // TODO: this predicate needs to be reviewed. criteria depends on MMTEL
+        // API
         return mConnections.size() > 1;
     }
 

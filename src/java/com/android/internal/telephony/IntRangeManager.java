@@ -598,6 +598,7 @@ public abstract class IntRangeManager {
      */
     protected boolean tryAddRanges(int startId, int endId, boolean selected) {
 
+        startUpdate();
         populateAllRanges();
         // This is the new range to be enabled
         addRange(startId, endId, selected); // adds to mConfigList

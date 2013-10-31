@@ -25,7 +25,6 @@ import android.telephony.ServiceState;
 import android.util.Log;
 
 import com.android.internal.telephony.CommandsInterface;
-import com.android.internal.telephony.Phone;
 import com.android.internal.telephony.UUSInfo;
 import com.android.internal.telephony.cdma.CdmaSmsBroadcastConfigInfo;
 import com.android.internal.telephony.gsm.SmsBroadcastConfigInfo;
@@ -33,41 +32,31 @@ import com.intel.internal.telephony.OemTelephony.OemTelephonyConstants;
 
 public class ImsCommandsInterface extends Handler implements CommandsInterface {
     /** Framework States */
-    public static final int IMS_STATE = 0x2001;
 
-    public static final int VOIP_STATE = 0x2002;
+    public static final int VOIP_REG_STATE = ImsVoip.VOIP_REG_STATE;
+    public static final int VOIP_STATE = ImsVoip.VOIP_STATE;
+
     public static final int VOIP_STATE_DIALING = ImsVoip.VOIP_STATE_CREATED;
     public static final int VOIP_STATE_ACTIVE = ImsVoip.VOIP_STATE_CONNECTED;
     public static final int VOIP_STATE_DISCONNECTED = ImsVoip.VOIP_STATE_DISCONNECTED;
     public static final int VOIP_STATE_DESTROYED = ImsVoip.VOIP_STATE_DESTROYED;
     public static final int VOIP_STATE_ALERTING = ImsVoip.VOIP_STATE_RINGING;
-
-    public static final int VOIP_ACCEPT = 0x2004;
+    public static final int VOIP_STATE_INCOMING = ImsVoip.VOIP_STATE_INCOMING;
+    public static final int VOIP_STATE_HELD = ImsVoip.VOIP_STATE_HELD;
 
     private final String LOG_TAG = "ImsCommandsInterface";
     private final Context mContext;
-    private ImsRegistration mImsReg = null;
+    private ImsLinkManager mLinkMgr = null;
     private ImsVoip mImsVoip = null;
     private Handler mHdlr = null;
-    private Phone mPhone = null;
+    private ImsPhone mPhone = null;
 
     public ImsCommandsInterface(Context c, Handler h) {
         mContext = c;
         mHdlr = h;
 
-        mImsReg = new ImsRegistration(mContext, this);
-        mImsVoip = new ImsVoip(this);
-    }
-
-    public void finalize() {
-        mImsReg.finalize();
-        mImsVoip = null;
-
-        try {
-            super.finalize();
-        } catch (Throwable e) {
-            Log.e(LOG_TAG, e.toString());
-        }
+        Log.v(LOG_TAG, "Instantiating ImsVoip...");
+        mImsVoip = new ImsVoip(mContext, this);
     }
 
     private void updateImsIcon(boolean state) {
@@ -84,14 +73,14 @@ public class ImsCommandsInterface extends Handler implements CommandsInterface {
             if (state == true) {
                 arg1 = ServiceState.STATE_IN_SERVICE;
             }
-            Message message = mHdlr.obtainMessage(IMS_STATE, arg1, 0);
+            Message message = mHdlr.obtainMessage(VOIP_REG_STATE, arg1, 0);
             mHdlr.sendMessage(message);
         }
     }
 
-    private void updateVoipState(int state) {
+    private void updateVoipState(int state, Message msg) {
         if (mHdlr != null) {
-            Message message = mHdlr.obtainMessage(VOIP_STATE, state, 0);
+            Message message = mHdlr.obtainMessage(VOIP_STATE, msg.arg1, msg.arg2, msg.obj);
             mHdlr.sendMessage(message);
         }
     }
@@ -102,10 +91,14 @@ public class ImsCommandsInterface extends Handler implements CommandsInterface {
 
     public void initiateImsRegistration(boolean state) {
         if (state == true) {
-            mImsReg.startImsService();
+            Log.v(LOG_TAG, "Instantiating ImsLinkManager...");
+            mLinkMgr = ImsLinkManager.getInstance(mPhone, mContext, this);
+            mLinkMgr.startImsStack();
         }
         else {
-            mImsReg.stopImsService();
+            if (mLinkMgr != null) {
+                mLinkMgr.stopImsStack();
+            }
             updateImsIcon(state);
             updateServiceState(state);
         }
@@ -114,19 +107,17 @@ public class ImsCommandsInterface extends Handler implements CommandsInterface {
     private void handleImsRegStatus(Message msg) {
         boolean curr_ims_status = false;
 
-        switch (msg.what)
+        switch (msg.arg1)
         {
-            case ImsRegistration.IMS_OFFLINE:
+            case ImsVoip.VOIP_REG_OFFLINE:
                 Log.i(LOG_TAG, "IMS_OFFLINE");
                 break;
-            case ImsRegistration.IMS_ONLINE:
+            case ImsVoip.VOIP_REG_ONLINE:
                 Log.i(LOG_TAG, "IMS_ONLINE");
                 curr_ims_status = true;
                 break;
-            case ImsRegistration.IMS_DISABLED:
-                Log.i(LOG_TAG, "IMS_DISABLED");
-                break;
             default:
+                Log.i(LOG_TAG, "VOIP state not handled");
                 break;
         }
 
@@ -134,56 +125,40 @@ public class ImsCommandsInterface extends Handler implements CommandsInterface {
         updateServiceState(curr_ims_status);
     }
 
-    private void handleImsVoipStatus(Message msg) {
-        switch (msg.what)
-        {
-            case ImsRegistration.VOIP_OFFLINE:
-                Log.i(LOG_TAG, "VOIP_OFFLINE");
-                break;
-            case ImsRegistration.VOIP_ONLINE:
-                Log.i(LOG_TAG, "VOIP_ONLINE");
-                // Get ready to receive incoming Voice call
-                mImsVoip.RegisterVoipForIncomingCall();
-                break;
-            default:
-                break;
-        }
-    }
-
     private void handleImsVoipUpdate(Message msg) {
 
         switch (msg.what) {
-            case ImsVoip.VOIP_ACCEPT:
-                if (mHdlr != null) {
-                    Message message = mHdlr.obtainMessage(VOIP_ACCEPT, msg.arg1,
-                            msg.arg2,
-                            msg.obj);
-                    mHdlr.sendMessage(message);
-                }
-                break;
+        // TODO: what's the mapping with VOIP_ACCEPT ?
             case ImsVoip.VOIP_STATE:
                 switch (msg.arg1)
                 {
+                    case ImsVoip.VOIP_STATE_INCOMING:
+                        Log.d(LOG_TAG, "VOIP_STATE_INCOMING");
+                        updateVoipState(VOIP_STATE_INCOMING, msg);
+                        break;
                     case ImsVoip.VOIP_STATE_CREATED:
                         Log.d(LOG_TAG, "VOIP_STATE_CREATED");
-                        updateVoipState(VOIP_STATE_DIALING);
+                        updateVoipState(VOIP_STATE_DIALING, msg);
                         break;
                     case ImsVoip.VOIP_STATE_RINGING:
                         Log.d(LOG_TAG, "VOIP_STATE_RINGING");
-                        updateVoipState(VOIP_STATE_ALERTING);
+                        updateVoipState(VOIP_STATE_ALERTING, msg);
                         break;
                     case ImsVoip.VOIP_STATE_CONNECTED:
                         Log.d(LOG_TAG, "VOIP_STATE_CONNECTED");
-                        updateVoipState(VOIP_STATE_ACTIVE);
+                        updateVoipState(VOIP_STATE_ACTIVE, msg);
                         break;
                     case ImsVoip.VOIP_STATE_DISCONNECTED:
                         Log.d(LOG_TAG, "VOIP_STATE_DISCONNECTED");
-                        updateVoipState(VOIP_STATE_DISCONNECTED);
+                        updateVoipState(VOIP_STATE_DISCONNECTED, msg);
                         break;
                     case ImsVoip.VOIP_STATE_DESTROYED:
                         Log.i(LOG_TAG, "VOIP_STATE_DESTROYED");
-                        updateVoipState(VOIP_STATE_DESTROYED);
+                        updateVoipState(VOIP_STATE_DESTROYED, msg);
                         break;
+                    case ImsVoip.VOIP_STATE_HELD:
+                        Log.i(LOG_TAG, "VOIP_STATE_HELD");
+                        updateVoipState(VOIP_STATE_HELD, msg);
                     default:
                         Log.i(LOG_TAG, "Unhandled VOIP_STATE");
                         break;
@@ -194,45 +169,16 @@ public class ImsCommandsInterface extends Handler implements CommandsInterface {
         }
     }
 
-    private void handleImsVtStatus(Message msg) {
-        switch (msg.what)
-        {
-            case ImsRegistration.VT_OFFLINE:
-                Log.i(LOG_TAG, "VT_OFFLINE");
-                break;
-            case ImsRegistration.VT_ONLINE:
-                Log.i(LOG_TAG, "VT_ONLINE");
-                break;
-            default:
-                break;
-        }
-    }
-
     @Override
     public void handleMessage(Message msg) {
         switch (msg.what)
         {
-            case ImsRegistration.IMS_OFFLINE:
-            case ImsRegistration.IMS_ONLINE:
-            case ImsRegistration.IMS_DISABLED:
+            case VOIP_REG_STATE:
                 handleImsRegStatus(msg);
                 break;
-
-            case ImsRegistration.VOIP_OFFLINE:
-            case ImsRegistration.VOIP_ONLINE:
-                handleImsVoipStatus(msg);
-                break;
-
-            case ImsRegistration.VT_OFFLINE:
-            case ImsRegistration.VT_ONLINE:
-                handleImsVtStatus(msg);
-                break;
-
-            case ImsVoip.VOIP_ACCEPT:
-            case ImsVoip.VOIP_STATE:
+            case VOIP_STATE:
                 handleImsVoipUpdate(msg);
                 break;
-
             default:
                 break;
         }
@@ -248,7 +194,7 @@ public class ImsCommandsInterface extends Handler implements CommandsInterface {
     public void setPhoneType(int phoneType) {
     }
 
-    public void setPhone(Phone phone) {
+    public void setPhone(ImsPhone phone) {
         if (phone != null) {
             mPhone = phone;
         } else {
@@ -613,7 +559,7 @@ public class ImsCommandsInterface extends Handler implements CommandsInterface {
         }
 
         if ((mPhone != null) && (mImsVoip != null)) {
-            mImsVoip.CreateVoipSession(mPhone.getMsisdn(), address);
+            mImsVoip.createVoipSession(mPhone.getMsisdn(), address);
         }
     }
 
@@ -629,8 +575,8 @@ public class ImsCommandsInterface extends Handler implements CommandsInterface {
     public void getIMEISV(Message result) {
     }
 
-    public void hangupConnection(int imsIndex, Message result) {
-        Log.i(LOG_TAG, "hangupConnection " + imsIndex);
+    public void hangupConnection(int callId, Message result) {
+        Log.i(LOG_TAG, "hangupConnection callId " + callId);
 
         if (result != null) {
             AsyncResult.forMessage(result, 0, null);
@@ -638,7 +584,7 @@ public class ImsCommandsInterface extends Handler implements CommandsInterface {
         }
 
         if (mImsVoip != null) {
-            mImsVoip.TerminateVoipSession();
+            mImsVoip.terminateVoipSession(callId);
         }
     }
 
@@ -665,23 +611,33 @@ public class ImsCommandsInterface extends Handler implements CommandsInterface {
 
     public void acceptCall(Message result) {
         if (result != null) {
+
+            int callId = (int) result.arg1;
+
+            Log.d(LOG_TAG, "acceptCall, callId = " + callId);
+
             AsyncResult.forMessage(result, 0, null);
             result.sendToTarget();
-        }
 
-        if (mImsVoip != null) {
-            mImsVoip.AcceptVoipSession();
+            if (mImsVoip != null) {
+                mImsVoip.acceptVoipSession(callId);
+            }
         }
     }
 
     public void rejectCall(Message result) {
         if (result != null) {
+
+            int callId = (int) result.arg1;
+
+            Log.d(LOG_TAG, "rejectCall, callId = " + callId);
+
             AsyncResult.forMessage(result, 0, null);
             result.sendToTarget();
-        }
 
-        if (mImsVoip != null) {
-            mImsVoip.RejectVoipSession();
+            if (mImsVoip != null) {
+                mImsVoip.rejectVoipSession(callId);
+            }
         }
     }
 

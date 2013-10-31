@@ -17,8 +17,8 @@
 package com.android.internal.telephony.ims;
 
 import android.content.Context;
+import android.util.Log;
 
-import com.android.internal.telephony.CommandsInterface;
 import com.android.internal.telephony.PhoneBase;
 import com.android.internal.telephony.PhoneNotifier;
 
@@ -43,6 +43,8 @@ public class ImsPhoneFactory {
                     notifier,
                     parentPhone,
                     unitTestMode);
+        } else {
+            Log.e("ImsPhoneFactory", "parentPhone is null");
         }
         return ret;
     }
