@@ -376,12 +376,17 @@ public class BipGateWay {
                  * When we are in the RETRYING state, enabling the default APN trigger
                  * a first disconnect before the retry tentative. So we ignore the first
                  * disconnect event in this case.
+                 *
+                 * If a retry is targeted we also ignore the disconnect state. We wait
+                 * for the end of all retries to complete.
                  */
-                if (mIsDataCallRetry) {
+                if (mIsDataCallRetry || mDataConnectionTracker.getState(mToBeUsedApnType)
+                        == DctConstants.State.RETRYING) {
                     CatLog.d(this, "Disconnect due to retrying state");
                     mIsDataCallRetry = false;
                     return;
                 }
+
                 Message msg = null;
                 synchronized (mSetupMessageLock) {
                     if (mOngoingSetupMessage == null)
