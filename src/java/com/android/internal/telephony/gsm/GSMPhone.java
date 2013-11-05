@@ -122,6 +122,8 @@ public class GSMPhone extends PhoneBase {
     private String mImeiSv;
     private String mVmNumber;
 
+    private boolean mIsEmergencyCallOngoing;
+
     // Create Cfu (Call forward unconditional) so that dialling number &
     // mOnComplete (Message object passed by client) can be packed &
     // given as a single Cfu object as user data to RIL.
@@ -744,6 +746,16 @@ public class GSMPhone extends PhoneBase {
             // FIXME should this return null or something else?
             return null;
         }
+    }
+
+    public final void
+    setEmergencyCallOngoing(boolean isEmergencyCallOngoing) {
+        mIsEmergencyCallOngoing = isEmergencyCallOngoing;
+    }
+
+    public final boolean
+    isEmergencyCallOngoing() {
+        return mIsEmergencyCallOngoing;
     }
 
     @Override
