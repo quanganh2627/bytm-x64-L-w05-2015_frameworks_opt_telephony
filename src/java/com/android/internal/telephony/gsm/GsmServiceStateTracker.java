@@ -209,6 +209,7 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
                 (PowerManager)phone.getContext().getSystemService(Context.POWER_SERVICE);
         mWakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKELOCK_TAG);
 
+        mCi.registerForOn(this, EVENT_RADIO_ON, null);
         mCi.registerForAvailable(this, EVENT_RADIO_AVAILABLE, null);
         mCi.registerForRadioStateChanged(this, EVENT_RADIO_STATE_CHANGED, null);
 
@@ -247,6 +248,7 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
         log("ServiceStateTracker dispose");
 
         // Unregister for all events.
+        mCi.unregisterForOn(this);
         mCi.unregisterForAvailable(this);
         mCi.unregisterForRadioStateChanged(this);
         mCi.unregisterForVoiceNetworkStateChanged(this);
@@ -288,18 +290,28 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
                 //setPowerStateToDesired();
                 break;
 
+            case EVENT_RADIO_ON:
+                if (mUiccApplcation == null
+                        || mUiccApplcation.getState() != AppState.APPSTATE_READY) {
+                    break;
+                }
+                // Fall through to restore saved network selection if sim is ready
             case EVENT_SIM_READY:
 
-                boolean skipRestoringSelection = mPhone.getContext().getResources().getBoolean(
-                        com.android.internal.R.bool.skip_restoring_network_selection);
+                // SIM can be accessible in radio off
+                if (mCi.getRadioState().isOn()) {
 
-                if (!skipRestoringSelection) {
-                    // restore the previous network selection.
-                    mPhone.restoreSavedNetworkSelection(null);
+                    boolean skipRestoringSelection = mPhone.getContext().getResources().getBoolean(
+                            com.android.internal.R.bool.skip_restoring_network_selection);
+
+                    if (!skipRestoringSelection) {
+                        // restore the previous network selection.
+                        mPhone.restoreSavedNetworkSelection(null);
+                    }
+                    pollState();
+                    // Signal strength polling stops when radio is off
+                    queueNextSignalStrengthPoll();
                 }
-                pollState();
-                // Signal strength polling stops when radio is off
-                queueNextSignalStrengthPoll();
                 break;
 
             case EVENT_RADIO_STATE_CHANGED:
