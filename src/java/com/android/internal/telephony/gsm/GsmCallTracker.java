@@ -16,12 +16,17 @@
 
 package com.android.internal.telephony.gsm;
 
+import static android.Manifest.permission.READ_PHONE_STATE;
+
+import android.app.ActivityManagerNative;
+import android.content.Intent;
 import android.os.AsyncResult;
 import android.os.Handler;
 import android.os.Message;
 import android.os.Registrant;
 import android.os.RegistrantList;
 import android.os.SystemProperties;
+import android.os.UserHandle;
 import android.telephony.PhoneNumberUtils;
 import android.telephony.ServiceState;
 import android.telephony.TelephonyManager;
@@ -37,6 +42,7 @@ import com.android.internal.telephony.DriverCall;
 import com.android.internal.telephony.EventLogTags;
 import com.android.internal.telephony.Phone;
 import com.android.internal.telephony.PhoneConstants;
+import com.android.internal.telephony.TelephonyIntents;
 import com.android.internal.telephony.TelephonyProperties;
 import com.android.internal.telephony.UUSInfo;
 import com.android.internal.telephony.gsm.CallFailCause;
@@ -403,6 +409,60 @@ public final class GsmCallTracker extends CallTracker {
         }
     }
 
+    private boolean
+    isEmergencyCall(GsmConnection c) {
+        if (c == null) {
+            return false;
+        }
+
+        String number = c.getAddress();
+        if (number != null && c.getState().isAlive()
+                && PhoneNumberUtils.isLocalEmergencyNumber(number, mPhone.getContext())) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private void
+    checkAndBroadcastEmergencyCallStarted() {
+        boolean emergencyCall;
+
+        if (mPendingMO != null) {
+            emergencyCall = isEmergencyCall(mPendingMO);
+        } else if (mRingingCall.isRinging()) {
+            emergencyCall =
+                    isEmergencyCall((GsmConnection)mRingingCall.getLatestConnection());
+        } else {
+            emergencyCall = false;
+        }
+
+        if (emergencyCall) {
+            mPhone.setEmergencyCallOngoing(true);
+
+            Intent intent = new Intent(TelephonyIntents.ACTION_EMERGENCY_CALL_STATUS_CHANGED);
+            if (intent != null) {
+                intent.putExtra(PhoneConstants.EMERGENCY_CALL_STATUS_KEY, true);
+                ActivityManagerNative.broadcastStickyIntent(
+                        intent, READ_PHONE_STATE, UserHandle.myUserId());
+            }
+        }
+    }
+
+    private void
+    checkAndBroadcastEmergencyCallEnded() {
+        if (mPhone.isEmergencyCallOngoing()) {
+            mPhone.setEmergencyCallOngoing(false);
+
+            Intent intent = new Intent(TelephonyIntents.ACTION_EMERGENCY_CALL_STATUS_CHANGED);
+            if (intent != null) {
+                intent.putExtra(PhoneConstants.EMERGENCY_CALL_STATUS_KEY, false);
+                ActivityManagerNative.broadcastStickyIntent(
+                        intent, READ_PHONE_STATE, UserHandle.myUserId());
+            }
+        }
+    }
+
     private void
     updatePhoneState() {
         PhoneConstants.State oldState = mState;
@@ -419,9 +479,11 @@ public final class GsmCallTracker extends CallTracker {
         if (mState == PhoneConstants.State.IDLE && oldState != mState) {
             mVoiceCallEndedRegistrants.notifyRegistrants(
                 new AsyncResult(null, null, null));
+            checkAndBroadcastEmergencyCallEnded();
         } else if (oldState == PhoneConstants.State.IDLE && oldState != mState) {
             mVoiceCallStartedRegistrants.notifyRegistrants (
                     new AsyncResult(null, null, null));
+            checkAndBroadcastEmergencyCallEnded();
         }
 
         if (mState != oldState) {
