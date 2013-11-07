@@ -20,9 +20,13 @@ import android.graphics.Bitmap;
 import android.os.Handler;
 import android.os.Message;
 
+import com.android.internal.telephony.cat.BearerDescription.BearerType;
+import com.android.internal.telephony.cat.InterfaceTransportLevel.TransportProtocol;
+
 import com.android.internal.telephony.GsmAlphabet;
 import com.android.internal.telephony.uicc.IccFileHandler;
 
+import java.net.InetAddress;
 import java.util.Iterator;
 import java.util.List;
 
@@ -158,7 +162,6 @@ class CommandParamsFactory extends Handler {
              case SEND_USSD:
                  cmdPending = processEventNotify(cmdDet, ctlvs);
                  break;
-             case GET_CHANNEL_STATUS:
              case SET_UP_CALL:
                  cmdPending = processSetupCall(cmdDet, ctlvs);
                  break;
@@ -176,11 +179,20 @@ class CommandParamsFactory extends Handler {
                 cmdPending = processProvideLocalInfo(cmdDet, ctlvs);
                 break;
              case OPEN_CHANNEL:
+                cmdPending = processOpenChannel(cmdDet, ctlvs);
+                break;
              case CLOSE_CHANNEL:
+                cmdPending = processCloseChannel(cmdDet, ctlvs);
+                break;
              case RECEIVE_DATA:
+                cmdPending = processReceiveData(cmdDet, ctlvs);
+                break;
              case SEND_DATA:
-                 cmdPending = processBIPClient(cmdDet, ctlvs);
-                 break;
+                cmdPending = processSendData(cmdDet, ctlvs);
+                break;
+             case GET_CHANNEL_STATUS:
+                cmdPending = processGetChannelStatus(cmdDet, ctlvs);
+                break;
              case LANGUAGE_NOTIFICATION:
                 cmdPending = processLanguageNotification(cmdDet, ctlvs);
                 break;
@@ -1037,4 +1049,240 @@ class CommandParamsFactory extends Handler {
         }
         return false;
     }
+
+    private boolean processOpenChannel(CommandDetails cmdDet,
+            List<ComprehensionTlv> ctlvs) throws ResultException {
+        CatLog.d(this, "process OpenChannel");
+        TextMessage confirmMsg = new TextMessage();
+        int bufSize = 0;
+        byte[] destinationAddress = null;
+        String networkAccessName = null;
+        String userLogin = null;
+        String userPassword = null;
+
+        confirmMsg.responseNeeded = false;
+        ComprehensionTlv ctlv = searchForTag(ComprehensionTlvTag.ALPHA_ID,ctlvs);
+        if (ctlv != null) {
+            confirmMsg.text = ValueParser.retrieveAlphaId(ctlv);
+            if (confirmMsg.text != null) {
+                confirmMsg.responseNeeded = true;
+            }
+        }
+        // BUFFER_SIZE TLV is mandatory for all supported OPEN_CHANNEL PCs
+        ctlv = searchForTag(ComprehensionTlvTag.BUFFER_SIZE, ctlvs);
+        if (ctlv != null) {
+            bufSize = ValueParser.retrieveBufferSize(ctlv);
+        } else {
+            throw new ResultException(ResultCode.REQUIRED_VALUES_MISSING);
+        }
+
+        Iterator<ComprehensionTlv> iter = ctlvs.iterator();
+        InterfaceTransportLevel itl = null;
+        ctlv = searchForNextTag(ComprehensionTlvTag.IF_TRANS_LEVEL, iter);
+
+        if (ctlv != null) {
+            itl = ValueParser.retrieveInterfaceTransportLevel(ctlv);
+            // Check for conditional/optional destination address located after itl TLV.
+            // Note: This is NOT the local address TLV.
+            if (iter != null) {
+                ctlv = searchForNextTag(ComprehensionTlvTag.OTHER_ADDRESS, iter);
+            }
+            if (ctlv != null) {
+                destinationAddress = ValueParser.retrieveOtherAddress(ctlv);
+                if (destinationAddress.length != 4) {
+                    // Currently only IPV4 support
+                    throw new ResultException(ResultCode.CMD_TYPE_NOT_UNDERSTOOD);
+                }
+            }
+        }
+
+        BearerDescription bearerDescription = null;
+        ctlv = searchForTag(ComprehensionTlvTag.BEARER_DESC, ctlvs);
+
+        if (ctlv != null) {
+            bearerDescription = ValueParser.retrieveBearerDescription(ctlv);
+            CatLog.d(this, "processOpenChannel bearer: " + bearerDescription.type.value()
+                    + " param.len: " + bearerDescription.parameters.length);
+        }
+
+        iter = ctlvs.iterator();
+        // network access name
+        if (iter != null) {
+            ctlv = searchForNextTag(ComprehensionTlvTag.NETWORK_ACCESS_NAME, iter);
+            if (ctlv != null) {
+                networkAccessName = ValueParser.retrieveNetworkAccessName(ctlv);
+                ctlv = searchForNextTag(ComprehensionTlvTag.TEXT_STRING, iter);
+                if (ctlv != null) {
+                    userLogin = ValueParser.retrieveTextString(ctlv);
+                }
+                ctlv = searchForNextTag(ComprehensionTlvTag.TEXT_STRING, iter);
+                if (ctlv != null) {
+                    userPassword = ValueParser.retrieveTextString(ctlv);
+                }
+            }
+        }
+
+        if (itl != null && bearerDescription == null) {
+            if (itl.protocol == TransportProtocol.TCP_SERVER) {
+                // OPEN CHANNEL related to UICC Server Mode
+            } else if (itl.protocol == TransportProtocol.TCP_CLIENT_LOCAL
+                    || itl.protocol == TransportProtocol.UDP_CLIENT_LOCAL) {
+                // OPEN CHANNEL related to Terminal Server Mode
+            } else {
+                throw new ResultException(ResultCode.CMD_DATA_NOT_UNDERSTOOD);
+            }
+        } else if (bearerDescription != null) {
+            if (bearerDescription.type == BearerType.DEFAULT_BEARER) {
+                // OPEN CHANNEL related to Default (network) Bearer
+            } else if (bearerDescription.type == BearerType.MOBILE_PS
+                    || bearerDescription.type == BearerType.MOBILE_PS_EXTENDED_QOS) {
+                // OPEN CHANNEL related to packet data service bearer
+            } else {
+                throw new ResultException(ResultCode.BEYOND_TERMINAL_CAPABILITY);
+            }
+
+            if (itl != null) {
+                if (itl.protocol != TransportProtocol.TCP_CLIENT_REMOTE
+                        && itl.protocol != TransportProtocol.UDP_CLIENT_REMOTE) {
+                    throw new ResultException(ResultCode.CMD_DATA_NOT_UNDERSTOOD);
+                }
+                if (destinationAddress == null) {
+                    throw new ResultException(ResultCode.REQUIRED_VALUES_MISSING);
+                }
+            } else {
+                // It is not mandatory to have IF_TRANS_LEVEL with conditional destination address
+                // but how should we behave if we don't know if we should use UDP/TCP and more
+                // interesting what server IP to connect to?
+                throw new ResultException(ResultCode.CMD_DATA_NOT_UNDERSTOOD);
+            }
+        } else {
+            throw new ResultException(ResultCode.REQUIRED_VALUES_MISSING);
+        }
+
+        String addressString;
+        try {
+             addressString = InetAddress.getByAddress(destinationAddress).getHostAddress();
+        } catch (java.net.UnknownHostException e) {
+            addressString = "unknown";
+        }
+
+        String msg = "processOpenChannel bufSize=" + bufSize
+                + " protocol=" + (itl != null ? itl.protocol : "undefined")
+                + " port=" + (itl != null ? itl.port : "undefined")
+                + " destination=" + addressString
+                + " APN=" + (networkAccessName != null ? networkAccessName : "undefined")
+                + " user/password=" + (userLogin != null ? userLogin : "---")
+                + "/" + (userPassword != null ? userPassword : "---");
+
+        CatLog.d(this, msg);
+
+        mCmdParams = new OpenChannelParams(cmdDet, confirmMsg, bufSize,
+                itl, destinationAddress, bearerDescription, networkAccessName,
+                userLogin, userPassword);
+        return false;
+    }
+
+    private boolean processCloseChannel(CommandDetails cmdDet,
+            List<ComprehensionTlv> ctlvs) throws ResultException {
+        CatLog.d(this, "process CloseChannel");
+        /*
+         * Check device identities.
+         * Destination device id has to be between 0x21 and 0x27.
+         */
+        ComprehensionTlv ctlv = searchForTag(ComprehensionTlvTag.DEVICE_IDENTITIES, ctlvs);
+        int channel = 0;
+        if (ctlv != null) {
+            channel = ValueParser.retrieveDeviceIdentities(ctlv).destinationId;
+            if ((channel < 0x21) || (channel > 0x27)) {
+                throw new ResultException(ResultCode.CMD_DATA_NOT_UNDERSTOOD);
+            } else {
+                channel &= 0x0f;
+            }
+        } else {
+            throw new ResultException(ResultCode.REQUIRED_VALUES_MISSING);
+        }
+
+        mCmdParams = new CloseChannelParams(cmdDet, channel);
+        return false;
+    }
+
+    private boolean processReceiveData(CommandDetails cmdDet,
+            List<ComprehensionTlv> ctlvs) throws ResultException {
+        CatLog.d(this, "process ReceiveData");
+        /*
+         * Check device identities.
+         * Destination device id has to be between 0x21 and 0x27.
+         */
+        ComprehensionTlv ctlv = searchForTag(ComprehensionTlvTag.DEVICE_IDENTITIES, ctlvs);
+        int channel = 0;
+        if (ctlv != null) {
+            channel = ValueParser.retrieveDeviceIdentities(ctlv).destinationId;
+            if ((channel < 0x21) || (channel > 0x27)) {
+                CatLog.d( this, "Invalid Channel number given: " + channel);
+                throw new ResultException(ResultCode.CMD_DATA_NOT_UNDERSTOOD);
+            } else {
+                channel &= 0x0f;
+            }
+        } else {
+            throw new ResultException(ResultCode.REQUIRED_VALUES_MISSING);
+        }
+
+        /*
+         * Get requested data length.
+         */
+        ctlv = searchForTag(ComprehensionTlvTag.CHANNEL_DATA_LENGTH, ctlvs);
+        int datLen = 0;
+        if (ctlv != null) {
+            datLen = ValueParser.retrieveChannelDataLength(ctlv);
+        } else {
+            throw new ResultException(ResultCode.REQUIRED_VALUES_MISSING);
+        }
+
+        mCmdParams = new ReceiveDataParams(cmdDet, channel, datLen);
+        return false;
+    }
+
+    private boolean processSendData(CommandDetails cmdDet,
+            List<ComprehensionTlv> ctlvs) throws ResultException {
+        CatLog.d(this, "process SendData");
+        /*
+         * Check device identities.
+         * Destination device id has to be between 0x21 and 0x27.
+         */
+        ComprehensionTlv ctlv = searchForTag(ComprehensionTlvTag.DEVICE_IDENTITIES, ctlvs);
+        int channel = 0;
+        if (ctlv != null) {
+            channel = ValueParser.retrieveDeviceIdentities(ctlv).destinationId;
+
+            if ((channel < 0x21) || (channel > 0x27)) {
+                throw new ResultException(ResultCode.CMD_DATA_NOT_UNDERSTOOD);
+            } else {
+                channel &= 0x0f;
+            }
+        } else {
+            throw new ResultException(ResultCode.REQUIRED_VALUES_MISSING);
+        }
+
+        /*
+         * Get submitted data
+         */
+        ctlv = searchForTag(ComprehensionTlvTag.CHANNEL_DATA, ctlvs);
+        byte[] data = null;
+        if (ctlv != null) {
+            data = ValueParser.retrieveChannelData(ctlv);
+        } else {
+            throw new ResultException(ResultCode.REQUIRED_VALUES_MISSING);
+        }
+
+        mCmdParams = new SendDataParams(cmdDet, channel, data);
+        return false;
+    }
+
+    private boolean processGetChannelStatus(CommandDetails cmdDet,
+            List<ComprehensionTlv> ctlvs) throws ResultException {
+        CatLog.d(this, "process GetChannelStatus");
+
+        mCmdParams = new GetChannelStatusParams(cmdDet);
+         return false;
+     }
 }
