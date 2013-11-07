@@ -19,6 +19,7 @@ package com.android.internal.telephony.gsm;
 
 import android.content.ContentValues;
 import android.content.Context;
+import android.content.res.Resources;
 import android.content.SharedPreferences;
 import android.database.SQLException;
 import android.net.Uri;
@@ -295,6 +296,19 @@ public class GSMPhone extends PhoneBase {
     public PhoneConstants.DataState getDataConnectionState(String apnType) {
         PhoneConstants.DataState ret = PhoneConstants.DataState.DISCONNECTED;
 
+        String dataState = "";
+        try {
+            if (mContext.getResources().getBoolean(
+                    com.android.internal.R.bool.config_usage_oem_hooks_supported)) {
+
+                String oemproperty = mContext
+                        .getText(com.android.internal.R.string.oemhook_datastate_property)
+                        .toString();
+                dataState = SystemProperties.get(oemproperty,"");
+            }
+        } catch (Resources.NotFoundException ex) {
+        }
+
         if (mSST == null) {
             // Radio Technology Change is ongoning, dispose() and removeReferences() have
             // already been called
@@ -306,6 +320,9 @@ public class GSMPhone extends PhoneBase {
             //      Dataconnection or not. Checking each ApnState below should
             //      provide the same state. Calling isApnTypeActive() can be removed.
             ret = PhoneConstants.DataState.DISCONNECTED;
+        } else if (dataState.equals("suspended")) {
+            Rlog.d(LOG_TAG, "Data state is suspended");
+            ret = PhoneConstants.DataState.SUSPENDED;
         } else { /* mSST.gprsState == ServiceState.STATE_IN_SERVICE */
             switch (mDcTracker.getState(apnType)) {
                 case RETRYING:
