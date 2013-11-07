@@ -275,6 +275,12 @@ public final class DcTracker extends DcTrackerBase {
             case ConnectivityManager.TYPE_MOBILE_IA:
                 apnContext = addApnContext(PhoneConstants.APN_TYPE_IA, networkConfig);
                 break;
+            case ConnectivityManager.TYPE_MOBILE_BIP_GPRS1:
+                apnContext = addApnContext(PhoneConstants.APN_TYPE_BIP_GPRS1, networkConfig);
+                break;
+            case ConnectivityManager.TYPE_MOBILE_BIP_GPRS2:
+                apnContext = addApnContext(PhoneConstants.APN_TYPE_BIP_GPRS2, networkConfig);
+                break;
             default:
                 log("initApnContexts: skipping unknown type=" + networkConfig.type);
                 continue;

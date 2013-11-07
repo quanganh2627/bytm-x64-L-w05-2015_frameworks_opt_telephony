@@ -24,6 +24,10 @@ import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.content.res.Resources;
 import android.content.res.Configuration;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
+import android.net.NetworkUtils;
+import android.telephony.ServiceState;
 import android.content.res.Resources.NotFoundException;
 import android.os.AsyncResult;
 import android.os.Handler;
@@ -44,6 +48,12 @@ import com.android.internal.telephony.uicc.IccUtils;
 import com.android.internal.telephony.uicc.UiccCard;
 import com.android.internal.telephony.uicc.UiccCardApplication;
 
+import com.android.internal.telephony.cat.BearerDescription.BearerType;
+import com.android.internal.telephony.cat.CatCmdMessage.ChannelSettings;
+import com.android.internal.telephony.cat.CatCmdMessage.DataSettings;
+import com.android.internal.telephony.cat.Duration.TimeUnit;
+import com.android.internal.telephony.cat.InterfaceTransportLevel.TransportProtocol;
+import com.android.internal.telephony.ITelephony;
 
 import java.io.ByteArrayOutputStream;
 import java.util.List;
@@ -89,6 +99,7 @@ public class CatService extends Handler implements AppInterface {
     private CatCmdMessage mCurrntCmd = null;
     private CatCmdMessage mMenuCmd = null;
     private byte[] mEventList = null;
+    private BipGateWay mBipGateWay;
 
     private RilMessageDecoder mMsgDecoder = null;
     private boolean mStkAppInstalled = false;
@@ -148,6 +159,8 @@ public class CatService extends Handler implements AppInterface {
         // Register for SIM ready event.
         mUiccApplication.registerForReady(this, MSG_ID_SIM_READY, null);
         mIccRecords.registerForRecordsLoaded(this, MSG_ID_ICC_RECORDS_LOADED, null);
+
+        mBipGateWay = new BipGateWay(this, mCmdIf, mContext);
 
         // Check if STK application is availalbe
         mStkAppInstalled = isStkAppInstalled();
@@ -344,59 +357,7 @@ public class CatService extends Handler implements AppInterface {
                 }
                 sendTerminalResponse(cmdParams.mCmdDet, ResultCode.OK, false, 0, null);
                 return;
-            case OPEN_CHANNEL:
-            case CLOSE_CHANNEL:
-            case RECEIVE_DATA:
-            case SEND_DATA:
-                BIPClientParams cmd = (BIPClientParams) cmdParams;
-                /* Per 3GPP specification 102.223,
-                 * if the alpha identifier is not provided by the UICC,
-                 * the terminal MAY give information to the user
-                 * noAlphaUsrCnf defines if you need to show user confirmation or not
-                 */
-                boolean noAlphaUsrCnf = false;
-                try {
-                    noAlphaUsrCnf = mContext.getResources().getBoolean(
-                            com.android.internal.R.bool.config_stkNoAlphaUsrCnf);
-                } catch (NotFoundException e) {
-                    noAlphaUsrCnf = false;
-                }
-                if ((cmd.mTextMsg.text == null) && (cmd.mHasAlphaId || noAlphaUsrCnf)) {
-                    CatLog.d(this, "cmd " + cmdParams.getCommandType() + " with null alpha id");
-                    // If alpha length is zero, we just respond with OK.
-                    if (isProactiveCmd) {
-                        if (cmdParams.getCommandType() == CommandType.OPEN_CHANNEL) {
-                            mCmdIf.handleCallSetupRequestFromSim(true, null);
-                        } else {
-                            sendTerminalResponse(cmdParams.mCmdDet, ResultCode.OK, false, 0, null);
-                        }
-                    }
-                    return;
-                }
-                // Respond with permanent failure to avoid retry if STK app is not present.
-                if (!mStkAppInstalled) {
-                    CatLog.d(this, "No STK application found.");
-                    if (isProactiveCmd) {
-                        sendTerminalResponse(cmdParams.mCmdDet,
-                                             ResultCode.BEYOND_TERMINAL_CAPABILITY,
-                                             false, 0, null);
-                        return;
-                    }
-                }
-                /*
-                 * CLOSE_CHANNEL, RECEIVE_DATA and SEND_DATA can be delivered by
-                 * either PROACTIVE_COMMAND or EVENT_NOTIFY.
-                 * If PROACTIVE_COMMAND is used for those commands, send terminal
-                 * response here.
-                 */
-                if (isProactiveCmd &&
-                    ((cmdParams.getCommandType() == CommandType.CLOSE_CHANNEL) ||
-                     (cmdParams.getCommandType() == CommandType.RECEIVE_DATA) ||
-                     (cmdParams.getCommandType() == CommandType.SEND_DATA))) {
-                    sendTerminalResponse(cmdParams.mCmdDet, ResultCode.OK, false, 0, null);
-                }
-                break;
-           case SET_UP_EVENT_LIST:
+            case SET_UP_EVENT_LIST:
                 // Store eventlist
                 mCurrntCmd = cmdMsg;
                 mEventList = mCurrntCmd.getEventList();
@@ -415,9 +376,36 @@ public class CatService extends Handler implements AppInterface {
 
                 sendTerminalResponse(cmdParams.mCmdDet, ResultCode.OK, false, 0, null);
                 break;
-           case ACTIVATE:
-                sendTerminalResponse(cmdParams.mCmdDet,
-                        ResultCode.BEYOND_TERMINAL_CAPABILITY, false, 0, null);
+            case ACTIVATE:
+                 sendTerminalResponse(cmdParams.mCmdDet,
+                         ResultCode.BEYOND_TERMINAL_CAPABILITY, false, 0, null);
+                 return;
+            case OPEN_CHANNEL:
+                ChannelSettings newChannel = cmdMsg.getChannelSettings();
+                if (newChannel == null) {
+                    // Send TR cmd data not understood
+                    sendTerminalResponse(cmdParams.mCmdDet, ResultCode.CMD_DATA_NOT_UNDERSTOOD,
+                            false, 0, null);
+                    return;
+                }
+                // Check if BipProxy can handle more channels
+                if (!mBipGateWay.available()) {
+                   resp = new OpenChannelResponseData(newChannel.bufSize, null,
+                           newChannel.bearerDescription);
+                   sendTerminalResponse(cmdParams.mCmdDet, ResultCode.BIP_ERROR, true, 0x01, resp);
+                   return;
+                }
+                // Check if user confirmation is needed
+                if (cmdMsg.geTextMessage() != null && cmdMsg.geTextMessage().responseNeeded) {
+                    break;
+                }
+            // fall through
+            case CLOSE_CHANNEL:
+            case RECEIVE_DATA:
+            case SEND_DATA:
+            case GET_CHANNEL_STATUS:
+                mCurrntCmd = cmdMsg;
+                mBipGateWay.handleBipCommand(cmdMsg);
                 return;
             default:
                 CatLog.d(this, "Unsupported command");
@@ -427,6 +415,7 @@ public class CatService extends Handler implements AppInterface {
         Intent intent = new Intent(AppInterface.CAT_CMD_ACTION);
         intent.putExtra("STK CMD", cmdMsg);
         mContext.sendBroadcast(intent);
+        mBipGateWay.handleBipCommand(null);
     }
 
     /**
@@ -441,7 +430,7 @@ public class CatService extends Handler implements AppInterface {
         mContext.sendBroadcast(intent);
     }
 
-    private void sendTerminalResponse(CommandDetails cmdDet,
+    public void sendTerminalResponse(CommandDetails cmdDet,
             ResultCode resultCode, boolean includeAdditionalInfo,
             int additionalInfo, ResponseData resp) {
 
@@ -908,8 +897,15 @@ public class CatService extends Handler implements AppInterface {
             case DISPLAY_TEXT:
             case LAUNCH_BROWSER:
                 break;
-            // 3GPP TS.102.223: Open Channel alpha confirmation should not send TR
+            // 3GPP TS.102.223: Open Channel alpha confirmation should not send TR TODO verify this
             case OPEN_CHANNEL:
+                CatLog.d(this, "OPEN_CHANNEL");
+                if (resMsg.mResCode == ResultCode.OK && resMsg.mUsersConfirm) {
+                    // user has accepted OPEN CHANNEL
+                    mBipGateWay.handleBipCommand(mCurrntCmd);
+                    return;
+                }
+                break;
             case SET_UP_CALL:
                 mCmdIf.handleCallSetupRequestFromSim(resMsg.mUsersConfirm, null);
                 // No need to send terminal response for SET UP CALL. The user's
@@ -927,10 +923,22 @@ public class CatService extends Handler implements AppInterface {
             // setup call/open channel, consider that as the user
             // rejecting the call. Use dedicated API for this, rather than
             // sending a terminal response.
-            if (type == CommandType.SET_UP_CALL || type == CommandType.OPEN_CHANNEL) {
+            if (type == CommandType.SET_UP_CALL) {
                 mCmdIf.handleCallSetupRequestFromSim(false, null);
                 mCurrntCmd = null;
                 return;
+            } else if (type == CommandType.OPEN_CHANNEL) {
+                CatLog.d(this, "OPEN_CHANNEL - User rejection");
+                if (!resMsg.mUsersConfirm
+                         && mCurrntCmd.geTextMessage().responseNeeded) {
+                    // user has OPEN CHANNEL rejected
+                    ChannelSettings params = mCurrntCmd.getChannelSettings();
+                    resMsg.mResCode = ResultCode.USER_NOT_ACCEPT;
+                    resp = new OpenChannelResponseData(params.bufSize,
+                            null, params.bearerDescription);
+                } else {
+                    CatLog.d(this, "OPEN_CHANNEL - User rejection, NO Response Needed");
+                }
             } else {
                 resp = null;
             }
