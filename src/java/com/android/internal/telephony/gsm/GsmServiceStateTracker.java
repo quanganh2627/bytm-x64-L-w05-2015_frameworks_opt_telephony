@@ -157,6 +157,8 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
     private boolean mCurShowPlmn = false;
     private boolean mCurShowSpn = false;
 
+    private boolean mIsScreenOn = false;
+
     /** Notification type. */
     static final int PS_ENABLED = 1001;            // Access Control blocks data service
     static final int PS_DISABLED = 1002;           // Access Control enables data service
@@ -177,10 +179,16 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
                         " while being destroyed. Ignoring.");
                 return;
             }
-
-            if (intent.getAction().equals(Intent.ACTION_LOCALE_CHANGED)) {
+            String action = intent.getAction();
+            if (action == null) return;
+            if (action.equals(Intent.ACTION_LOCALE_CHANGED)) {
                 // update emergency string whenever locale changed
                 updateSpnDisplay();
+            } else if (action.equals(Intent.ACTION_SCREEN_ON)) {
+                mIsScreenOn = true;
+                sendMessage(obtainMessage(EVENT_POLL_SIGNAL_STRENGTH));
+            } else if (action.equals(Intent.ACTION_SCREEN_OFF)) {
+                mIsScreenOn = false;
             }
         }
     };
@@ -246,6 +254,8 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
         // Monitor locale change
         IntentFilter filter = new IntentFilter();
         filter.addAction(Intent.ACTION_LOCALE_CHANGED);
+        filter.addAction(Intent.ACTION_SCREEN_ON);
+        filter.addAction(Intent.ACTION_SCREEN_OFF);
         phone.getContext().registerReceiver(mIntentReceiver, filter);
 
         // Gsm doesn't support OTASP so its not needed
@@ -394,8 +404,9 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
 
             case EVENT_POLL_SIGNAL_STRENGTH:
                 // Just poll signal strength...not part of pollState()
-
-                mCi.getSignalStrength(obtainMessage(EVENT_GET_SIGNAL_STRENGTH));
+                if (mIsScreenOn) {
+                    mCi.getSignalStrength(obtainMessage(EVENT_GET_SIGNAL_STRENGTH));
+                }
                 break;
 
             case EVENT_NITZ_TIME:
@@ -1188,6 +1199,10 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
                     ServiceState.rilRadioTechnologyToString(mSS.getRilVoiceRadioTechnology()));
         }
 
+        if (hasRegistered || hasGprsAttached) {
+            querySignalStrength();
+        }
+
         if (hasRegistered) {
             mNetworkAttachedRegistrants.notifyRegistrants();
 
@@ -1297,22 +1312,35 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
         return guess;
     }
 
-    private void queueNextSignalStrengthPoll() {
+    private void querySignalStrength() {
         if (mDontPollSignalStrength) {
             // The radio is telling us about signal strength changes
             // we don't have to ask it
             return;
         }
 
-        Message msg;
+        // Remove pending signal strength polling messages
+        removeMessages(EVENT_POLL_SIGNAL_STRENGTH);
 
-        msg = obtainMessage();
-        msg.what = EVENT_POLL_SIGNAL_STRENGTH;
+        // Query the signal strength.
+        mCi.getSignalStrength(obtainMessage(EVENT_GET_SIGNAL_STRENGTH));
+    }
 
-        long nextTime;
+    protected void queueNextSignalStrengthPoll() {
+        if (mDontPollSignalStrength) {
+            // The radio is telling us about signal strength changes
+            // we don't have to ask it
+            return;
+        }
 
-        // TODO Don't poll signal strength if screen is off
-        sendMessageDelayed(msg, POLL_PERIOD_MILLIS);
+        if (mIsScreenOn) {
+            Message msg;
+
+            msg = obtainMessage();
+            msg.what = EVENT_POLL_SIGNAL_STRENGTH;
+
+            sendMessageDelayed(msg, POLL_PERIOD_MILLIS);
+        }
     }
 
     /**
