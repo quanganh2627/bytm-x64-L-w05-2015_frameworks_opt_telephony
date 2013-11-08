@@ -75,6 +75,10 @@ import java.util.HashMap;
 public final class DcTracker extends DcTrackerBase {
     protected final String LOG_TAG = "DCT";
 
+    // This change is kept in DcTracker so as to help in enabling
+    // LTE is PDK builds as framework/base is not open in PDK
+    private static final int EVENT_IMSI_READY = DctConstants.BASE + 40;
+
     /**
      * Handles changes to the APN db.
      */
@@ -1274,9 +1278,7 @@ public final class DcTracker extends DcTrackerBase {
     }
 
     private void onRecordsLoaded() {
-        if (DBG) log("onRecordsLoaded: createAllApnList");
-        createAllApnList();
-        setInitialAttachApn();
+        if (DBG) log("onRecordsLoaded");
         if (mPhone.mCi.getRadioState().isOn()) {
             if (DBG) log("onRecordsLoaded: notifying data availability");
             notifyOffApnsOfAvailability(Phone.REASON_SIM_LOADED);
@@ -2242,6 +2244,11 @@ public final class DcTracker extends DcTrackerBase {
                 }
                 break;
 
+            case EVENT_IMSI_READY:
+                if (DBG) log("IMSI READY: createAllApnList and set Initial apn");
+                createAllApnList();
+                setInitialAttachApn();
+                break;
             default:
                 // handle the message in the super class DataConnectionTracker
                 super.handleMessage(msg);
@@ -2298,6 +2305,7 @@ public final class DcTracker extends DcTrackerBase {
             if (r != null) {
                 log("Removing stale icc objects.");
                 r.unregisterForRecordsLoaded(this);
+                r.unregisterForImsiReady(this);
                 mIccRecords.set(null);
             }
             if (newIccRecords != null) {
@@ -2305,6 +2313,7 @@ public final class DcTracker extends DcTrackerBase {
                 mIccRecords.set(newIccRecords);
                 newIccRecords.registerForRecordsLoaded(
                         this, DctConstants.EVENT_RECORDS_LOADED, null);
+                newIccRecords.registerForImsiReady(this, EVENT_IMSI_READY, null);
             }
         }
     }
