@@ -23,6 +23,7 @@ import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.res.Resources;
 import android.content.SharedPreferences;
 import android.database.ContentObserver;
 import android.net.ConnectivityManager;
@@ -1459,6 +1460,24 @@ public abstract class DcTrackerBase extends Handler {
         }
     }
 
+    public void cancelDataRecovery() {
+        if (DBG) log("cancelDataRecovery()");
+
+        try {
+            if (mPhone.getContext().getResources().getBoolean(
+                    com.android.internal.R.bool.config_usage_oem_hooks_supported)) {
+                String oemproperty = mPhone.getContext().getText(
+                        com.android.internal.R.string.oemhook_concurrentdata_property).toString();
+                SystemProperties.set(oemproperty, "notallowed");
+            }
+        } catch (Resources.NotFoundException ex) {
+            log("ignore exception");
+        }
+
+        cleanUpAllConnections(Phone.REASON_PDP_RESET);
+        putRecoveryAction(RecoveryAction.GET_DATA_CALL_LIST);
+    }
+
     public int getRecoveryAction() {
         int action = Settings.System.getInt(mPhone.getContext().getContentResolver(),
                 "radio.data.stall.recovery.action", RecoveryAction.GET_DATA_CALL_LIST);
@@ -1494,6 +1513,11 @@ public abstract class DcTrackerBase extends Handler {
                 putRecoveryAction(RecoveryAction.REREGISTER);
                 break;
             case RecoveryAction.REREGISTER:
+                if (mPhone.getState() != PhoneConstants.State.IDLE) {
+                    cancelDataRecovery();
+                    return;
+                }
+
                 EventLog.writeEvent(EventLogTags.DATA_STALL_RECOVERY_REREGISTER,
                         mSentSinceLastRecv);
                 if (DBG) log("doRecovery() re-register");
@@ -1501,6 +1525,11 @@ public abstract class DcTrackerBase extends Handler {
                 putRecoveryAction(RecoveryAction.RADIO_RESTART);
                 break;
             case RecoveryAction.RADIO_RESTART:
+                if (mPhone.getState() != PhoneConstants.State.IDLE) {
+                    cancelDataRecovery();
+                    return;
+                }
+
                 EventLog.writeEvent(EventLogTags.DATA_STALL_RECOVERY_RADIO_RESTART,
                         mSentSinceLastRecv);
                 if (DBG) log("restarting radio");
@@ -1508,6 +1537,10 @@ public abstract class DcTrackerBase extends Handler {
                 restartRadio();
                 break;
             case RecoveryAction.RADIO_RESTART_WITH_PROP:
+                if (mPhone.getState() != PhoneConstants.State.IDLE) {
+                    cancelDataRecovery();
+                    return;
+                }
                 // This is in case radio restart has not recovered the data.
                 // It will set an additional "gsm.radioreset" property to tell
                 // RIL or system to take further action.
