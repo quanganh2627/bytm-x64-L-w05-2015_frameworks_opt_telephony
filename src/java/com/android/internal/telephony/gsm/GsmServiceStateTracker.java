@@ -83,7 +83,7 @@ import java.util.TimeZone;
 /**
  * {@hide}
  */
-final class GsmServiceStateTracker extends ServiceStateTracker {
+public class GsmServiceStateTracker extends ServiceStateTracker {
     private static final String LOG_TAG = "GsmSST";
     private static final boolean VDBG = false;
 
@@ -1027,7 +1027,7 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
      * and start over again if the radio notifies us that some
      * event has changed
      */
-    private void pollState() {
+    protected void pollState() {
         mPollingContext = new int[1];
         mPollingContext[0] = 0;
 
