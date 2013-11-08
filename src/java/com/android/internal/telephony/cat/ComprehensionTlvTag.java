@@ -45,6 +45,7 @@ public enum ComprehensionTlvTag {
     IMMEDIATE_RESPONSE(0x2b),
     LANGUAGE(0x2d),
     URL(0x31),
+    BEARER(0x32),
     BROWSER_TERMINATION_CAUSE(0x34),
     BEARER_DESC(0x35),
     CHANNEL_DATA(0x36),
