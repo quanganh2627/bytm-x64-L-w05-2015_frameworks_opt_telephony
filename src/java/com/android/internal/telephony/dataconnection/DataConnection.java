@@ -632,6 +632,18 @@ public final class DataConnection extends StateMachine {
         mDcFailCause = null;
     }
 
+    private boolean isFailure(int errorCode) {
+        DcFailCause cause = DcFailCause.fromInt(errorCode);
+        if (cause == DcFailCause.NONE
+                || cause == DcFailCause.ONLY_IPV4_ALLOWED
+                || cause == DcFailCause.ONLY_IPV6_ALLOWED
+                || cause == DcFailCause.ONLY_SINGLE_BEARER_ALLOWED) {
+            return false;
+        } else {
+            return true;
+        }
+    }
+
     /**
      * Process setup completion.
      *
@@ -665,11 +677,12 @@ public final class DataConnection extends StateMachine {
                 result = DataCallResponse.SetupResult.ERR_RilError;
                 result.mFailCause = DcFailCause.fromInt(response.status);
             }
-        } else if (response.status != 0) {
+        } else if (isFailure(response.status)) {
             result = DataCallResponse.SetupResult.ERR_RilError;
             result.mFailCause = DcFailCause.fromInt(response.status);
         } else {
             if (DBG) log("onSetupConnectionCompleted received DataCallResponse: " + response);
+            response.status = 0;
             mCid = response.cid;
             result = updateLinkProperty(response).setupResult;
         }
