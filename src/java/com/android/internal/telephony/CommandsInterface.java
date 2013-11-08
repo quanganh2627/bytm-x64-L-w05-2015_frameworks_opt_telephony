@@ -1693,4 +1693,11 @@ public interface CommandsInterface {
      * @return version of the ril.
      */
     int getRilVersion();
+
+    void iccExchangeAPDU(int cla, int command, int channel, int p1, int p2,
+            int p3, String data, Message response);
+
+    void iccOpenChannel(String AID, Message response);
+
+    void iccCloseChannel(int channel, Message response);
 }
