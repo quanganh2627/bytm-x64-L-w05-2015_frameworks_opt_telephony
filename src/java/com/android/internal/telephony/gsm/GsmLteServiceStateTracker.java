@@ -17,7 +17,11 @@
 package com.android.internal.telephony.gsm;
 
 import android.os.AsyncResult;
+import android.os.Handler;
 import android.os.Message;
+import android.os.Registrant;
+import android.os.RegistrantList;
+import android.telephony.ServiceState;
 import android.util.Log;
 
 import com.android.internal.telephony.dataconnection.ApnSetting;
@@ -36,10 +40,11 @@ import java.io.PrintWriter;
 public class GsmLteServiceStateTracker extends GsmServiceStateTracker {
     private static final String LOG_TAG = "GsmLte";
 
+    protected RegistrantList mDataRegistrationStateRegistrants = new RegistrantList();
+
     public GsmLteServiceStateTracker(GSMPhone phone) {
         super(phone);
     }
-
 
     @Override
     public void handleMessage(Message msg) {
@@ -51,6 +56,11 @@ public class GsmLteServiceStateTracker extends GsmServiceStateTracker {
         }
 
         switch (msg.what) {
+            case EVENT_POLL_STATE_GPRS:
+                super.handleMessage(msg);
+                AsyncResult ar = (AsyncResult) msg.obj;
+                mDataRegistrationStateRegistrants.notifyRegistrants(ar);
+                break;
             // we do not need to handle any message here
             // the initial apn attach will be set by default
             // on onRecordsLoaded by DcTracker
@@ -79,5 +89,14 @@ public class GsmLteServiceStateTracker extends GsmServiceStateTracker {
     public void dump(FileDescriptor fd, PrintWriter pw, String[] args) {
         pw.println("GsmLteServiceStateTracker extends:");
         super.dump(fd, pw, args);
+    }
+
+    public void registerForDataRegistrationStateUpdate(Handler h, int what, Object obj) {
+        Registrant r = new Registrant(h, what, obj);
+        mDataRegistrationStateRegistrants.add(r);
+    }
+
+    public void unregisterForDataRegistrationStateUpdate(Handler h) {
+        mDataRegistrationStateRegistrants.remove(h);
     }
 }
