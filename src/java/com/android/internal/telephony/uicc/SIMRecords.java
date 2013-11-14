@@ -476,7 +476,8 @@ public class SIMRecords extends IccRecords {
         mRecordsEventsRegistrants.notifyResult(EVENT_CFI);
 
         try {
-            if (validEfCfis(mEfCfis)) {
+            if (validEfCfis(mEfCfis)
+                    && mUsimServiceTable.isAvailable(UsimServiceTable.UsimService.CFI_STATUS)) {
                 // lsb is of byte 1 is voice status
                 if (enable) {
                     mEfCfis[1] |= 1;
