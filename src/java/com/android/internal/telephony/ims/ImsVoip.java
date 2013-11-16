@@ -82,13 +82,6 @@ public class ImsVoip {
         }
 
         @Override
-        public void onMultimediaCallAborted(int callId, int reason) throws RemoteException {
-            Log.v(LOG_TAG, "onMultimediaCallAborted, reason: " + reason);
-            onMultimediaCallDisconnected(callId);
-            // TODO: are we sure this is what to do?
-        }
-
-        @Override
         public void onMultimediaCallConnected(int callId) throws RemoteException {
             Log.v(LOG_TAG, "onMultimediaCallConnected");
             Message msg = mHdlr.obtainMessage(ImsVoip.VOIP_STATE,
@@ -105,8 +98,8 @@ public class ImsVoip {
         }
 
         @Override
-        public void onMultimediaCallDisconnected(int callId) throws RemoteException {
-            Log.v(LOG_TAG, "onMultimediaCallDisconnected");
+        public void onMultimediaCallDisconnected(int callId, int cause) throws RemoteException {
+            Log.v(LOG_TAG, "onMultimediaCallDisconnected, cause = " + cause);
             Message msg = mHdlr.obtainMessage(ImsVoip.VOIP_STATE,
                     ImsVoip.VOIP_STATE_DISCONNECTED,
                     callId);
@@ -394,7 +387,7 @@ public class ImsVoip {
     }
 
     /*
-     * This method is used to resume a VOIP SESSION
+     * This method is used to reject a VOIP SESSION
      */
     public void rejectVoipSession(int callId) {
         synchronized (ImsVoip.this.mCallSessionServiceLock) {
