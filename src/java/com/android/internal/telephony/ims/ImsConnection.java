@@ -36,11 +36,11 @@ public class ImsConnection extends Connection {
     String dialString = null; // outgoing calls only
     String postDialString = null; // outgoing calls only
     DisconnectCause cause = DisconnectCause.NOT_DISCONNECTED;
-    int callId = 0;
 
     private ImsCall mParent = null;
     private boolean mIsIncoming = false;
     private boolean mDisconnected = false;
+    private int mCallId = -1;
 
     /*
      * These time/timespan values are based on System.currentTimeMillis(), i.e.,
@@ -73,7 +73,7 @@ public class ImsConnection extends Connection {
             throw new IllegalArgumentException("callId");
         }
 
-        this.callId = callId;
+        mCallId = callId;
 
         owner = ct;
 
@@ -93,11 +93,6 @@ public class ImsConnection extends Connection {
         else {
             mParent.attachFake(this, ImsCall.State.INCOMING);
         }
-    }
-
-    ImsConnection(Context context, String dialString, ImsCallTracker ct, ImsCall parent,
-            boolean incoming) {
-        this(context, dialString, ct, parent, incoming, 0);
     }
 
     @Override
@@ -214,7 +209,7 @@ public class ImsConnection extends Connection {
         this.cause = cause;
 
         if (!mDisconnected) {
-            callId = -1;
+            mCallId = -1;
 
             mDisconnectTime = System.currentTimeMillis();
             mDuration = SystemClock.elapsedRealtime() - mConnectTimeReal;
@@ -252,6 +247,10 @@ public class ImsConnection extends Connection {
 
     @Override
     public void cancelPostDial() {
+    }
+
+    int getCallId() {
+        return mCallId;
     }
 
     void onConnectedInOrOut() {

@@ -44,7 +44,7 @@ public class ImsCall extends Call {
 
     public int getCallId() throws CallStateException {
         if (mConnections.size() > 0) {
-            return ((ImsConnection) mConnections.get(0)).callId;
+            return ((ImsConnection) mConnections.get(0)).getCallId();
         }
         throw new CallStateException("No ImsConnection in this call");
     }

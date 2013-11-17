@@ -175,13 +175,11 @@ public final class ImsCallTracker extends CallTracker {
                             Log.i(LOG_TAG, "VOIP_STATE_ACTIVE MO, callId = " + callId);
 
                             mConnections[0] = mPendingMO;
-                            mConnections[0].callId = callId;
                             mPendingMO = null;
 
                             mConnections[0].onConnectedInOrOut();
 
                             foregroundCall.setState(ImsCall.State.ACTIVE);
-
                             updatePhoneState();
                             phone.notifyPreciseCallStateChanged();
                         }
@@ -194,7 +192,7 @@ public final class ImsCallTracker extends CallTracker {
                                     pendingMT.getAddress(),
                                     this,
                                     foregroundCall,
-                                    true,
+                                    false,
                                     callId);
                             mConnections[0].onConnectedInOrOut();
 
@@ -214,7 +212,7 @@ public final class ImsCallTracker extends CallTracker {
 
                         if (mPendingMO != null) {
                             mPendingMO.onRemoteDisconnect();
-                            mCi.hangupConnection(mPendingMO.callId, obtainCompleteMessage());
+                            mCi.hangupConnection(0, obtainCompleteMessage());
                             mPendingMO = null;
                         }
                         else {
@@ -242,7 +240,7 @@ public final class ImsCallTracker extends CallTracker {
                         }
                         else if (mPendingMO != null) {
                             mPendingMO.onRemoteDisconnect();
-                            mCi.hangupConnection(mPendingMO.callId, obtainCompleteMessage());
+                            mCi.hangupConnection(0, obtainCompleteMessage());
                             mPendingMO = null;
                             updatePhoneState();
                             phone.notifyPreciseCallStateChanged();
@@ -312,11 +310,15 @@ public final class ImsCallTracker extends CallTracker {
 
         foregroundCall.setState(ImsCall.State.DIALING);
 
+        // TODO: callId generation
+        int callId = 1;
+
         mPendingMO = new ImsConnection(phone.getContext(),
                 checkForTestEmergencyNumber(dialString),
                 this,
                 foregroundCall,
-                false);
+                false,
+                callId);
 
         if (mPendingMO.address == null || mPendingMO.address.length() == 0
                 || mPendingMO.address.indexOf(PhoneNumberUtils.WILD) >= 0) {
@@ -371,11 +373,7 @@ public final class ImsCallTracker extends CallTracker {
             int callId = ringingCall.getCallId();
             Log.d(LOG_TAG, "rejectCall, callId = " + callId);
 
-            Message msg = obtainCompleteMessage();
-
-            msg.arg1 = callId;
-
-            mCi.rejectCall(msg);
+            mCi.rejectCall(obtainCompleteMessage());
             pendingMT = null;
 
             ringingCall.onHangupLocal();
@@ -397,7 +395,7 @@ public final class ImsCallTracker extends CallTracker {
         Log.i(LOG_TAG, "hangup " + conn);
 
         // Close connection even if MO call has not been not connected yet
-        mCi.hangupConnection(conn.callId, obtainCompleteMessage());
+        mCi.hangupConnection(conn.getCallId(), obtainCompleteMessage());
 
         conn.onHangupLocal();
     }
@@ -407,7 +405,7 @@ public final class ImsCallTracker extends CallTracker {
             throw new CallStateException("ImsConnection " + conn
                     + "does not belong to ImsCallTracker " + this);
         }
-        mCi.separateConnection(conn.callId,
+        mCi.separateConnection(conn.getCallId(),
                     obtainCompleteMessage(EVENT_SEPARATE_RESULT));
     }
 
@@ -472,7 +470,7 @@ public final class ImsCallTracker extends CallTracker {
         int count = call.getConnections().size();
         for (int i = 0; i < count; i++) {
             ImsConnection cn = (ImsConnection) call.getConnections().get(i);
-            mCi.hangupConnection(cn.callId, obtainCompleteMessage());
+            mCi.hangupConnection(cn.getCallId(), obtainCompleteMessage());
         }
     }
 
@@ -481,7 +479,7 @@ public final class ImsCallTracker extends CallTracker {
         int count = call.getConnections().size();
         for (int i = 0; i < count; i++) {
             ImsConnection cn = (ImsConnection) call.getConnections().get(i);
-            if (cn.callId == index) {
+            if (cn.getCallId() == index) {
                 return cn;
             }
         }
