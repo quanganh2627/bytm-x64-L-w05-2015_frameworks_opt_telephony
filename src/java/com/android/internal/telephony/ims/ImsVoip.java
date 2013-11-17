@@ -1,368 +1,193 @@
 
 package com.android.internal.telephony.ims;
 
-import android.content.ComponentName;
-import android.content.Context;
-import android.content.Intent;
-import android.content.ServiceConnection;
 import android.os.Handler;
-import android.os.IBinder;
 import android.os.Message;
-import android.os.RemoteException;
 import android.util.Log;
 
-import java.util.List;
+import com.comneon.mas.gui.CInvalidParameterException;
+import com.comneon.mas.gui.CMethodExecutionFailedException;
+import com.comneon.mas.gui.CServiceInfo;
+import com.comneon.mas.gui.CVoip;
+import com.comneon.mas.gui.CUtils;
+import com.comneon.mas.gui.Curi;
+import com.comneon.mas.gui.IVoip;
+import com.comneon.mas.gui.IVoipCB;
 
-import org.gsma.joyn.mmtel.multimediacall.IMultimediaCallSessionListener;
-import org.gsma.joyn.mmtel.multimediacall.IMultimediaCommonCallSession.CallType;
-import org.gsma.joyn.mmtel.multimediacall.IMultimediaConferenceCallSessionListener;
-import org.gsma.joyn.mmtel.multimediacall.IMultimediaCallSessionService;
-import org.gsma.joyn.mmtel.multimediacall.MultimediaCommonCallSessionObject;
-import org.gsma.joyn.mmtel.multimediacall.VoiceCall;
-
-public class ImsVoip {
+public class ImsVoip implements IVoipCB {
     private final String LOG_TAG = "ImsVoip";
+    private final int IMS_SESSION_DISABLE_REUSE = 4;
 
-    public static final int VOIP_REG_STATE = 0x2001;
-    public static final int VOIP_STATE = 0x2002;
+    public static final int VOIP_STATE = 0x2001;
+    public static final int VOIP_STATE_CREATED = IVoip.IMS_VOIP_SERVICESTATECREATED;
+    public static final int VOIP_STATE_CONNECTED = IVoip.IMS_VOIP_SERVICESTATECONNECTED;
+    public static final int VOIP_STATE_DISCONNECTED = IVoip.IMS_VOIP_SERVICESTATEDISCONNECTED;
+    public static final int VOIP_STATE_DESTROYED = IVoip.IMS_VOIP_SERVICESTATEDESTROYED;
+    public static final int VOIP_STATE_RINGING = IVoip.IMS_VOIPSERVICESTATEREMOTERINGING;
 
-    public static final int VOIP_REG_ONLINE = 4;
-    public static final int VOIP_REG_OFFLINE = 2;
+    public static final int VOIP_ACCEPT = 0x2002;
 
-    public static final int VOIP_STATE_CREATED = 1;
-    public static final int VOIP_STATE_RESUMED = 2;
-    public static final int VOIP_STATE_CONNECTED = 3;
-    public static final int VOIP_STATE_DISCONNECTED = 4;
-    public static final int VOIP_STATE_DESTROYED = 5;
-    public static final int VOIP_STATE_RINGING = 6;
-    public static final int VOIP_STATE_HELD = 7;
-    public static final int VOIP_STATE_INCOMING = 8;
-    public static final int VOIP_STATE_ERROR = 9;
-
-    private Object mCallSessionServiceLock = new Object();
-    private IMultimediaCallSessionService mCallSessionService = null;
+    private CVoip mCVoip = null;
+    private CUtils mCUtils = null;
+    String Encode_RemoteUri = null;
+    String Encode_LocalUri = null;
     private Handler mHdlr = null;
-    private Context mCtx = null;
+    private int SessionState;
+    private int SessionHandle;
+    public static final int VoIPAcceptIncomingServiceCB = 8;
+    public static final int VoIPCreateService = 9;
+    public static final int VoIPAcceptIncomingService = 10;
+    public static final int VoIPRegisterCallbacks = 11;
 
-    private IMultimediaCallSessionListener mCallSessionListener =
-            new IMultimediaCallSessionListener.Stub() {
-
-        @Override
-        public void onMMTelServiceStateChange(int state) {
-            Log.d(LOG_TAG, String.format("VOIP registration status = %d", state));
-            if (mHdlr != null) {
-                Message message = mHdlr.obtainMessage(
-                        VOIP_REG_STATE,
-                        state,
-                        0);
-
-                mHdlr.sendMessage(message);
-            }
-        }
-
-        @Override
-        public void onMultimediaCall(int callId, String contact,
-                MultimediaCommonCallSessionObject session)
-                throws RemoteException {
-            Log.v(LOG_TAG, "onMultimediaCall, callId = " + callId + " , contact = " + contact);
-
-            Message msg = mHdlr.obtainMessage();
-            msg.what = ImsVoip.VOIP_STATE;
-            msg.arg1 = ImsVoip.VOIP_STATE_INCOMING;
-            msg.arg2 = callId;
-
-            try {
-                synchronized (ImsVoip.this.mCallSessionServiceLock) {
-                    msg.obj = ImsVoip.this.mCallSessionService.getMultimediaCall(callId);
-                }
-                mHdlr.sendMessage(msg);
-            } catch (RemoteException ex) {
-                Log.e(LOG_TAG, ex.toString());
-            }
-        }
-
-        @Override
-        public void onMultimediaCallAborted(int callId, int reason) throws RemoteException {
-            Log.v(LOG_TAG, "onMultimediaCallAborted, reason: " + reason);
-            onMultimediaCallDisconnected(callId);
-            // TODO: are we sure this is what to do?
-        }
-
-        @Override
-        public void onMultimediaCallConnected(int callId) throws RemoteException {
-            Log.v(LOG_TAG, "onMultimediaCallConnected");
-            Message msg = mHdlr.obtainMessage(ImsVoip.VOIP_STATE,
-                    ImsVoip.VOIP_STATE_CONNECTED,
-                    callId);
-            try {
-                synchronized (ImsVoip.this.mCallSessionServiceLock) {
-                    msg.obj = ImsVoip.this.mCallSessionService.getMultimediaCall(callId);
-                }
-                mHdlr.sendMessage(msg);
-            } catch (RemoteException ex) {
-                Log.e(LOG_TAG, ex.toString());
-            }
-        }
-
-        @Override
-        public void onMultimediaCallDisconnected(int callId) throws RemoteException {
-            Log.v(LOG_TAG, "onMultimediaCallDisconnected");
-            Message msg = mHdlr.obtainMessage(ImsVoip.VOIP_STATE,
-                    ImsVoip.VOIP_STATE_DISCONNECTED,
-                    callId);
-            try {
-                synchronized (ImsVoip.this.mCallSessionServiceLock) {
-                    msg.obj = ImsVoip.this.mCallSessionService.getMultimediaCall(callId);
-                }
-                mHdlr.sendMessage(msg);
-            } catch (RemoteException ex) {
-                Log.e(LOG_TAG, ex.toString());
-            }
-        }
-
-        @Override
-        public void onMultimediaCallError(int callId, int error) throws RemoteException {
-            Log.v(LOG_TAG, "onMultimediaCallError, error: " + error);
-            Message msg = mHdlr.obtainMessage(ImsVoip.VOIP_STATE,
-                    ImsVoip.VOIP_STATE_ERROR,
-                    callId);
-            try {
-                synchronized (ImsVoip.this.mCallSessionServiceLock) {
-                    msg.obj = ImsVoip.this.mCallSessionService.getMultimediaCall(callId);
-                }
-                mHdlr.sendMessage(msg);
-            } catch (RemoteException ex) {
-                Log.e(LOG_TAG, ex.toString());
-            }
-        }
-
-        @Override
-        public void onMultimediaCallOnHold(int callId) throws RemoteException {
-            Log.v(LOG_TAG, "onMultimediaCallOnHold");
-            Message msg = mHdlr.obtainMessage(ImsVoip.VOIP_STATE,
-                    ImsVoip.VOIP_STATE_HELD,
-                    callId);
-            try {
-                synchronized (ImsVoip.this.mCallSessionServiceLock) {
-                    msg.obj = ImsVoip.this.mCallSessionService.getMultimediaCall(callId);
-                }
-                mHdlr.sendMessage(msg);
-            } catch (RemoteException ex) {
-                Log.e(LOG_TAG, ex.toString());
-            }
-        }
-
-        @Override
-        public void onMultimediaCallOnResume(int callId) throws RemoteException {
-            Log.v(LOG_TAG, "onMultimediaCallOnResume");
-            Message msg = mHdlr.obtainMessage(ImsVoip.VOIP_STATE,
-                    ImsVoip.VOIP_STATE_RESUMED,
-                    callId);
-            try {
-                synchronized (ImsVoip.this.mCallSessionServiceLock) {
-                    msg.obj = ImsVoip.this.mCallSessionService.getMultimediaCall(callId);
-                }
-                mHdlr.sendMessage(msg);
-            } catch (RemoteException ex) {
-                Log.e(LOG_TAG, ex.toString());
-            }
-        }
-
-        @Override
-        public void onMultimediaCallOnTransfer(int callId, String arg1) throws RemoteException {
-            Log.v(LOG_TAG, "onMultimediaCallOnTransfer");
-        }
-
-        @Override
-        public void onMultimediaCallRemoteRinging(int callId) throws RemoteException {
-            Log.v(LOG_TAG, "onMultimediaCallRemoteRinging");
-            Message msg = mHdlr.obtainMessage(ImsVoip.VOIP_STATE,
-                    ImsVoip.VOIP_STATE_RINGING,
-                    callId);
-            try {
-                synchronized (ImsVoip.this.mCallSessionServiceLock) {
-                    msg.obj = ImsVoip.this.mCallSessionService.getMultimediaCall(callId);
-                }
-                mHdlr.sendMessage(msg);
-            } catch (RemoteException ex) {
-                Log.e(LOG_TAG, ex.toString());
-            }
-        }
-
-        @Override
-        public void onMultimediaCallStarted(int callId) throws RemoteException {
-            Log.v(LOG_TAG, "onMultimediaCallStarted");
-            Message msg = mHdlr.obtainMessage(ImsVoip.VOIP_STATE,
-                    ImsVoip.VOIP_STATE_CREATED,
-                    callId);
-            try {
-                synchronized (ImsVoip.this.mCallSessionServiceLock) {
-                    msg.obj = ImsVoip.this.mCallSessionService.getMultimediaCall(callId);
-                }
-                mHdlr.sendMessage(msg);
-            } catch (RemoteException ex) {
-                Log.e(LOG_TAG, ex.toString());
-            }
-        }
-
-        @Override
-        public void onNetworkTonesAvailable(int callId) throws RemoteException {
-            Log.v(LOG_TAG, "onNetworkTonesAvailable");
-        }
-
-        @Override
-        public void onNetworkTonesNotAvailable(int callId) throws RemoteException {
-            Log.v(LOG_TAG, "onNetworkTonesNotAvailable");
-        }
-    };
-
-    private IMultimediaConferenceCallSessionListener mConfCallSessionListener =
-            new IMultimediaConferenceCallSessionListener.Stub() {
-
-        @Override
-        public void onMultimediaConferenceCallToneAvailable(int callid) {
-            Log.v(LOG_TAG, "onMultimediaConferenceCallToneAvailable");
-        }
-
-        @Override
-        public void onMultimediaConferenceCallStarted() {
-            Log.v(LOG_TAG, "onMultimediaConferenceCallStarted");
-        }
-
-        @Override
-        public void onMultimediaConferenceCallAborted() {
-            Log.v(LOG_TAG, "onMultimediaConferenceCallAborted");
-        }
-
-        @Override
-        public void onMultimediaConferenceCallError(int error) {
-            Log.v(LOG_TAG, "onMultimediaConferenceCallError");
-        }
-
-        @Override
-        public void onMultimediaConferenceCall(int callId, String[] contacts,
-                MultimediaCommonCallSessionObject session) {
-            Log.v(LOG_TAG, "onMultimediaConferenceCall");
-        }
-
-        @Override
-        public void onMultimediaConferenceCallOnHold(int callId) {
-            Log.v(LOG_TAG, "onMultimediaConferenceCallOnHold");
-        }
-
-        @Override
-        public void onMultimediaConferenceCallOnResume(int callId) {
-            Log.v(LOG_TAG, "onMultimediaConferenceCallOnResume");
-        }
-
-        @Override
-        public void onMultimediaConferenceCallParticipantAdded(int callId, String contact) {
-            Log.v(LOG_TAG, "onMultimediaConferenceCallParticipantAdded");
-        }
-
-        @Override
-        public void onMultimediaConferenceCallParticipantRemoved(int callId, String contact) {
-            Log.v(LOG_TAG, "onMultimediaConferenceCallParticipantRemoved");
-        }
-    };
-
-    private ServiceConnection mMmtelInterfaceConnection = new ServiceConnection() {
-
-        @Override
-        public void onServiceConnected(ComponentName name, IBinder service) {
-            Log.v(LOG_TAG, "MMTEL service connected");
-
-            synchronized (ImsVoip.this.mCallSessionServiceLock) {
-                ImsVoip.this.mCallSessionService = IMultimediaCallSessionService.Stub
-                        .asInterface(service);
-                if (ImsVoip.this.mCallSessionService == null)
-                {
-                    Log.e(LOG_TAG,
-                            "MMTEL service connected, ImsVoip.this.mCallSessionService is null");
-                }
-                else
-                {
-                    Log.v(LOG_TAG,
-                            "MMTEL service connected, ImsVoip.this.mCallSessionService" +
-                            " is non null");
-                }
-                if (ImsVoip.this.mCallSessionService != null) {
-                    try {
-                        ImsVoip.this.mCallSessionService
-                                .addNewMultimediaCallSessionListener(
-                                        ImsVoip.this.mCallSessionListener);
-                        ImsVoip.this.mCallSessionService
-                                .addNewMultimediaConfCallSessionListener(
-                                        ImsVoip.this.mConfCallSessionListener);
-                    } catch (RemoteException ex) {
-                        Log.e(LOG_TAG, ex.toString());
-                    }
-                }
-            }
-        }
-
-        @Override
-        public void onServiceDisconnected(ComponentName name) {
-            Log.v(LOG_TAG, "MMTEL service disconnected");
-
-            synchronized (ImsVoip.this.mCallSessionServiceLock) {
-                ImsVoip.this.mCallSessionService = null;
-            }
-        }
-    };
-
-    public ImsVoip(Context context, Handler handler) {
-
-        if (context == null) {
-            throw new IllegalArgumentException("context");
-        }
-        if (handler == null) {
-            throw new IllegalArgumentException("handler");
-        }
-        mHdlr = handler;
-        mCtx = context;
-
-        Log.d(LOG_TAG, "binding " + IMultimediaCallSessionService.class.getName());
-        if (!context.bindService(new Intent(IMultimediaCallSessionService.class.getName()),
-                mMmtelInterfaceConnection, Context.BIND_AUTO_CREATE)) {
-            Log.e(LOG_TAG, "Could not bind to service");
-        }
+    public ImsVoip(Handler h) {
+        mCVoip = new CVoip();
+        mCUtils = new CUtils();
+        mHdlr = h;
+        SessionState = mCVoip.IMS_VOIP_SERVICEINVALID;
+        SessionHandle = 0;
     }
 
-    @Override
-    protected void finalize() throws Throwable {
-        if (mCtx != null) {
-            mCtx.unbindService(mMmtelInterfaceConnection);
+    public int getSessionState() {
+        return SessionState;
+    }
+
+    public int getSessionHandle() {
+        return SessionHandle;
+    }
+
+    /*
+     * This method is used to handle Incoming Voip Call
+     */
+    public void RegisterVoipForIncomingCall() {
+        try {
+            mCVoip.RCS_VoIPRegisterIncomingServiceCallback(this,
+                    true,
+                    true,
+                    VoIPAcceptIncomingServiceCB,
+                    0,
+                    null);
+        } catch (CInvalidParameterException e) {
+            Log.e(LOG_TAG, e.toString());
+        } catch (CMethodExecutionFailedException e) {
+            Log.e(LOG_TAG, e.toString());
         }
-        super.finalize();
     }
 
     /*
      * This method is used to create a VOIP SESSION
      */
-    public void createVoipSession(String localNumber, String remoteNumber) {
+    public void CreateVoipSession(String localNumber, String remoteNumber) {
         Log.d(LOG_TAG, "CreateVoipService() from " + localNumber + " to " + remoteNumber);
 
-        MultimediaCommonCallSessionObject callSession = new MultimediaCommonCallSessionObject();
-        callSession.setVoicecallobj(new VoiceCall());
-        callSession.getVoicecallobj().setContact(remoteNumber);
+        try {
+            mCUtils.Ims_UriCheckAndSetPuidGenerationFormat(localNumber);
 
-        synchronized (ImsVoip.this.mCallSessionServiceLock) {
+            Encode_LocalUri = mCUtils.RCS_EncodeURL(null, localNumber);
+            Encode_RemoteUri = mCUtils.RCS_EncodeURL(remoteNumber, remoteNumber);
+        } catch (CInvalidParameterException e) {
+            Log.e(LOG_TAG, e.toString());
+        }
+
+        /* Create the CServiceInfo and pass it to the MAS */
+        CServiceInfo serviceinfo = new CServiceInfo();
+
+        serviceinfo.hService = 0;
+
+        // hServiceInfo->m_ServiceSpecificData = VoipData.
+        serviceinfo.m_bUsePreferences = false;
+
+        serviceinfo.m_CodecPreferenceList = null;
+
+        serviceinfo.m_iCount = 0;
+
+        // If 0 Random port will be used.
+        serviceinfo.m_iLocalRTPPort = 0;
+
+        // DTMF enabled.
+        serviceinfo.m_bDTMFEnable = true;
+
+        serviceinfo.m_bAutoStore = false;
+        serviceinfo.m_hFullPathToFile = null;
+
+        // Register for Service State CallBack.
+        serviceinfo.m_fnServiceStateCallback = true;
+
+        // pass the voip session handle.
+        serviceinfo.m_ServiceStateCallbackUserData = 2;
+
+        // Register for Media result call back.
+        serviceinfo.m_fnMediaOpResultCallback = true;
+
+        // pass the voip session handle.
+        serviceinfo.m_MediaOpResultCallbackUserData = 2;
+
+        // Register for DTMF received callback.
+        serviceinfo.m_fnDtmfReceivedCallback = false;
+
+        // pass the voip session handle.
+        serviceinfo.m_DtmfReceivedCallbackUserData = 2;
+
+        serviceinfo.m_fnCallTransferRequestReceivedCallback = false;
+        serviceinfo.m_CallTransferRequestReceivedCallbackUserData = 4;
+
+        serviceinfo.ePriorityNamespaceLevel = 0;
+
+        Log.d(LOG_TAG, "RCS_VoIPCreateService() from " + Encode_LocalUri + " to "
+                + Encode_RemoteUri);
+
+        try {
+            mCVoip.RCS_VoIPCreateService(this,
+                    Encode_LocalUri,
+                    Encode_RemoteUri,
+                    1,
+                    IMS_SESSION_DISABLE_REUSE,
+                    serviceinfo,
+                    true,
+                    VoIPCreateService,
+                    0);
+
+        } catch (CInvalidParameterException e) {
+            Log.e(LOG_TAG, e.toString());
+        } catch (CMethodExecutionFailedException e) {
+            Log.e(LOG_TAG, e.toString());
+        }
+    }
+
+    /*
+     * This method is used to register a VOIP SESSION
+     */
+    public void RegisterVoipSession() {
+        if (SessionHandle != 0) {
             try {
-                ImsVoip.this.mCallSessionService.createMultimediaCall(callSession);
-            } catch (RemoteException ex) {
-                Log.e(LOG_TAG, ex.toString());
+                mCVoip.RCS_VoIPRegisterCallbacks(this,
+                        SessionHandle,
+                        true,
+                        true,
+                        true,
+                        true,
+                        VoIPRegisterCallbacks);
+            } catch (CInvalidParameterException e) {
+                Log.e(LOG_TAG, e.toString());
+            } catch (CMethodExecutionFailedException e) {
+                Log.e(LOG_TAG, e.toString());
             }
         }
     }
 
-    public void acceptVoipSession(int callId) {
-        synchronized (ImsVoip.this.mCallSessionServiceLock) {
+    public void AcceptVoipSession() {
+        if (SessionHandle != 0) {
             try {
-                // TODO: retrieve desired calltype from upper layers
-                ImsVoip.this.mCallSessionService.acceptInvitation(callId, CallType.VOICE);
-            } catch (RemoteException ex) {
-                Log.e(LOG_TAG, ex.toString());
+                mCVoip.RCS_VoIPAcceptIncomingService(this,
+                        SessionHandle,
+                        false,
+                        true,
+                        null,
+                        VoIPAcceptIncomingService,
+                        true);
+            } catch (CInvalidParameterException e) {
+                Log.e(LOG_TAG, e.toString());
+            } catch (CMethodExecutionFailedException e) {
+                Log.e(LOG_TAG, e.toString());
             }
         }
     }
@@ -370,12 +195,14 @@ public class ImsVoip {
     /*
      * This method is used to put a VOIP SESSION on Hold
      */
-    public void holdVoipSession(int callId) {
-        synchronized (ImsVoip.this.mCallSessionServiceLock) {
+    public void OnHoldVoipSession(int SessionHandle) {
+        if (SessionHandle != 0) {
             try {
-                ImsVoip.this.mCallSessionService.putCallOnHold(callId);
-            } catch (RemoteException ex) {
-                Log.e(LOG_TAG, ex.toString());
+                mCVoip.RCS_VoIPCallOnHoldAsync(SessionHandle);
+            } catch (CInvalidParameterException e) {
+                Log.e(LOG_TAG, e.toString());
+            } catch (CMethodExecutionFailedException e) {
+                Log.e(LOG_TAG, e.toString());
             }
         }
     }
@@ -383,12 +210,14 @@ public class ImsVoip {
     /*
      * This method is used to resume a VOIP SESSION
      */
-    public void resumeVoipSession(int callId) {
-        synchronized (ImsVoip.this.mCallSessionServiceLock) {
+    public void ResumeVoipSession() {
+        if (SessionHandle != 0) {
             try {
-                ImsVoip.this.mCallSessionService.resumeCall(callId);
-            } catch (RemoteException ex) {
-                Log.e(LOG_TAG, ex.toString());
+                mCVoip.RCS_VoIPCallResumeAsync(SessionHandle);
+            } catch (CInvalidParameterException e) {
+                Log.e(LOG_TAG, e.toString());
+            } catch (CMethodExecutionFailedException e) {
+                Log.e(LOG_TAG, e.toString());
             }
         }
     }
@@ -396,12 +225,22 @@ public class ImsVoip {
     /*
      * This method is used to resume a VOIP SESSION
      */
-    public void rejectVoipSession(int callId) {
-        synchronized (ImsVoip.this.mCallSessionServiceLock) {
+    public void RejectVoipSession() {
+        if (SessionHandle != 0) {
             try {
-                ImsVoip.this.mCallSessionService.rejectInvitation(callId);
-            } catch (RemoteException ex) {
-                Log.e(LOG_TAG, ex.toString());
+                mCVoip.RCS_VoIPRejectIncomingService(this,
+                        SessionHandle,
+                        SessionHandle,
+                        false,
+                        false,
+                        null,
+                        1,
+                        486,
+                        "User Busy");
+            } catch (CInvalidParameterException e) {
+                Log.e(LOG_TAG, e.toString());
+            } catch (CMethodExecutionFailedException e) {
+                Log.e(LOG_TAG, e.toString());
             }
         }
     }
@@ -409,12 +248,304 @@ public class ImsVoip {
     /*
      * This method is used to delete a VOIP SESSION
      */
-    public void terminateVoipSession(int callId) {
-        synchronized (ImsVoip.this.mCallSessionServiceLock) {
+    public void TerminateVoipSession() {
+        if (SessionHandle != 0) {
             try {
-                ImsVoip.this.mCallSessionService.endCall(callId);
-            } catch (RemoteException ex) {
-                Log.e(LOG_TAG, ex.toString());
+                mCVoip.RCS_VoIPDestroyService(this, SessionHandle);
+                SessionHandle = 0;
+            } catch (CInvalidParameterException e) {
+                Log.e(LOG_TAG, e.toString());
+            } catch (CMethodExecutionFailedException e) {
+                Log.e(LOG_TAG, e.toString());
+            }
+        }
+    }
+
+    /*
+     * Implementing IVoipCB (non-Javadoc)
+     * @see
+     * com.comneon.mas.gui.IVoipCB#Ims_VoIPNotifyReceivedCB(java.lang.String,
+     * java.lang.String, int, boolean, boolean, java.lang.String)
+     */
+
+    @Override
+    public void Ims_VoIPNotifyReceivedCB(String pRemotePuid, String pLocalPuid,
+            int mHService, boolean mBForwardAllowed, boolean mBAccepted,
+            String mFileName) {
+        Curi RemoteDecodedUri = null;
+        Curi LocalDecodedUri = null;
+
+        String localNumber = null;
+        String remoteNumber = null;
+
+        try {
+            RemoteDecodedUri = new Curi();
+            mCUtils.Ims_UriCheckAndSetPuidGenerationFormat(pRemotePuid);
+            RemoteDecodedUri = mCUtils.RCS_DecodeURLW(pRemotePuid);
+            remoteNumber = RemoteDecodedUri.Number.trim();
+            Log.d(LOG_TAG, "Ims_VoIPNotifyReceivedCB decode from " + remoteNumber);
+        } catch (CInvalidParameterException e) {
+            Log.e(LOG_TAG, e.toString());
+        }
+
+        try {
+            LocalDecodedUri = new Curi();
+            mCUtils.Ims_UriCheckAndSetPuidGenerationFormat(pLocalPuid);
+            LocalDecodedUri = mCUtils.RCS_DecodeURLW(pLocalPuid);
+            localNumber = LocalDecodedUri.Number.trim();
+            Log.d(LOG_TAG, "Ims_VoIPNotifyReceivedCB decode to " + localNumber);
+        } catch (CInvalidParameterException e) {
+            Log.e(LOG_TAG, e.toString());
+        }
+
+        Log.d(LOG_TAG, "Ims_VoIPNotifyReceivedCB service " + mHService + " from " + remoteNumber
+                + " to " + localNumber);
+
+        SessionHandle = mHService;
+        SessionState = mCVoip.IMS_VOIP_SERVICESTATECREATED;
+
+        RegisterVoipSession();
+
+        if (remoteNumber != null) {
+            if (mHdlr != null) {
+                Message incomingMsg = mHdlr.obtainMessage(VOIP_ACCEPT,
+                        SessionState,
+                        SessionHandle);
+                incomingMsg.obj = new String(remoteNumber);
+                mHdlr.sendMessage(incomingMsg);
+            }
+        }
+    }
+
+    @Override
+    public void Ims_AvmVoIPGetActiveCodecCB(int userdata, int iAudioCodecType) {
+
+    }
+
+    @Override
+    public void Ims_AvmVoIPGetMediaStatisticsCB(int userdata,
+            int sDownlinkParamsMIData, int sDownlinkParamsMIRate,
+            int sDownlinkParamsMILoss, int sDownlinkParamsMIJitter) {
+
+    }
+
+    @Override
+    public void Ims_EncodeAvmWaitingVoiceMessagesCB(int userdata, int ISubsID,
+            int err) {
+
+    }
+
+    @Override
+    public void Ims_EncodeAvmWaitingVoiceMessagesIndicationCB() {
+
+    }
+
+    @Override
+    public void Ims_VoIPAcceptIncomingServiceCB(int userdata, int eError) {
+        Log.d(LOG_TAG, "Ims_VoIPAcceptIncomingServiceCB");
+    }
+
+    @Override
+    public void Ims_VoIPCallTransferReqCB(int userdata, int hService,
+            String hTransferedBy, String hTransferedTo, boolean bProceed) {
+
+    }
+
+    @Override
+    public void Ims_VoIPCreateServiceCB(int hSession, int eError) {
+        if (hSession == 0) {
+            Log.d(LOG_TAG, "Ims_VoIPCreateServiceCB: handle is NULL " + eError);
+        }
+        else {
+            SessionHandle = hSession;
+            Log.d(LOG_TAG, "Ims_VoIPCreateServiceCB: got handle :" + hSession);
+
+            RegisterVoipSession();
+        }
+    }
+
+    @Override
+    public void Ims_VoIPDtmfReceivedCB(int userdata, int hService,
+            int iDTMFCode, boolean bHandled) {
+
+    }
+
+    @Override
+    public void Ims_VoIPGetRemotePuidCB(int userdata, int hService,
+            String phRemotePuid) {
+
+    }
+
+    @Override
+    public void Ims_VoIPGetStateCB(int userdata, int hService, int eServiceState) {
+        Log.d(LOG_TAG, "Ims_VoIPGetStateCB service " + hService + " state " + eServiceState);
+    }
+
+    @Override
+    public void Ims_VoIPGetTerminateReasonCB(int userdata, int eReason) {
+        Log.d(LOG_TAG, "Ims_VoIPGetTerminateReasonCB " + eReason);
+    }
+
+    @Override
+    public void Ims_VoIPMediaOpResultCB(int userdata, int hService,
+            int eMediaControlResult) {
+
+    }
+
+    @Override
+    public void Ims_VoIPNotifyCancelCB(String pRemotePuid, String pLocalPuid) {
+        Log.d(LOG_TAG, "Ims_VoIPNotifyCancelCB from  " + pRemotePuid + " to " + pLocalPuid);
+    }
+
+    @Override
+    public void Ims_VoIPServiceStateChangedCB(int userdata, int hService,
+            int eServiceState, int eTerminationReason) {
+
+        Log.d(LOG_TAG, "Ims_VoIPServiceStateChangedCB: service " + hService + " state "
+                + eServiceState);
+
+        if (eServiceState == mCVoip.IMS_VOIP_SERVICESTATECREATED) {
+            /* Set the Voip Session State Here */
+            SessionState = eServiceState;
+
+            /* Service state created show session state as Created */
+            Log.i(LOG_TAG, "Ims_VoIPServiceStateChanged(): Got Service state as CREATED");
+
+            if (mHdlr != null) {
+                // Update the session state
+                Message Created = mHdlr.obtainMessage(VOIP_STATE,
+                        eServiceState,
+                        hService);
+                mHdlr.sendMessage(Created);
+            }
+        }
+        else if (eServiceState == mCVoip.IMS_VOIP_SERVICESTATECONNECTED) {
+            // Service state connected Enable timer,Enable your supplementary
+            // services and show the session state as connected
+            Log.i(LOG_TAG, "Ims_VoIPServiceStateChanged(): Got Service state as CONNECTED");
+
+            /* Set the Voip Session State Here */
+            SessionState = eServiceState;
+
+            if (mHdlr != null) {
+                // Update the session state
+                Message Connectedmsg = mHdlr.obtainMessage(VOIP_STATE,
+                        eServiceState,
+                        hService);
+                mHdlr.sendMessage(Connectedmsg);
+            }
+        }
+        else if ((eServiceState >= mCVoip.IMS_VOIP_SERVICESTATEDISCONNECTED) &&
+                (eServiceState <= mCVoip.IMS_VOIP_SERVICESTATEDESTROYED)) {
+
+            if (eServiceState == mCVoip.IMS_VOIPSERVICESTATEDISCONNECTED_REMOTEUSERREJECT) {
+                eServiceState = mCVoip.IMS_VOIP_SERVICESTATEDISCONNECTED;
+            }
+
+            /*
+             * If the Voip Service is terminated by remote end then close the
+             * Voip dialog
+             */
+
+            if (eServiceState == mCVoip.IMS_VOIPSERVICESTATEDISCONNECTED_REMOTEUSERNOTREACHABLE
+                    ||
+                    eServiceState == mCVoip.IMS_VOIPSERVICESTATEDISCONNECTED_REMOTEUSERBUSY
+                    ||
+                    eServiceState == mCVoip.IMS_VOIPSERVICESTATEDISCONNECTED_REMOTESERVICENOTAVAILABLENOW
+                    ||
+                    eServiceState == mCVoip.IMS_VOIPSERVICESTATEDISCONNECTED_SERVICEFORBIDDEN ||
+                    eServiceState == mCVoip.IMS_VOIPSERVICESTATEDISCONNECTED_SESSIONTIMEOUT ||
+                    eServiceState == mCVoip.IMS_VOIPSERVICESTATEDISCONNECTED_USERDEREGISTERED ||
+                    eServiceState == mCVoip.IMS_VOIP_SERVICESTATEDESTROYED) {
+
+            }
+            else {
+
+            }
+
+            Log.i(LOG_TAG, "Ims_VoIPServiceStateChanged(): Got Service state as TERMINATED");
+
+            if (SessionHandle != 0) {
+
+                TerminateVoipSession();
+
+                /* Set the Voip Session State Here */
+                SessionState = eServiceState;
+
+                // Service was disconnected finish of the activity
+                if (mHdlr != null) {
+                    Message terminatedmsg = mHdlr.obtainMessage(VOIP_STATE,
+                            eServiceState,
+                            hService);
+                    mHdlr.sendMessage(terminatedmsg);
+                }
+            }
+        }
+        /*
+         * ! THE SERVICE IS ON LOCAL HOLD STATE, NO MEDIA TRAFFIC IS POSSIBLE IN
+         * THIS STATE
+         */
+        else if (eServiceState == mCVoip.IMS_VOIP_SERVICESTATEONLOCALHOLD) {
+            if (mHdlr != null) {
+                Message terminatedmsg = mHdlr.obtainMessage(VOIP_STATE,
+                        eServiceState,
+                        hService);
+                mHdlr.sendMessage(terminatedmsg);
+            }
+        }
+        /*
+         * ! THE SERVICE IS ON REMOTE HOLD STATE, NO MEDIA TRAFFIC IS POSSIBLE
+         * IN THIS STATE
+         */
+        else if (eServiceState == mCVoip.IMS_VOIP_SERVICESTATEONREMOTEHOLD) {
+            // set the Status text to remote hold
+            if (mHdlr != null) {
+                Message terminatedmsg = mHdlr.obtainMessage(VOIP_STATE,
+                        eServiceState,
+                        hService);
+                mHdlr.sendMessage(terminatedmsg);
+            }
+        }
+        /*
+         * ! THE SERVICE IS RESUMED FROM ONHOLD STATE, MEDIA TRAFFIC IS ALSO
+         * RESUMED
+         */
+        else if (eServiceState == mCVoip.IMS_VOIP_SERVICESTATERESUMED) {
+            if (mHdlr != null) {
+                Message terminatedmsg = mHdlr.obtainMessage(VOIP_STATE,
+                        eServiceState,
+                        hService);
+                mHdlr.sendMessage(terminatedmsg);
+            }
+        }
+        /* ! THE SERVICE ONHOLD OPERATION FAILED */
+        else if (eServiceState == mCVoip.IMS_VOIP_SERVICESTATEONHOLDFAILED) {
+            if (mHdlr != null) {
+                Message terminatedmsg = mHdlr.obtainMessage(VOIP_STATE,
+                        eServiceState,
+                        hService);
+                mHdlr.sendMessage(terminatedmsg);
+            }
+        }
+        /* ! THE SERVICE RESUME OPERATON FAILED */
+        else if (eServiceState == mCVoip.IMS_VOIP_SERVICESTATERESUMEFAILED) {
+            if (mHdlr != null) {
+                Message terminatedmsg = mHdlr.obtainMessage(VOIP_STATE,
+                        eServiceState,
+                        hService);
+                mHdlr.sendMessage(terminatedmsg);
+            }
+
+        }
+        else if ((eServiceState == mCVoip.IMS_VOIPSERVICESTATEREMOTERINGING)) {
+            Log.i(LOG_TAG, "Ims_VoIPServiceStateChanged(): Got Service state as REMOTE RINGING:"
+                    + eServiceState);
+
+            if (mHdlr != null) {
+                Message ringingmsg = mHdlr.obtainMessage(VOIP_STATE,
+                        eServiceState,
+                        hService);
+                mHdlr.sendMessage(ringingmsg);
             }
         }
     }
