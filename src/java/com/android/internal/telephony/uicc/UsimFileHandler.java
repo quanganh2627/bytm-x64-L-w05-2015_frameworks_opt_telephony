@@ -35,6 +35,7 @@ public final class UsimFileHandler extends IccFileHandler implements IccConstant
     @Override
     protected String getEFPath(int efid) {
         switch(efid) {
+        case EF_LI:
         case EF_SMS:
         case EF_EXT6:
         case EF_MWIS:
