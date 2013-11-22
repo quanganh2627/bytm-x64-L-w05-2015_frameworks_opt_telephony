@@ -165,14 +165,9 @@ public abstract class IccSmsInterfaceManager extends ISms.Stub {
                 " status=" + status + " ==> " +
                 "("+ Arrays.toString(pdu) + ")");
         enforceReceiveAndSend("Updating message on Icc");
-        String uidCallingPckg = mContext.getPackageManager().getNameForUid(Binder.getCallingUid());
-
         if (mAppOps.noteOp(AppOpsManager.OP_WRITE_ICC_SMS, Binder.getCallingUid(),
                 callingPackage) != AppOpsManager.MODE_ALLOWED) {
-            if (mAppOps.noteOp(AppOpsManager.OP_WRITE_ICC_SMS, Binder.getCallingUid(),
-                    uidCallingPckg) != AppOpsManager.MODE_ALLOWED) {
-                return false;
-            }
+            return false;
         }
         synchronized(mLock) {
             mSuccess = false;
@@ -221,14 +216,9 @@ public abstract class IccSmsInterfaceManager extends ISms.Stub {
                 "pdu=("+ Arrays.toString(pdu) +
                 "), smsc=(" + Arrays.toString(smsc) +")");
         enforceReceiveAndSend("Copying message to Icc");
-        String uidCallingPckg = mContext.getPackageManager().getNameForUid(Binder.getCallingUid());
-
         if (mAppOps.noteOp(AppOpsManager.OP_WRITE_ICC_SMS, Binder.getCallingUid(),
                 callingPackage) != AppOpsManager.MODE_ALLOWED) {
-            if (mAppOps.noteOp(AppOpsManager.OP_WRITE_ICC_SMS, Binder.getCallingUid(),
-                    uidCallingPckg) != AppOpsManager.MODE_ALLOWED) {
-                return false;
-            }
+            return false;
         }
         synchronized(mLock) {
             mSuccess = false;
@@ -258,14 +248,9 @@ public abstract class IccSmsInterfaceManager extends ISms.Stub {
         mContext.enforceCallingPermission(
                 Manifest.permission.RECEIVE_SMS,
                 "Reading messages from Icc");
-        String uidCallingPckg = mContext.getPackageManager().getNameForUid(Binder.getCallingUid());
-
         if (mAppOps.noteOp(AppOpsManager.OP_READ_ICC_SMS, Binder.getCallingUid(),
                 callingPackage) != AppOpsManager.MODE_ALLOWED) {
-            if (mAppOps.noteOp(AppOpsManager.OP_READ_ICC_SMS, Binder.getCallingUid(),
-                    uidCallingPckg) != AppOpsManager.MODE_ALLOWED) {
-                return new ArrayList<SmsRawData>();
-            }
+            return new ArrayList<SmsRawData>();
         }
         synchronized(mLock) {
 
@@ -326,14 +311,9 @@ public abstract class IccSmsInterfaceManager extends ISms.Stub {
                 destPort + " data='"+ HexDump.toHexString(data)  + "' sentIntent=" +
                 sentIntent + " deliveryIntent=" + deliveryIntent);
         }
-        String uidCallingPckg = mContext.getPackageManager().getNameForUid(Binder.getCallingUid());
-
         if (mAppOps.noteOp(AppOpsManager.OP_SEND_SMS, Binder.getCallingUid(),
                 callingPackage) != AppOpsManager.MODE_ALLOWED) {
-            if (mAppOps.noteOp(AppOpsManager.OP_SEND_SMS, Binder.getCallingUid(),
-                    uidCallingPckg) != AppOpsManager.MODE_ALLOWED) {
-                return;
-            }
+            return;
         }
         mDispatcher.sendData(destAddr, scAddr, destPort, data, sentIntent, deliveryIntent);
     }
@@ -373,14 +353,9 @@ public abstract class IccSmsInterfaceManager extends ISms.Stub {
                 " text='"+ text + "' sentIntent=" +
                 sentIntent + " deliveryIntent=" + deliveryIntent);
         }
-        String uidCallingPckg = mContext.getPackageManager().getNameForUid(Binder.getCallingUid());
-
         if (mAppOps.noteOp(AppOpsManager.OP_SEND_SMS, Binder.getCallingUid(),
                 callingPackage) != AppOpsManager.MODE_ALLOWED) {
-            if (mAppOps.noteOp(AppOpsManager.OP_SEND_SMS, Binder.getCallingUid(),
-                    uidCallingPckg) != AppOpsManager.MODE_ALLOWED) {
-                return;
-            }
+            return;
         }
         mDispatcher.sendText(destAddr, scAddr, text, sentIntent, deliveryIntent);
     }
@@ -424,14 +399,9 @@ public abstract class IccSmsInterfaceManager extends ISms.Stub {
                         ", part[" + (i++) + "]=" + part);
             }
         }
-        String uidCallingPckg = mContext.getPackageManager().getNameForUid(Binder.getCallingUid());
-
         if (mAppOps.noteOp(AppOpsManager.OP_SEND_SMS, Binder.getCallingUid(),
                 callingPackage) != AppOpsManager.MODE_ALLOWED) {
-            if (mAppOps.noteOp(AppOpsManager.OP_SEND_SMS, Binder.getCallingUid(),
-                    uidCallingPckg) != AppOpsManager.MODE_ALLOWED) {
-                return;
-            }
+            return;
         }
         mDispatcher.sendMultipartText(destAddr, scAddr, (ArrayList<String>) parts,
                 (ArrayList<PendingIntent>) sentIntents, (ArrayList<PendingIntent>) deliveryIntents);

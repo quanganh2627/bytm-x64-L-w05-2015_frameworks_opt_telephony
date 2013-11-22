@@ -25,24 +25,10 @@ LOCAL_SRC_FILES := $(call all-java-files-under, src/java) \
 	$(call all-logtags-files-under, src/java)
 
 LOCAL_JAVA_LIBRARIES := voip-common
-
-LOCAL_STATIC_JAVA_LIBRARIES := \
-	com.intel.imsservices \
-	org.gsma.joyn
-
 LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE := telephony-common
 
 include $(BUILD_JAVA_LIBRARY)
-
-######################################
-include $(CLEAR_VARS)
-
-LOCAL_MODULE := org.gsma.joyn
-LOCAL_PREBUILT_STATIC_JAVA_LIBRARIES := \
-	org.gsma.joyn:libs/org.gsma.joyn.jar
-
-include $(BUILD_MULTI_PREBUILT)
 
 # Include subdirectory makefiles
 # ============================================================

@@ -39,9 +39,6 @@ public class WapPushOverSms {
     private static final String LOG_TAG = "WAP PUSH";
     private static final boolean DBG = false;
 
-    private static final String APP_ID_URN = "x-oma-application:ulp.ua";
-    private static final String APP_ID_SUPL = "16";
-
     private final Context mContext;
     private WspTypeDecoder pduDecoder;
     private SMSDispatcher mSmsDispatcher;
@@ -70,6 +67,10 @@ public class WapPushOverSms {
         public void onServiceDisconnected(ComponentName name) {
             mWapPushMan = null;
             if (DBG) Rlog.v(LOG_TAG, "wappush manager disconnected.");
+            // Detach the previous binder
+            mOwner.unbindService(mWapConn);
+            // WapPushManager must be always attached.
+            rebindWapPushManager();
         }
 
         /**
@@ -82,6 +83,30 @@ public class WapPushOverSms {
 
             mOwner.bindService(new Intent(IWapPushManager.class.getName()),
                     wapPushConnection, Context.BIND_AUTO_CREATE);
+        }
+
+        /**
+         * rebind WapPushManager
+         * This method is called when WapPushManager is disconnected unexpectedly.
+         */
+        private void rebindWapPushManager() {
+            if (mWapPushMan != null) return;
+
+            final ServiceConnection wapPushConnection = this;
+            new Thread() {
+                @Override
+                public void run() {
+                    while (mWapPushMan == null) {
+                        mOwner.bindService(new Intent(IWapPushManager.class.getName()),
+                                wapPushConnection, Context.BIND_AUTO_CREATE);
+                        try {
+                            Thread.sleep(BIND_RETRY_INTERVAL);
+                        } catch (InterruptedException e) {
+                            if (DBG) Rlog.v(LOG_TAG, "sleep interrupted.");
+                        }
+                    }
+                }
+            }.start();
         }
 
         /**
@@ -192,14 +217,6 @@ public class WapPushOverSms {
             String contentType = ((mimeType == null) ?
                                   Long.toString(binaryContentType) : mimeType);
             if (DBG) Rlog.v(LOG_TAG, "appid found: " + wapAppId + ":" + contentType);
-
-            // add 16 to support supl application_id Number. not only application_id URN
-            if (contentType.equals(WspTypeDecoder.CONTENT_TYPE_B_PUSH_SUPL_INIT)
-                    && !(APP_ID_URN.equals(wapAppId) || APP_ID_SUPL.equals(wapAppId))) {
-                if (DBG) Rlog.w(LOG_TAG,"Received a wrong appId wap push sms."
-                                    + "will not send out to AGPS. wrong appid=" + wapAppId);
-                return Intents.RESULT_SMS_HANDLED;
-            }
 
             try {
                 boolean processFurther = true;

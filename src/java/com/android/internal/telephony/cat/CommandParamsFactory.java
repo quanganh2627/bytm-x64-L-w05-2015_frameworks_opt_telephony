@@ -20,13 +20,9 @@ import android.graphics.Bitmap;
 import android.os.Handler;
 import android.os.Message;
 
-import com.android.internal.telephony.cat.BearerDescription.BearerType;
-import com.android.internal.telephony.cat.InterfaceTransportLevel.TransportProtocol;
-
 import com.android.internal.telephony.GsmAlphabet;
 import com.android.internal.telephony.uicc.IccFileHandler;
 
-import java.net.InetAddress;
 import java.util.Iterator;
 import java.util.List;
 
@@ -59,7 +55,6 @@ class CommandParamsFactory extends Handler {
     // Command Qualifier values for PLI command
     static final int DTTZ_SETTING                           = 0x03;
     static final int LANGUAGE_SETTING                       = 0x04;
-    static final int SEARCH_MODE_SETTING                    = 0x09;
 
     static synchronized CommandParamsFactory getInstance(RilMessageDecoder caller,
             IccFileHandler fh) {
@@ -162,6 +157,7 @@ class CommandParamsFactory extends Handler {
              case SEND_USSD:
                  cmdPending = processEventNotify(cmdDet, ctlvs);
                  break;
+             case GET_CHANNEL_STATUS:
              case SET_UP_CALL:
                  cmdPending = processSetupCall(cmdDet, ctlvs);
                  break;
@@ -179,28 +175,10 @@ class CommandParamsFactory extends Handler {
                 cmdPending = processProvideLocalInfo(cmdDet, ctlvs);
                 break;
              case OPEN_CHANNEL:
-                cmdPending = processOpenChannel(cmdDet, ctlvs);
-                break;
              case CLOSE_CHANNEL:
-                cmdPending = processCloseChannel(cmdDet, ctlvs);
-                break;
              case RECEIVE_DATA:
-                cmdPending = processReceiveData(cmdDet, ctlvs);
-                break;
              case SEND_DATA:
-                cmdPending = processSendData(cmdDet, ctlvs);
-                break;
-             case GET_CHANNEL_STATUS:
-                cmdPending = processGetChannelStatus(cmdDet, ctlvs);
-                break;
-             case LANGUAGE_NOTIFICATION:
-                cmdPending = processLanguageNotification(cmdDet, ctlvs);
-                 break;
-            case SET_UP_EVENT_LIST:
-                 cmdPending = processSetUpEventList(cmdDet, ctlvs);
-                 break;
-            case ACTIVATE:
-                 cmdPending = processActivate(cmdDet, ctlvs);
+                 cmdPending = processBIPClient(cmdDet, ctlvs);
                  break;
             default:
                 // unsupported proactive commands
@@ -343,14 +321,6 @@ class CommandParamsFactory extends Handler {
         textMsg.isHighPriority = (cmdDet.commandQualifier & 0x01) != 0;
         textMsg.userClear = (cmdDet.commandQualifier & 0x80) != 0;
 
-        // According to 3GPP 31.111 chap 6.5.4 (ETSI TS 102 223 clause 6.5.4):
-        // If the terminal receives an icon and either an empty or no alpha
-        // text string is given by UICC, than the terminal shall reject the
-        // command with general result "Command not understood by terminal".
-        if ((iconId != null) && (textMsg.text == null)) {
-            throw new ResultException(ResultCode.CMD_DATA_NOT_UNDERSTOOD);
-        }
-
         mCmdParams = new DisplayTextParams(cmdDet, textMsg);
 
         if (iconId != null) {
@@ -385,20 +355,15 @@ class CommandParamsFactory extends Handler {
         if (ctlv != null) {
             textMsg.text = ValueParser.retrieveTextString(ctlv);
         }
-
-        ctlv = searchForTag(ComprehensionTlvTag.ICON_ID, ctlvs);
-        if (ctlv != null) {
-            iconId = ValueParser.retrieveIconId(ctlv);
-            textMsg.iconSelfExplanatory = iconId.selfExplanatory;
+        // load icons only when text exist.
+        if (textMsg.text != null) {
+            ctlv = searchForTag(ComprehensionTlvTag.ICON_ID, ctlvs);
+            if (ctlv != null) {
+                iconId = ValueParser.retrieveIconId(ctlv);
+                textMsg.iconSelfExplanatory = iconId.selfExplanatory;
+            }
         }
 
-        // According to 3GPP 31.111 chap 6.5.4 (ETSI TS 102 223 clause 6.5.4):
-        // If the terminal receives an icon and either an empty or no alpha
-        // text string is given by UICC, than the terminal shall reject the
-        // command with general result "Command not understood by terminal".
-        if ((iconId != null) && (textMsg.text == null)) {
-            throw new ResultException(ResultCode.CMD_DATA_NOT_UNDERSTOOD);
-        }
         mCmdParams = new DisplayTextParams(cmdDet, textMsg);
 
         if (iconId != null) {
@@ -733,37 +698,6 @@ class CommandParamsFactory extends Handler {
             }
         }
 
-        byte[] bearerList = null;
-        ctlv = searchForTag(ComprehensionTlvTag.BEARER, ctlvs);
-        if (ctlv != null) {
-            byte[] rawValue = ctlv.getRawValue();
-            int valueIndex = ctlv.getValueIndex();
-            int valueLength = ctlv.getLength();
-            if (valueLength > 0 && rawValue.length >= (valueIndex + valueLength)) {
-                bearerList = new byte[valueLength];
-                if (bearerList != null) {
-                    System.arraycopy(rawValue, valueIndex, bearerList, 0, valueLength);
-                }
-            }
-        }
-
-        if (bearerList != null) {
-            // Refer 3GPP TS 31.111 section 8.49 for coding of bearer values
-            final byte PACKET_SERVICE = 0x03; // GPRS/UTRAN packet service/E-UTRAN
-            for (byte b : bearerList) {
-                if (b != PACKET_SERVICE) {
-                    throw new ResultException(ResultCode.BEYOND_TERMINAL_CAPABILITY);
-                }
-            }
-        }
-
-        String proxy = null;
-        ctlv = searchForTag(ComprehensionTlvTag.TEXT_STRING, ctlvs);
-        if (ctlv != null) {
-            proxy = ValueParser.retrieveTextString(ctlv);
-        }
-        if (proxy != null) CatLog.d(this, "proxy: " + proxy);
-
         // parse alpha identifier.
         ctlv = searchForTag(ComprehensionTlvTag.ALPHA_ID, ctlvs);
         confirmMsg.text = ValueParser.retrieveAlphaId(ctlv);
@@ -790,7 +724,7 @@ class CommandParamsFactory extends Handler {
             break;
         }
 
-        mCmdParams = new LaunchBrowserParams(cmdDet, confirmMsg, url, mode, proxy);
+        mCmdParams = new LaunchBrowserParams(cmdDet, confirmMsg, url, mode);
 
         if (iconId != null) {
             mIconLoadState = LOAD_SINGLE_ICON;
@@ -941,44 +875,11 @@ class CommandParamsFactory extends Handler {
                 CatLog.d(this, "PLI [LANGUAGE_SETTING]");
                 mCmdParams = new CommandParams(cmdDet);
                 break;
-            case SEARCH_MODE_SETTING:
-                CatLog.d(this, "PLI [SEARCH_MODE_SETTING]");
-                mCmdParams = new CommandParams(cmdDet);
-                break;
             default:
                 CatLog.d(this, "PLI[" + cmdDet.commandQualifier + "] Command Not Supported");
                 mCmdParams = new CommandParams(cmdDet);
                 throw new ResultException(ResultCode.BEYOND_TERMINAL_CAPABILITY);
         }
-        return false;
-    }
-
-    private boolean processLanguageNotification(CommandDetails cmdDet,
-            List<ComprehensionTlv> ctlvs) throws ResultException {
-        CatLog.d(this, "process LanguageNotification");
-        ComprehensionTlv ctlv = searchForTag(ComprehensionTlvTag.LANGUAGE,
-                ctlvs);
-        String lang = "";
-        if (ctlv != null) {
-            try {
-                byte[] rawValue = ctlv.getRawValue();
-                int valueIndex = ctlv.getValueIndex();
-                int valueLen = ctlv.getLength();
-                /*
-                 * As per ETSI TS 102 223 section 8.45, Each langugae code is
-                 * a pair of alpha-numeric characters defined in ISO 639. Each
-                 * alpha-numeric character shall be coded on one byte using the
-                 * SMS default -bit coded alphabet as defined in TS 23.038 [3] with
-                 * with bit 8 set to 0.
-                 */
-                if (valueLen > 0) {
-                    lang = GsmAlphabet.gsm8BitUnpackedToString(rawValue, valueIndex, valueLen);
-                }
-            } catch (IndexOutOfBoundsException e) {
-                throw new ResultException(ResultCode.CMD_DATA_NOT_UNDERSTOOD);
-            }
-        }
-        mCmdParams = new LanguageParams(cmdDet, lang);
         return false;
     }
 
@@ -1017,301 +918,6 @@ class CommandParamsFactory extends Handler {
             mIconLoadState = LOAD_SINGLE_ICON;
             mIconLoader.loadIcon(iconId.recordNumber, obtainMessage(MSG_ID_LOAD_ICON_DONE));
             return true;
-        }
-        return false;
-    }
-
-    private boolean processOpenChannel(CommandDetails cmdDet,
-            List<ComprehensionTlv> ctlvs) throws ResultException {
-        CatLog.d(this, "process OpenChannel");
-        TextMessage confirmMsg = new TextMessage();
-        int bufSize = 0;
-        byte[] destinationAddress = null;
-        String networkAccessName = null;
-        String userLogin = null;
-        String userPassword = null;
-
-        confirmMsg.responseNeeded = false;
-        ComprehensionTlv ctlv = searchForTag(ComprehensionTlvTag.ALPHA_ID,ctlvs);
-        if (ctlv != null) {
-            confirmMsg.text = ValueParser.retrieveAlphaId(ctlv);
-            if (confirmMsg.text != null) {
-                confirmMsg.responseNeeded = true;
-            }
-        }
-        // BUFFER_SIZE TLV is mandatory for all supported OPEN_CHANNEL PCs
-        ctlv = searchForTag(ComprehensionTlvTag.BUFFER_SIZE, ctlvs);
-        if (ctlv != null) {
-            bufSize = ValueParser.retrieveBufferSize(ctlv);
-        } else {
-            throw new ResultException(ResultCode.REQUIRED_VALUES_MISSING);
-        }
-
-        Iterator<ComprehensionTlv> iter = ctlvs.iterator();
-        InterfaceTransportLevel itl = null;
-        ctlv = searchForNextTag(ComprehensionTlvTag.IF_TRANS_LEVEL, iter);
-
-        if (ctlv != null) {
-            itl = ValueParser.retrieveInterfaceTransportLevel(ctlv);
-            // Check for conditional/optional destination address located after itl TLV.
-            // Note: This is NOT the local address TLV.
-            if (iter != null) {
-                ctlv = searchForNextTag(ComprehensionTlvTag.OTHER_ADDRESS, iter);
-            }
-            if (ctlv != null) {
-                destinationAddress = ValueParser.retrieveOtherAddress(ctlv);
-                if (destinationAddress.length != 4) {
-                    // Currently only IPV4 support
-                    throw new ResultException(ResultCode.CMD_TYPE_NOT_UNDERSTOOD);
-                }
-            }
-        }
-
-        BearerDescription bearerDescription = null;
-        ctlv = searchForTag(ComprehensionTlvTag.BEARER_DESC, ctlvs);
-        if (ctlv != null) {
-            bearerDescription = ValueParser.retrieveBearerDescription(ctlv);
-            CatLog.d(this, "processOpenChannel bearer: " + bearerDescription.type.value()
-                    + " param.len: " + bearerDescription.parameters.length);
-        }
-
-        iter = ctlvs.iterator();
-        // network access name
-        if (iter != null) {
-            ctlv = searchForNextTag(ComprehensionTlvTag.NETWORK_ACCESS_NAME, iter);
-            if (ctlv != null) {
-                networkAccessName = ValueParser.retrieveNetworkAccessName(ctlv);
-                ctlv = searchForNextTag(ComprehensionTlvTag.TEXT_STRING, iter);
-                if (ctlv != null) {
-                    userLogin = ValueParser.retrieveTextString(ctlv);
-                }
-                ctlv = searchForNextTag(ComprehensionTlvTag.TEXT_STRING, iter);
-                if (ctlv != null) {
-                    userPassword = ValueParser.retrieveTextString(ctlv);
-                }
-            }
-        }
-
-        if (itl != null && bearerDescription == null) {
-            if (itl.protocol == TransportProtocol.TCP_SERVER) {
-                // OPEN CHANNEL related to UICC Server Mode
-            } else if (itl.protocol == TransportProtocol.TCP_CLIENT_LOCAL
-                    || itl.protocol == TransportProtocol.UDP_CLIENT_LOCAL) {
-                // OPEN CHANNEL related to Terminal Server Mode
-            } else {
-                throw new ResultException(ResultCode.CMD_DATA_NOT_UNDERSTOOD);
-            }
-        } else if (bearerDescription != null) {
-            if (bearerDescription.type == BearerType.DEFAULT_BEARER) {
-                // OPEN CHANNEL related to Default (network) Bearer
-            } else if (bearerDescription.type == BearerType.MOBILE_PS
-                    || bearerDescription.type == BearerType.MOBILE_PS_EXTENDED_QOS
-                    || bearerDescription.type == BearerType.MOBILE_PS_EXTENDED_EPS_QOS) {
-                // OPEN CHANNEL related to packet data service bearer
-            } else {
-                throw new ResultException(ResultCode.BEYOND_TERMINAL_CAPABILITY);
-            }
-
-            if (itl != null) {
-                if (itl.protocol != TransportProtocol.TCP_CLIENT_REMOTE
-                        && itl.protocol != TransportProtocol.UDP_CLIENT_REMOTE) {
-                    throw new ResultException(ResultCode.CMD_DATA_NOT_UNDERSTOOD);
-                }
-                if (destinationAddress == null) {
-                    throw new ResultException(ResultCode.REQUIRED_VALUES_MISSING);
-                }
-            } else {
-                // It is not mandatory to have IF_TRANS_LEVEL with conditional destination address
-                // but how should we behave if we don't know if we should use UDP/TCP and more
-                // interesting what server IP to connect to?
-                throw new ResultException(ResultCode.CMD_DATA_NOT_UNDERSTOOD);
-            }
-        } else {
-            throw new ResultException(ResultCode.REQUIRED_VALUES_MISSING);
-        }
-
-        String addressString;
-        try {
-             addressString = InetAddress.getByAddress(destinationAddress).getHostAddress();
-        } catch (java.net.UnknownHostException e) {
-            addressString = "unknown";
-        }
-
-        String msg = "processOpenChannel bufSize=" + bufSize
-                + " protocol=" + (itl != null ? itl.protocol : "undefined")
-                + " port=" + (itl != null ? itl.port : "undefined")
-                + " destination=" + addressString
-                + " APN=" + (networkAccessName != null ? networkAccessName : "undefined")
-                + " user/password=" + (userLogin != null ? userLogin : "---")
-                + "/" + (userPassword != null ? userPassword : "---");
-
-        CatLog.d(this, msg);
-
-        mCmdParams = new OpenChannelParams(cmdDet, confirmMsg, bufSize,
-                itl, destinationAddress, bearerDescription, networkAccessName,
-                userLogin, userPassword);
-        return false;
-    }
-
-    private boolean processCloseChannel(CommandDetails cmdDet,
-            List<ComprehensionTlv> ctlvs) throws ResultException {
-        CatLog.d(this, "process CloseChannel");
-        /*
-         * Check device identities.
-         * Destination device id has to be between 0x21 and 0x27.
-         */
-        ComprehensionTlv ctlv = searchForTag(ComprehensionTlvTag.DEVICE_IDENTITIES, ctlvs);
-        int channel = 0;
-        if (ctlv != null) {
-            channel = ValueParser.retrieveDeviceIdentities(ctlv).destinationId;
-            if ((channel < 0x21) || (channel > 0x27)) {
-                throw new ResultException(ResultCode.CMD_DATA_NOT_UNDERSTOOD);
-            } else {
-                channel &= 0x0f;
-            }
-        } else {
-            throw new ResultException(ResultCode.REQUIRED_VALUES_MISSING);
-        }
-
-        mCmdParams = new CloseChannelParams(cmdDet, channel);
-        return false;
-    }
-
-    private boolean processReceiveData(CommandDetails cmdDet,
-            List<ComprehensionTlv> ctlvs) throws ResultException {
-        CatLog.d(this, "process ReceiveData");
-        /*
-         * Check device identities.
-         * Destination device id has to be between 0x21 and 0x27.
-         */
-        ComprehensionTlv ctlv = searchForTag(ComprehensionTlvTag.DEVICE_IDENTITIES, ctlvs);
-        int channel = 0;
-        if (ctlv != null) {
-            channel = ValueParser.retrieveDeviceIdentities(ctlv).destinationId;
-            if ((channel < 0x21) || (channel > 0x27)) {
-                CatLog.d( this, "Invalid Channel number given: " + channel);
-                throw new ResultException(ResultCode.CMD_DATA_NOT_UNDERSTOOD);
-            } else {
-                channel &= 0x0f;
-            }
-        } else {
-            throw new ResultException(ResultCode.REQUIRED_VALUES_MISSING);
-        }
-
-        /*
-         * Get requested data length.
-         */
-        ctlv = searchForTag(ComprehensionTlvTag.CHANNEL_DATA_LENGTH, ctlvs);
-        int datLen = 0;
-        if (ctlv != null) {
-            datLen = ValueParser.retrieveChannelDataLength(ctlv);
-        } else {
-            throw new ResultException(ResultCode.REQUIRED_VALUES_MISSING);
-        }
-
-        mCmdParams = new ReceiveDataParams(cmdDet, channel, datLen);
-        return false;
-    }
-
-    private boolean processSendData(CommandDetails cmdDet,
-            List<ComprehensionTlv> ctlvs) throws ResultException {
-        CatLog.d(this, "process SendData");
-        /*
-         * Check device identities.
-         * Destination device id has to be between 0x21 and 0x27.
-         */
-        ComprehensionTlv ctlv = searchForTag(ComprehensionTlvTag.DEVICE_IDENTITIES, ctlvs);
-        int channel = 0;
-        if (ctlv != null) {
-            channel = ValueParser.retrieveDeviceIdentities(ctlv).destinationId;
-
-            if ((channel < 0x21) || (channel > 0x27)) {
-                throw new ResultException(ResultCode.CMD_DATA_NOT_UNDERSTOOD);
-            } else {
-                channel &= 0x0f;
-            }
-        } else {
-            throw new ResultException(ResultCode.REQUIRED_VALUES_MISSING);
-        }
-
-        /*
-         * Get submitted data
-         */
-        ctlv = searchForTag(ComprehensionTlvTag.CHANNEL_DATA, ctlvs);
-        byte[] data = null;
-        if (ctlv != null) {
-            data = ValueParser.retrieveChannelData(ctlv);
-        } else {
-            throw new ResultException(ResultCode.REQUIRED_VALUES_MISSING);
-        }
-
-        mCmdParams = new SendDataParams(cmdDet, channel, data);
-        return false;
-    }
-
-    private boolean processGetChannelStatus(CommandDetails cmdDet,
-            List<ComprehensionTlv> ctlvs) throws ResultException {
-        CatLog.d(this, "process GetChannelStatus");
-
-        mCmdParams = new GetChannelStatusParams(cmdDet);
-         return false;
-     }
-    /**
-     * Processes SET_UP_EVENT_LIST proactive command from the SIM card.
-     *
-     * @param cmdDet Command Details object retrieved.
-     * @param ctlvs List of ComprehensionTlv objects following Command Details
-     *        object and Device Identities object within the proactive command
-     * @return true if the command is processing is pending and additional
-     *         asynchronous processing is required.
-     */
-    private boolean processSetUpEventList(CommandDetails cmdDet,
-            List<ComprehensionTlv> ctlvs) {
-
-        CatLog.d(this, "process SetUpEventList");
-        ComprehensionTlv ctlv = searchForTag(ComprehensionTlvTag.EVENT_LIST,ctlvs);
-        if (ctlv != null) {
-            byte[] rawValue = ctlv.getRawValue();
-            int valueIndex = ctlv.getValueIndex();
-            int valueLength = ctlv.getLength();
-            byte[] eventList;
-            if (valueLength > 0 && rawValue.length >= (valueIndex + valueLength)) {
-                eventList = new byte[valueLength];
-                if (eventList != null) {
-                    System.arraycopy(rawValue, valueIndex, eventList, 0, valueLength);
-                }
-            } else {
-                eventList = null;
-            }
-            mCmdParams = new EventListParams(cmdDet, eventList);
-        }
-        return false;
-    }
-
-    /**
-     * Processes ACTIVATE proactive command from the SIM card.
-     *
-     * @param cmdDet Command Details object retrieved.
-     * @param ctlvs List of ComprehensionTlv objects following Command Details
-     *        object and Device Identities object within the proactive command
-     * @return true if the command is processing is pending and additional
-     *         asynchronous processing is required.
-     */
-    private boolean processActivate(CommandDetails cmdDet,
-            List<ComprehensionTlv> ctlvs) throws ResultException {
-        CatLog.d(this, "process Activate");
-
-        ComprehensionTlv ctlv = searchForTag(ComprehensionTlvTag.ACTIVATE_DESCRIPTOR, ctlvs);
-        if (ctlv != null) {
-            try {
-                if (ctlv.getLength() != 1) {
-                    throw new ResultException(ResultCode.CMD_DATA_NOT_UNDERSTOOD);
-                }
-                mCmdParams = new ActivateParams(cmdDet,
-                        (ctlv.getRawValue())[ctlv.getValueIndex()]);
-            } catch (IndexOutOfBoundsException e) {
-                throw new ResultException(ResultCode.CMD_DATA_NOT_UNDERSTOOD);
-            }
         }
         return false;
     }

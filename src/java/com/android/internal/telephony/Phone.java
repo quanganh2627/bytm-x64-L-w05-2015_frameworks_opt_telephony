@@ -75,8 +75,7 @@ public interface Phone {
     static final String FEATURE_ENABLE_FOTA = "enableFOTA";
     static final String FEATURE_ENABLE_IMS = "enableIMS";
     static final String FEATURE_ENABLE_CBS = "enableCBS";
-    static final String FEATURE_ENABLE_BIP_GPRS1 = "enableBIP1";
-    static final String FEATURE_ENABLE_BIP_GPRS2 = "enableBIP2";
+
     /**
      * Optional reasons for disconnect and connect
      */
