@@ -406,8 +406,10 @@ public class GsmConnection extends Connection {
     }
 
     /** Called when the radio indicates the connection has been disconnected */
-    /*package*/ void
+    /*package*/ boolean
     onDisconnect(DisconnectCause cause) {
+        boolean changed = false;
+
         mCause = cause;
 
         if (!mDisconnected) {
@@ -422,10 +424,11 @@ public class GsmConnection extends Connection {
             mOwner.mPhone.notifyDisconnect(this);
 
             if (mParent != null) {
-                mParent.connectionDisconnected(this);
+                changed = mParent.connectionDisconnected(this);
             }
         }
         releaseWakeLock();
+        return changed;
     }
 
     // Returns true if state has changed, false if nothing changed
@@ -502,7 +505,7 @@ public class GsmConnection extends Connection {
      * HOLDING in the backgroundCall
      */
     void
-    fakeHoldBeforeDial() {
+    fakeHoldBeforeDialOrAccept() {
         if (mParent != null) {
             mParent.detach(this);
         }

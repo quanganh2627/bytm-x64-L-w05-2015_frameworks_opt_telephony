@@ -27,6 +27,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.res.Resources;
 import android.database.ContentObserver;
+import android.net.wifi.WifiManager;
 import android.os.AsyncResult;
 import android.os.Build;
 import android.os.Handler;
@@ -82,7 +83,7 @@ import java.util.TimeZone;
 /**
  * {@hide}
  */
-final class GsmServiceStateTracker extends ServiceStateTracker {
+public class GsmServiceStateTracker extends ServiceStateTracker {
     private static final String LOG_TAG = "GsmSST";
     private static final boolean VDBG = false;
 
@@ -138,6 +139,9 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
     /** Already sent the event-log for no gprs register. */
     private boolean mReportedGprsNoReg = false;
 
+    // Flag to indicate whether the the request is part of the polling requests.
+    private boolean mIsGetOperatorPollingTracked = true;
+
     /**
      * The Notification object given to the NotificationManager.
      */
@@ -152,6 +156,8 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
     private String mCurPlmn = null;
     private boolean mCurShowPlmn = false;
     private boolean mCurShowSpn = false;
+
+    private boolean mIsScreenOn = false;
 
     /** Notification type. */
     static final int PS_ENABLED = 1001;            // Access Control blocks data service
@@ -168,9 +174,21 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
     private BroadcastReceiver mIntentReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            if (intent.getAction().equals(Intent.ACTION_LOCALE_CHANGED)) {
+            if (!mPhone.mIsTheCurrentActivePhone) {
+                Rlog.e(LOG_TAG, "Received Intent " + intent +
+                        " while being destroyed. Ignoring.");
+                return;
+            }
+            String action = intent.getAction();
+            if (action == null) return;
+            if (action.equals(Intent.ACTION_LOCALE_CHANGED)) {
                 // update emergency string whenever locale changed
                 updateSpnDisplay();
+            } else if (action.equals(Intent.ACTION_SCREEN_ON)) {
+                mIsScreenOn = true;
+                sendMessage(obtainMessage(EVENT_POLL_SIGNAL_STRENGTH));
+            } else if (action.equals(Intent.ACTION_SCREEN_OFF)) {
+                mIsScreenOn = false;
             }
         }
     };
@@ -202,8 +220,16 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
                 (PowerManager)phone.getContext().getSystemService(Context.POWER_SERVICE);
         mWakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKELOCK_TAG);
 
+        mCi.registerForOn(this, EVENT_RADIO_ON, null);
         mCi.registerForAvailable(this, EVENT_RADIO_AVAILABLE, null);
         mCi.registerForRadioStateChanged(this, EVENT_RADIO_STATE_CHANGED, null);
+
+        try {
+            mIsGetOperatorPollingTracked = phone.getContext().getResources()
+                    .getBoolean(com.android.internal.R.bool.config_track_get_operator_polling);
+        } catch (Resources.NotFoundException ex) {
+            log("ignore exception");
+        }
 
         mCi.registerForVoiceNetworkStateChanged(this, EVENT_NETWORK_STATE_CHANGED, null);
         mCi.setOnNITZTime(this, EVENT_NITZ_TIME, null);
@@ -228,6 +254,8 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
         // Monitor locale change
         IntentFilter filter = new IntentFilter();
         filter.addAction(Intent.ACTION_LOCALE_CHANGED);
+        filter.addAction(Intent.ACTION_SCREEN_ON);
+        filter.addAction(Intent.ACTION_SCREEN_OFF);
         phone.getContext().registerReceiver(mIntentReceiver, filter);
 
         // Gsm doesn't support OTASP so its not needed
@@ -237,7 +265,10 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
     @Override
     public void dispose() {
         checkCorrectThread();
+        log("ServiceStateTracker dispose");
+
         // Unregister for all events.
+        mCi.unregisterForOn(this);
         mCi.unregisterForAvailable(this);
         mCi.unregisterForRadioStateChanged(this);
         mCi.unregisterForVoiceNetworkStateChanged(this);
@@ -279,20 +310,28 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
                 //setPowerStateToDesired();
                 break;
 
-            case EVENT_SIM_READY:
-                // Set the network type, in case the radio does not restore it.
-                mCi.setCurrentPreferredNetworkType();
-
-                boolean skipRestoringSelection = mPhone.getContext().getResources().getBoolean(
-                        com.android.internal.R.bool.skip_restoring_network_selection);
-
-                if (!skipRestoringSelection) {
-                    // restore the previous network selection.
-                    mPhone.restoreSavedNetworkSelection(null);
+            case EVENT_RADIO_ON:
+                if (mUiccApplcation == null
+                        || mUiccApplcation.getState() != AppState.APPSTATE_READY) {
+                    break;
                 }
-                pollState();
-                // Signal strength polling stops when radio is off
-                queueNextSignalStrengthPoll();
+                // Fall through to restore saved network selection if sim is ready
+            case EVENT_SIM_READY:
+
+                // SIM can be accessible in radio off
+                if (mCi.getRadioState().isOn()) {
+
+                    boolean skipRestoringSelection = mPhone.getContext().getResources().getBoolean(
+                            com.android.internal.R.bool.skip_restoring_network_selection);
+
+                    if (!skipRestoringSelection) {
+                        // restore the previous network selection.
+                        mPhone.restoreSavedNetworkSelection(null);
+                    }
+                    pollState();
+                    // Signal strength polling stops when radio is off
+                    queueNextSignalStrengthPoll();
+                }
                 break;
 
             case EVENT_RADIO_STATE_CHANGED:
@@ -357,10 +396,17 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
                 handlePollStateResult(msg.what, ar);
                 break;
 
+           case EVENT_GET_OPERATOR:
+                ar = (AsyncResult) msg.obj;
+
+                handleGetOperator(ar);
+                break;
+
             case EVENT_POLL_SIGNAL_STRENGTH:
                 // Just poll signal strength...not part of pollState()
-
-                mCi.getSignalStrength(obtainMessage(EVENT_GET_SIGNAL_STRENGTH));
+                if (mIsScreenOn) {
+                    mCi.getSignalStrength(obtainMessage(EVENT_GET_SIGNAL_STRENGTH));
+                }
                 break;
 
             case EVENT_NITZ_TIME:
@@ -386,6 +432,9 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
                 break;
 
             case EVENT_SIM_RECORDS_LOADED:
+                log("EVENT_SIM_RECORDS_LOADED: what=" + msg.what);
+
+                updatePhoneObject();
                 updateSpnDisplay();
                 break;
 
@@ -718,20 +767,33 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
             loge("Exception while polling service state. Probably malformed RIL response." + ex);
         }
 
+        final boolean voice_capable = mPhone.getContext().getResources().getBoolean(
+                com.android.internal.R.bool.config_voice_capable);
+        if ((!voice_capable || mNewSS.getState() != ServiceState.STATE_IN_SERVICE)
+                && mNewSS.getDataRegState() == ServiceState.STATE_IN_SERVICE) {
+             mNewSS.setState(mNewSS.getDataRegState());
+        }
+
         mPollingContext[0]--;
 
         if (mPollingContext[0] == 0) {
             /**
-             *  Since the roaming states of gsm service (from +CREG) and
-             *  data service (from +CGREG) could be different, the new SS
-             *  is set roaming while either one is roaming.
+             * Since the roaming state of gsm service (from +CREG) and
+             * data service (from +CGREG) could be different, the new SS
+             * is set to roaming when either is true.
              *
-             *  There is an exception for the above rule. The new SS is not set
-             *  as roaming while gsm service reports roaming but indeed it is
-             *  not roaming between operators.
+             * There are exceptions for the above rule.
+             * The new SS is not set as roaming while gsm service reports
+             * roaming but indeed it is same operator.
+             * And the operator is considered non roaming.
+             *
+             * The test for the operators is to handle special roaming
+             * agreements and MVNO's.
              */
             boolean roaming = (mGsmRoaming || mDataRoaming);
-            if (mGsmRoaming && !isRoamingBetweenOperators(mGsmRoaming, mNewSS)) {
+            if ((mGsmRoaming && isSameNamedOperators(mNewSS)
+                        && !isSameNamedOperatorConsideredRoaming(mNewSS))
+                    || isOperatorConsideredNonRoaming(mNewSS)) {
                 roaming = false;
             }
             mNewSS.setRoaming(roaming);
@@ -740,8 +802,221 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
         }
     }
 
+    /*
+     * Note: While porting this across android releases, take care of
+     *       fixes done in pollStateDone()'s if (hasChanged) case .
+     */
+    private void onServiceStateChanged() {
+        String operatorNumeric;
+
+        updateSpnDisplay();
+
+        mPhone.setSystemProperty(TelephonyProperties.PROPERTY_OPERATOR_ALPHA,
+                mSS.getOperatorAlphaLong());
+
+        String prevOperatorNumeric =
+                SystemProperties.get(TelephonyProperties.PROPERTY_OPERATOR_NUMERIC, "");
+        operatorNumeric = mSS.getOperatorNumeric();
+        mPhone.setSystemProperty(TelephonyProperties.PROPERTY_OPERATOR_NUMERIC, operatorNumeric);
+
+        if (operatorNumeric == null || operatorNumeric.length() < 3) {
+            if (DBG) log("onServiceStateChanged: operatorNumeric is Invalid");
+            mPhone.setSystemProperty(TelephonyProperties.PROPERTY_OPERATOR_ISO_COUNTRY, "");
+            mGotCountryCode = false;
+            mNitzUpdatedTime = false;
+        } else {
+            String iso = "";
+            String mcc = operatorNumeric.substring(0, 3);
+            try {
+                iso = MccTable.countryCodeForMcc(Integer.parseInt(mcc));
+            } catch (NumberFormatException ex) {
+                loge("onServiceStateChanged: Mcc Invalid(not a number)" + ex);
+            }
+
+            mPhone.setSystemProperty(TelephonyProperties.PROPERTY_OPERATOR_ISO_COUNTRY, iso);
+            mGotCountryCode = true;
+
+            setWifiCountryCode(iso);
+
+            TimeZone zone = null;
+
+            if (!mNitzUpdatedTime && !mcc.equals("000") && !TextUtils.isEmpty(iso)
+                    && getAutoTimeZone()) {
+
+                // Test both paths if ignore nitz is true
+                boolean testOneUniqueOffsetPath = SystemProperties.getBoolean(
+                            TelephonyProperties.PROPERTY_IGNORE_NITZ, false)
+                            && ((SystemClock.uptimeMillis() & 1) == 0);
+
+                ArrayList<TimeZone> uniqueZones = TimeUtils.getTimeZonesWithUniqueOffsets(iso);
+                if ((uniqueZones.size() == 1) || testOneUniqueOffsetPath) {
+                    zone = uniqueZones.get(0);
+                    if (DBG) {
+                        log("onServiceStateChanged: no nitz but one TZ for iso-cc=" + iso +
+                                " with zone.getID=" + zone.getID() +
+                                " testOneUniqueOffsetPath=" + testOneUniqueOffsetPath);
+                    }
+                    setAndBroadcastNetworkSetTimeZone(zone.getID());
+                } else {
+                    if (DBG) {
+                        log("onServiceStateChanged: there are " + uniqueZones.size() +
+                                " unique offsets for iso-cc='" + iso +
+                                " testOneUniqueOffsetPath=" + testOneUniqueOffsetPath +
+                                "', do nothing");
+                    }
+                }
+            }
+
+            if (shouldFixTimeZoneNow(mPhone, operatorNumeric, prevOperatorNumeric,
+                    mNeedFixZoneAfterNitz)) {
+                // If the offset is (0, false) and the timezone property
+                // is set, use the timezone property rather than
+                // GMT.
+                String zoneName = SystemProperties.get(TIMEZONE_PROPERTY);
+                if (DBG) {
+                    log("onServiceStateChanged: fix time zone zoneName='" + zoneName +
+                            "' mZoneOffset=" + mZoneOffset + " mZoneDst=" + mZoneDst +
+                            " iso-cc='" + iso +
+                            "' iso-cc-idx=" + Arrays.binarySearch(GMT_COUNTRY_CODES, iso));
+                }
+
+                // "(mZoneOffset == 0) && (mZoneDst == false) &&
+                //  (Arrays.binarySearch(GMT_COUNTRY_CODES, iso) < 0)"
+                // means that we received a NITZ string telling
+                // it is in GMT+0 w/ DST time zone
+                // BUT iso tells is NOT, e.g, a wrong NITZ reporting
+                // local time w/ 0 offset.
+                if ((mZoneOffset == 0) && (mZoneDst == false)
+                        && (zoneName != null) && (zoneName.length() > 0)
+                        && (Arrays.binarySearch(GMT_COUNTRY_CODES, iso) < 0)) {
+                    zone = TimeZone.getDefault();
+                    if (mNeedFixZoneAfterNitz) {
+                        // For wrong NITZ reporting local time w/ 0 offset,
+                        // need adjust time to reflect default timezone setting
+                        long ctm = System.currentTimeMillis();
+                        long tzOffset = zone.getOffset(ctm);
+                        if (DBG) {
+                            log("onServiceStateChanged: tzOffset=" + tzOffset + " ltod=" +
+                                    TimeUtils.logTimeOfDay(ctm));
+                        }
+                        if (getAutoTime()) {
+                            long adj = ctm - tzOffset;
+                            if (DBG) log("onServiceStateChanged: adj ltod=" +
+                                    TimeUtils.logTimeOfDay(adj));
+                            setAndBroadcastNetworkSetTime(adj);
+                        } else {
+                            // Adjust the saved NITZ time to account for tzOffset.
+                            mSavedTime = mSavedTime - tzOffset;
+                        }
+                    }
+                    if (DBG) log("onServiceStateChanged: using default TimeZone");
+                } else if (iso.equals("")) {
+                    // Country code not found.  This is likely a test network.
+                    // Get a TimeZone based only on the NITZ parameters (best guess).
+                    zone = getNitzTimeZone(mZoneOffset, mZoneDst, mZoneTime);
+                    if (DBG) log("onServiceStateChanged: using NITZ TimeZone");
+                } else {
+                    zone = TimeUtils.getTimeZone(mZoneOffset, mZoneDst, mZoneTime, iso);
+                    if (DBG) log("onServiceStateChanged: using getTimeZone(off, dst, time, iso)");
+                    if (zone == null) {
+                        // Couldn't find a proper timezone.  Perhaps the DST data is wrong.
+                        zone = TimeUtils.getTimeZone(mZoneOffset, !mZoneDst, mZoneTime, iso);
+                    }
+                }
+
+                mNeedFixZoneAfterNitz = false;
+
+                if (zone != null) {
+                    log("onServiceStateChanged: zone != null zone.getID=" + zone.getID());
+                    if (getAutoTimeZone()) {
+                        setAndBroadcastNetworkSetTimeZone(zone.getID());
+                    }
+                    saveNitzTimeZone(zone.getID());
+                } else {
+                    log("onServiceStateChanged: zone == null");
+                }
+            }
+        }
+
+        mPhone.setSystemProperty(TelephonyProperties.PROPERTY_OPERATOR_ISROAMING,
+                mSS.getRoaming() ? "true" : "false");
+
+        mPhone.notifyServiceStateChanged(mSS);
+    }
+
+    /**
+     * Handle the result of one of the getOperator() request
+     */
+    private void handleGetOperator(AsyncResult ar) {
+        ServiceState tmpSS = new ServiceState(mSS);
+
+        if (ar.exception != null) {
+            if (DBG) {
+                loge("handleGetOperator - Exception in getting operator" + ar.exception);
+            }
+
+            tmpSS.setOperatorName(null, null, null);
+        } else {
+            String opNames[] = (String[])ar.result;
+            if (opNames != null && opNames.length >= 3) {
+                 tmpSS.setOperatorName(opNames[0], opNames[1], opNames[2]);
+            }
+        }
+
+        /*
+         *  Since the roaming states of gsm service (from +CREG) and
+         *  data service (from +CGREG) could be different, the new SS
+         *  is set roaming while either one is roaming.
+         *
+         *  There is an exception for the above rule. The new SS is not set
+         *  as roaming while gsm service reports roaming but indeed it is
+         *  not roaming between operators.
+         */
+        boolean roaming = (mGsmRoaming || mDataRoaming);
+        if ((mGsmRoaming && !isSameNamedOperators(tmpSS)
+                   && !isSameNamedOperatorConsideredRoaming(tmpSS))
+                   || isOperatorConsideredNonRoaming(tmpSS)) {
+            roaming = false;
+        }
+        tmpSS.setRoaming(roaming);
+
+        boolean hasChanged = !tmpSS.equals(mSS);
+        boolean hasRoamingOn = !mSS.getRoaming() && tmpSS.getRoaming();
+        boolean hasRoamingOff = mSS.getRoaming() && !tmpSS.getRoaming();
+
+        if (hasRoamingOn) {
+            mRoamingOnRegistrants.notifyRegistrants();
+        }
+
+        if (hasRoamingOff) {
+            mRoamingOffRegistrants.notifyRegistrants();
+        }
+
+        if (hasChanged) {
+            mSS.setRoaming(tmpSS.getRoaming());
+            mSS.setOperatorName(tmpSS.getOperatorAlphaLong(), tmpSS.getOperatorAlphaShort(),
+                    tmpSS.getOperatorNumeric());
+            onServiceStateChanged();
+        }
+    }
+
     private void setSignalStrengthDefaultValues() {
         mSignalStrength = new SignalStrength(true);
+    }
+
+    private void setWifiCountryCode(String countryCode) {
+        if (countryCode != null && !countryCode.isEmpty()) {
+            if (DBG) {
+                log("WIFI_COUNTRY_CODE set to " + countryCode);
+            }
+
+            WifiManager wm =
+                    (WifiManager) mPhone.getContext().getSystemService(Context.WIFI_SERVICE);
+            if (wm != null) {
+                //persist
+                wm.setCountryCode(countryCode, true);
+            }
+        }
     }
 
     /**
@@ -752,7 +1027,7 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
      * and start over again if the radio notifies us that some
      * event has changed
      */
-    private void pollState() {
+    protected void pollState() {
         mPollingContext = new int[1];
         mPollingContext[0] = 0;
 
@@ -764,6 +1039,7 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
                 mGotCountryCode = false;
                 mNitzUpdatedTime = false;
                 pollStateDone();
+                updateSpnDisplay();
             break;
 
             case RADIO_OFF:
@@ -773,6 +1049,7 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
                 mGotCountryCode = false;
                 mNitzUpdatedTime = false;
                 pollStateDone();
+                updateSpnDisplay();
             break;
 
             default:
@@ -780,10 +1057,12 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
                 // then count down the responses, which
                 // are allowed to arrive out-of-order
 
-                mPollingContext[0]++;
-                mCi.getOperator(
-                    obtainMessage(
-                        EVENT_POLL_STATE_OPERATOR, mPollingContext));
+                if (mIsGetOperatorPollingTracked) {
+                    mPollingContext[0]++;
+                    mCi.getOperator(
+                        obtainMessage(
+                            EVENT_POLL_STATE_OPERATOR, mPollingContext));
+                }
 
                 mPollingContext[0]++;
                 mCi.getDataRegistrationState(
@@ -862,43 +1141,66 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
                 mNewSS.getVoiceRegState(), mNewSS.getDataRegState());
         }
 
-        ServiceState tss;
-        tss = mSS;
-        mSS = mNewSS;
-        mNewSS = tss;
-        // clean slate for next time
-        mNewSS.setStateOutOfService();
-
-        GsmCellLocation tcl = mCellLoc;
-        mCellLoc = mNewCellLoc;
-        mNewCellLoc = tcl;
-
         // Add an event log when network type switched
         // TODO: we may add filtering to reduce the event logged,
         // i.e. check preferred network setting, only switch to 2G, etc
         if (hasRilVoiceRadioTechnologyChanged) {
             int cid = -1;
-            GsmCellLocation loc = ((GsmCellLocation)mPhone.getCellLocation());
+            GsmCellLocation loc = mNewCellLoc;
             if (loc != null) cid = loc.getCid();
-            EventLog.writeEvent(EventLogTags.GSM_RAT_SWITCHED, cid, mSS.getRilVoiceRadioTechnology(),
+            // NOTE: this code was previously located after mSS and mNewSS are swapped, so
+            // existing logs were incorrectly using the new state for "network_from"
+            // and STATE_OUT_OF_SERVICE for "network_to". To avoid confusion, use a new log tag
+            // to record the correct states.
+            EventLog.writeEvent(EventLogTags.GSM_RAT_SWITCHED_NEW, cid,
+                    mSS.getRilVoiceRadioTechnology(),
                     mNewSS.getRilVoiceRadioTechnology());
             if (DBG) {
                 log("RAT switched "
                         + ServiceState.rilRadioTechnologyToString(mSS.getRilVoiceRadioTechnology())
                         + " -> "
-                        + ServiceState.rilRadioTechnologyToString(mNewSS.getRilVoiceRadioTechnology()) +
-                        " at cell " + cid);
+                        + ServiceState.rilRadioTechnologyToString(
+                                mNewSS.getRilVoiceRadioTechnology()) + " at cell " + cid);
             }
         }
+
+        // swap mSS and mNewSS to put new state in mSS
+        ServiceState tss = mSS;
+        mSS = mNewSS;
+        mNewSS = tss;
+
+        /*
+         * Query operator after registration state polling. This has been done to show
+         * the registration state information to the user at the earliest.
+         */
+        if (!mIsGetOperatorPollingTracked) {
+            mCi.getOperator(obtainMessage(EVENT_GET_OPERATOR));
+            mSS.setOperatorName(tss.getOperatorAlphaLong(), tss.getOperatorAlphaShort(),
+                    tss.getOperatorNumeric());
+        }
+
+        // clean slate for next time
+        mNewSS.setStateOutOfService();
+
+        // swap mCellLoc and mNewCellLoc to put new state in mCellLoc
+        GsmCellLocation tcl = mCellLoc;
+        mCellLoc = mNewCellLoc;
+        mNewCellLoc = tcl;
 
         mReasonDataDenied = mNewReasonDataDenied;
         mMaxDataCalls = mNewMaxDataCalls;
 
-        mNewSS.setStateOutOfService(); // clean slate for next time
+        if (hasRilVoiceRadioTechnologyChanged) {
+            updatePhoneObject();
+        }
 
         if (hasRilDataRadioTechnologyChanged) {
             mPhone.setSystemProperty(TelephonyProperties.PROPERTY_DATA_NETWORK_TYPE,
                     ServiceState.rilRadioTechnologyToString(mSS.getRilVoiceRadioTechnology()));
+        }
+
+        if (hasRegistered || hasGprsAttached) {
+            querySignalStrength();
         }
 
         if (hasRegistered) {
@@ -912,138 +1214,12 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
         }
 
         if (hasChanged) {
-            String operatorNumeric;
-
-            updateSpnDisplay();
-
-            mPhone.setSystemProperty(TelephonyProperties.PROPERTY_OPERATOR_ALPHA,
-                mSS.getOperatorAlphaLong());
-
-            String prevOperatorNumeric =
-                    SystemProperties.get(TelephonyProperties.PROPERTY_OPERATOR_NUMERIC, "");
-            operatorNumeric = mSS.getOperatorNumeric();
-            mPhone.setSystemProperty(TelephonyProperties.PROPERTY_OPERATOR_NUMERIC, operatorNumeric);
-
-            if (operatorNumeric == null) {
-                if (DBG) log("operatorNumeric is null");
-                mPhone.setSystemProperty(TelephonyProperties.PROPERTY_OPERATOR_ISO_COUNTRY, "");
-                mGotCountryCode = false;
-                mNitzUpdatedTime = false;
+            if (mIsGetOperatorPollingTracked) {
+                onServiceStateChanged();
             } else {
-                String iso = "";
-                String mcc = "";
-                try{
-                    mcc = operatorNumeric.substring(0, 3);
-                    iso = MccTable.countryCodeForMcc(Integer.parseInt(mcc));
-                } catch ( NumberFormatException ex){
-                    loge("pollStateDone: countryCodeForMcc error" + ex);
-                } catch ( StringIndexOutOfBoundsException ex) {
-                    loge("pollStateDone: countryCodeForMcc error" + ex);
-                }
-
-                mPhone.setSystemProperty(TelephonyProperties.PROPERTY_OPERATOR_ISO_COUNTRY, iso);
-                mGotCountryCode = true;
-
-                TimeZone zone = null;
-
-                if (!mNitzUpdatedTime && !mcc.equals("000") && !TextUtils.isEmpty(iso) &&
-                        getAutoTimeZone()) {
-
-                    // Test both paths if ignore nitz is true
-                    boolean testOneUniqueOffsetPath = SystemProperties.getBoolean(
-                                TelephonyProperties.PROPERTY_IGNORE_NITZ, false) &&
-                                    ((SystemClock.uptimeMillis() & 1) == 0);
-
-                    ArrayList<TimeZone> uniqueZones = TimeUtils.getTimeZonesWithUniqueOffsets(iso);
-                    if ((uniqueZones.size() == 1) || testOneUniqueOffsetPath) {
-                        zone = uniqueZones.get(0);
-                        if (DBG) {
-                           log("pollStateDone: no nitz but one TZ for iso-cc=" + iso +
-                                   " with zone.getID=" + zone.getID() +
-                                   " testOneUniqueOffsetPath=" + testOneUniqueOffsetPath);
-                        }
-                        setAndBroadcastNetworkSetTimeZone(zone.getID());
-                    } else {
-                        if (DBG) {
-                            log("pollStateDone: there are " + uniqueZones.size() +
-                                " unique offsets for iso-cc='" + iso +
-                                " testOneUniqueOffsetPath=" + testOneUniqueOffsetPath +
-                                "', do nothing");
-                        }
-                    }
-                }
-
-                if (shouldFixTimeZoneNow(mPhone, operatorNumeric, prevOperatorNumeric,
-                        mNeedFixZoneAfterNitz)) {
-                    // If the offset is (0, false) and the timezone property
-                    // is set, use the timezone property rather than
-                    // GMT.
-                    String zoneName = SystemProperties.get(TIMEZONE_PROPERTY);
-                    if (DBG) {
-                        log("pollStateDone: fix time zone zoneName='" + zoneName +
-                            "' mZoneOffset=" + mZoneOffset + " mZoneDst=" + mZoneDst +
-                            " iso-cc='" + iso +
-                            "' iso-cc-idx=" + Arrays.binarySearch(GMT_COUNTRY_CODES, iso));
-                    }
-
-                    // "(mZoneOffset == 0) && (mZoneDst == false) &&
-                    //  (Arrays.binarySearch(GMT_COUNTRY_CODES, iso) < 0)"
-                    // means that we received a NITZ string telling
-                    // it is in GMT+0 w/ DST time zone
-                    // BUT iso tells is NOT, e.g, a wrong NITZ reporting
-                    // local time w/ 0 offset.
-                    if ((mZoneOffset == 0) && (mZoneDst == false) &&
-                        (zoneName != null) && (zoneName.length() > 0) &&
-                        (Arrays.binarySearch(GMT_COUNTRY_CODES, iso) < 0)) {
-                        zone = TimeZone.getDefault();
-                        if (mNeedFixZoneAfterNitz) {
-                            // For wrong NITZ reporting local time w/ 0 offset,
-                            // need adjust time to reflect default timezone setting
-                            long ctm = System.currentTimeMillis();
-                            long tzOffset = zone.getOffset(ctm);
-                            if (DBG) {
-                                log("pollStateDone: tzOffset=" + tzOffset + " ltod=" +
-                                        TimeUtils.logTimeOfDay(ctm));
-                            }
-                            if (getAutoTime()) {
-                                long adj = ctm - tzOffset;
-                                if (DBG) log("pollStateDone: adj ltod=" +
-                                        TimeUtils.logTimeOfDay(adj));
-                                setAndBroadcastNetworkSetTime(adj);
-                            } else {
-                                // Adjust the saved NITZ time to account for tzOffset.
-                                mSavedTime = mSavedTime - tzOffset;
-                            }
-                        }
-                        if (DBG) log("pollStateDone: using default TimeZone");
-                    } else if (iso.equals("")){
-                        // Country code not found.  This is likely a test network.
-                        // Get a TimeZone based only on the NITZ parameters (best guess).
-                        zone = getNitzTimeZone(mZoneOffset, mZoneDst, mZoneTime);
-                        if (DBG) log("pollStateDone: using NITZ TimeZone");
-                    } else {
-                        zone = TimeUtils.getTimeZone(mZoneOffset, mZoneDst, mZoneTime, iso);
-                        if (DBG) log("pollStateDone: using getTimeZone(off, dst, time, iso)");
-                    }
-
-                    mNeedFixZoneAfterNitz = false;
-
-                    if (zone != null) {
-                        log("pollStateDone: zone != null zone.getID=" + zone.getID());
-                        if (getAutoTimeZone()) {
-                            setAndBroadcastNetworkSetTimeZone(zone.getID());
-                        }
-                        saveNitzTimeZone(zone.getID());
-                    } else {
-                        log("pollStateDone: zone == null");
-                    }
-                }
+                updateSpnDisplay();
+                mPhone.notifyServiceStateChanged(mSS);
             }
-
-            mPhone.setSystemProperty(TelephonyProperties.PROPERTY_OPERATOR_ISROAMING,
-                mSS.getRoaming() ? "true" : "false");
-
-            mPhone.notifyServiceStateChanged(mSS);
         }
 
         if (hasGprsAttached) {
@@ -1055,15 +1231,18 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
         }
 
         if (hasDataRegStateChanged || hasRilDataRadioTechnologyChanged) {
+            notifyDataRegStateRilRadioTechnologyChanged();
             mPhone.notifyDataConnection(null);
         }
 
-        if (hasRoamingOn) {
-            mRoamingOnRegistrants.notifyRegistrants();
-        }
+        if (mIsGetOperatorPollingTracked) {
+            if (hasRoamingOn) {
+                mRoamingOnRegistrants.notifyRegistrants();
+            }
 
-        if (hasRoamingOff) {
-            mRoamingOffRegistrants.notifyRegistrants();
+            if (hasRoamingOff) {
+                mRoamingOffRegistrants.notifyRegistrants();
+            }
         }
 
         if (hasLocationChanged) {
@@ -1132,22 +1311,35 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
         return guess;
     }
 
-    private void queueNextSignalStrengthPoll() {
+    private void querySignalStrength() {
         if (mDontPollSignalStrength) {
             // The radio is telling us about signal strength changes
             // we don't have to ask it
             return;
         }
 
-        Message msg;
+        // Remove pending signal strength polling messages
+        removeMessages(EVENT_POLL_SIGNAL_STRENGTH);
 
-        msg = obtainMessage();
-        msg.what = EVENT_POLL_SIGNAL_STRENGTH;
+        // Query the signal strength.
+        mCi.getSignalStrength(obtainMessage(EVENT_GET_SIGNAL_STRENGTH));
+    }
 
-        long nextTime;
+    protected void queueNextSignalStrengthPoll() {
+        if (mDontPollSignalStrength) {
+            // The radio is telling us about signal strength changes
+            // we don't have to ask it
+            return;
+        }
 
-        // TODO Don't poll signal strength if screen is off
-        sendMessageDelayed(msg, POLL_PERIOD_MILLIS);
+        if (mIsScreenOn) {
+            Message msg;
+
+            msg = obtainMessage();
+            msg.what = EVENT_POLL_SIGNAL_STRENGTH;
+
+            sendMessageDelayed(msg, POLL_PERIOD_MILLIS);
+        }
     }
 
     /**
@@ -1282,13 +1474,13 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
     }
 
     /**
-     * Set roaming state when gsmRoaming is true and, if operator mcc is the
-     * same as sim mcc, ons is different from spn
-     * @param gsmRoaming TS 27.007 7.2 CREG registered roaming
+     * Set roaming state if operator mcc is the same as sim mcc
+     * and ons is different from spn
+     *
      * @param s ServiceState hold current ons
-     * @return true for roaming state set
+     * @return true if same operator
      */
-    private boolean isRoamingBetweenOperators(boolean gsmRoaming, ServiceState s) {
+    private boolean isSameNamedOperators(ServiceState s) {
         String spn = SystemProperties.get(TelephonyProperties.PROPERTY_ICC_OPERATOR_ALPHA, "empty");
 
         String onsl = s.getOperatorAlphaLong();
@@ -1297,18 +1489,73 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
         boolean equalsOnsl = onsl != null && spn.equals(onsl);
         boolean equalsOnss = onss != null && spn.equals(onss);
 
+        return currentMccEqualsSimMcc(s) && (equalsOnsl || equalsOnss);
+    }
+
+    /**
+     * Compare SIM MCC with Operator MCC
+     *
+     * @param s ServiceState hold current ons
+     * @return true if both are same
+     */
+    private boolean currentMccEqualsSimMcc(ServiceState s) {
         String simNumeric = SystemProperties.get(
                 TelephonyProperties.PROPERTY_ICC_OPERATOR_NUMERIC, "");
-        String  operatorNumeric = s.getOperatorNumeric();
-
+        String operatorNumeric = s.getOperatorNumeric();
         boolean equalsMcc = true;
+
         try {
-            equalsMcc = simNumeric.substring(0, 3).
-                    equals(operatorNumeric.substring(0, 3));
+            if (operatorNumeric != null) {
+                equalsMcc = simNumeric.substring(0, 3).
+                        equals(operatorNumeric.substring(0, 3));
+            }
         } catch (Exception e){
         }
+        return equalsMcc;
+    }
 
-        return gsmRoaming && !(equalsMcc && (equalsOnsl || equalsOnss));
+    /**
+     * Do not set roaming state in case of oprators considered non-roaming.
+     *
+     + Can use mcc or mcc+mnc as item of config_operatorConsideredNonRoaming.
+     * For example, 302 or 21407. If mcc or mcc+mnc match with operator,
+     * don't set roaming state.
+     *
+     * @param s ServiceState hold current ons
+     * @return false for roaming state set
+     */
+    private boolean isOperatorConsideredNonRoaming(ServiceState s) {
+        String operatorNumeric = s.getOperatorNumeric();
+        String[] numericArray = mPhone.getContext().getResources().getStringArray(
+                    com.android.internal.R.array.config_operatorConsideredNonRoaming);
+
+        if (numericArray.length == 0 || operatorNumeric == null)
+            return false;
+
+        for (String numeric : numericArray) {
+            if (operatorNumeric.startsWith(numeric))
+                return true;
+            else
+                return false;
+        }
+        return false;
+    }
+
+    private boolean isSameNamedOperatorConsideredRoaming(ServiceState s) {
+        String operatorNumeric = s.getOperatorNumeric();
+        String[] numericArray = mPhone.getContext().getResources().getStringArray(
+                    com.android.internal.R.array.config_sameNamedOperatorConsideredRoaming);
+
+        if (numericArray.length == 0 || operatorNumeric == null)
+            return false;
+
+        for (String numeric : numericArray) {
+            if (operatorNumeric.startsWith(numeric))
+                return true;
+            else
+                return false;
+        }
+        return false;
     }
 
     /**
@@ -1326,7 +1573,27 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
      */
     @Override
     public boolean isConcurrentVoiceAndDataAllowed() {
-        return (mSS.getRilVoiceRadioTechnology() >= ServiceState.RIL_RADIO_TECHNOLOGY_UMTS);
+        // when tech is UMTS return true always
+        if (mSS.getRilVoiceRadioTechnology() >= ServiceState.RIL_RADIO_TECHNOLOGY_UMTS) {
+            return true;
+        }
+        // If tech is not UMTS, check the MS Class info based property
+        String ccdata = "";
+        try {
+            if (mPhone.getContext().getResources().getBoolean(
+                    com.android.internal.R.bool.config_usage_oem_hooks_supported)) {
+                String oemproperty = mPhone.getContext().getText(
+                        com.android.internal.R.string.oemhook_concurrentdata_property).toString();
+                ccdata = SystemProperties.get(oemproperty,"");
+            }
+        } catch (Resources.NotFoundException ex) {
+            if (DBG) log("ignore exception");
+        }
+        if (!ccdata.equals("")) {
+            log("Concurrent data set as:" + ccdata);
+            return ccdata.equals("allowed");
+        }
+        return false;
     }
 
     /**
@@ -1473,9 +1740,16 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
 
                 if (mGotCountryCode) {
                     if (iso != null && iso.length() > 0) {
-                        zone = TimeUtils.getTimeZone(tzOffset, dst != 0,
+                        boolean isDstProvided = (dst != 0);
+                        zone = TimeUtils.getTimeZone(tzOffset, isDstProvided,
                                 c.getTimeInMillis(),
                                 iso);
+                        if (zone == null) {
+                            // Couldn't find a proper timezone.  Perhaps the DST data is wrong.
+                            zone = TimeUtils.getTimeZone(tzOffset, !isDstProvided,
+                                c.getTimeInMillis(),
+                                iso);
+                        }
                     } else {
                         // We don't have a valid iso country code.  This is
                         // most likely because we're on a test network that's
@@ -1495,6 +1769,7 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
                 mZoneOffset  = tzOffset;
                 mZoneDst     = dst != 0;
                 mZoneTime    = c.getTimeInMillis();
+                zone = getNitzTimeZone(mZoneOffset, mZoneDst, mZoneTime);
             }
 
             if (zone != null) {

@@ -76,6 +76,9 @@ public interface Phone {
     static final String FEATURE_ENABLE_IMS = "enableIMS";
     static final String FEATURE_ENABLE_CBS = "enableCBS";
 
+    static final String FEATURE_ENABLE_BIP_GPRS1 = "enableBIP1";
+    static final String FEATURE_ENABLE_BIP_GPRS2 = "enableBIP2";
+
     /**
      * Optional reasons for disconnect and connect
      */
@@ -1387,11 +1390,6 @@ public interface Phone {
     public PhoneSubInfo getPhoneSubInfo();
 
     /**
-     * Retrieves the IccSmsInterfaceManager of the Phone
-     */
-    public IccSmsInterfaceManager getIccSmsInterfaceManager();
-
-    /**
      * Retrieves the IccPhoneBookInterfaceManager of the Phone
      */
     public IccPhoneBookInterfaceManager getIccPhoneBookInterfaceManager();
@@ -1720,4 +1718,11 @@ public interface Phone {
      * Remove references to external object stored in this object.
      */
     void removeReferences();
+
+    /**
+     * Update the phone object if the voice radio technology has changed
+     *
+     * @param voiceRadioTech The new voice radio technology
+     */
+    void updatePhoneObject(int voiceRadioTech);
 }

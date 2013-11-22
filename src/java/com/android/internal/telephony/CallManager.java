@@ -25,12 +25,14 @@ import android.os.Handler;
 import android.os.Message;
 import android.os.RegistrantList;
 import android.os.Registrant;
+import android.telephony.PhoneNumberUtils;
 import android.telephony.PhoneStateListener;
 import android.telephony.ServiceState;
 import android.telephony.Rlog;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.ConcurrentModificationException;
 import java.util.List;
 
 
@@ -380,7 +382,7 @@ public final class CallManager {
         switch (getState()) {
             case RINGING:
                 int curAudioMode = audioManager.getMode();
-                if (curAudioMode != AudioManager.MODE_RINGTONE) {
+                if ((!hasActiveFgCall()) && (curAudioMode != AudioManager.MODE_RINGTONE)) {
                     // only request audio focus if the ringtone is going to be heard
                     if (audioManager.getStreamVolume(AudioManager.STREAM_RING) > 0) {
                         if (VDBG) Rlog.d(LOG_TAG, "requestAudioFocus on STREAM_RING");
@@ -749,7 +751,17 @@ public final class CallManager {
         }
 
         if (!canDial(phone)) {
-            throw new CallStateException("cannot dial in current state");
+            /*
+             * canDial function only checks whether the phone can make a new call.
+             * InCall MMI commmands are basically supplementary services
+             * within a call eg: call hold, call deflection, explicit call transfer etc.
+             */
+            String newDialString = PhoneNumberUtils.stripSeparators(dialString);
+            if (basePhone.handleInCallMmiCommands(newDialString)) {
+                return null;
+            } else {
+                throw new CallStateException("cannot dial in current state");
+            }
         }
 
         if ( hasActiveFgCall() ) {
@@ -808,7 +820,6 @@ public final class CallManager {
      * Phone can make a call only if ALL of the following are true:
      *        - Phone is not powered off
      *        - There's no incoming or waiting call
-     *        - There's available call slot in either foreground or background
      *        - The foreground call is ACTIVE or IDLE or DISCONNECTED.
      *          (We mainly need to make sure it *isn't* DIALING or ALERTING.)
      * @param phone
@@ -817,14 +828,10 @@ public final class CallManager {
     private boolean canDial(Phone phone) {
         int serviceState = phone.getServiceState().getState();
         boolean hasRingingCall = hasActiveRingingCall();
-        boolean hasActiveCall = hasActiveFgCall();
-        boolean hasHoldingCall = hasActiveBgCall();
-        boolean allLinesTaken = hasActiveCall && hasHoldingCall;
         Call.State fgCallState = getActiveFgCallState();
 
         boolean result = (serviceState != ServiceState.STATE_POWER_OFF
                 && !hasRingingCall
-                && !allLinesTaken
                 && ((fgCallState == Call.State.ACTIVE)
                     || (fgCallState == Call.State.IDLE)
                     || (fgCallState == Call.State.DISCONNECTED)));
@@ -832,9 +839,6 @@ public final class CallManager {
         if (result == false) {
             Rlog.d(LOG_TAG, "canDial serviceState=" + serviceState
                             + " hasRingingCall=" + hasRingingCall
-                            + " hasActiveCall=" + hasActiveCall
-                            + " hasHoldingCall=" + hasHoldingCall
-                            + " allLinesTaken=" + allLinesTaken
                             + " fgCallState=" + fgCallState);
         }
         return result;
@@ -1850,32 +1854,35 @@ public final class CallManager {
     public String toString() {
         Call call;
         StringBuilder b = new StringBuilder();
+        try {
+            b.append("CallManager {");
+            b.append("\nstate = " + getState());
+            call = getActiveFgCall();
+            b.append("\n- Foreground: " + getActiveFgCallState());
+            b.append(" from " + call.getPhone());
+            b.append("\n  Conn: ").append(getFgCallConnections());
+            call = getFirstActiveBgCall();
+            b.append("\n- Background: " + call.getState());
+            b.append(" from " + call.getPhone());
+            b.append("\n  Conn: ").append(getBgCallConnections());
+            call = getFirstActiveRingingCall();
+            b.append("\n- Ringing: " +call.getState());
+            b.append(" from " + call.getPhone());
 
-        b.append("CallManager {");
-        b.append("\nstate = " + getState());
-        call = getActiveFgCall();
-        b.append("\n- Foreground: " + getActiveFgCallState());
-        b.append(" from " + call.getPhone());
-        b.append("\n  Conn: ").append(getFgCallConnections());
-        call = getFirstActiveBgCall();
-        b.append("\n- Background: " + call.getState());
-        b.append(" from " + call.getPhone());
-        b.append("\n  Conn: ").append(getBgCallConnections());
-        call = getFirstActiveRingingCall();
-        b.append("\n- Ringing: " +call.getState());
-        b.append(" from " + call.getPhone());
-
-        for (Phone phone : getAllPhones()) {
-            if (phone != null) {
-                b.append("\nPhone: " + phone + ", name = " + phone.getPhoneName()
-                        + ", state = " + phone.getState());
-                call = phone.getForegroundCall();
-                b.append("\n- Foreground: ").append(call);
-                call = phone.getBackgroundCall();
-                b.append(" Background: ").append(call);
-                call = phone.getRingingCall();
-                b.append(" Ringing: ").append(call);
+            for (Phone phone : getAllPhones()) {
+                if (phone != null) {
+                    b.append("\nPhone: " + phone + ", name = " + phone.getPhoneName()
+                            + ", state = " + phone.getState());
+                    call = phone.getForegroundCall();
+                    b.append("\n- Foreground: ").append(call);
+                    call = phone.getBackgroundCall();
+                    b.append(" Background: ").append(call);
+                    call = phone.getRingingCall();
+                    b.append(" Ringing: ").append(call);
+                }
             }
+        } catch (ConcurrentModificationException e) {
+            Rlog.e(LOG_TAG, "CallManager toString Exception:" + e);
         }
         b.append("\n}");
         return b.toString();
