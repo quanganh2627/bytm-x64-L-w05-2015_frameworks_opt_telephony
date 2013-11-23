@@ -80,7 +80,7 @@ public class BipGateWay {
             parse("content://telephony/carriers/preferapn");
 
     public static final String BIP_APN_NAME = "BIP APN";
-    public static final int BIP_MAX_APNTYPE = 2;
+    public static final int BIP_MAX_APNTYPE = 1;
     static final String APN_ID = "apn_id";
     static final long TIME_TO_APN_ADD = 200;
     static final long MAX_WAIT_TIME_ADD_APN = 4*TIME_TO_APN_ADD;
@@ -766,20 +766,12 @@ public class BipGateWay {
             for (NetworkInfo info : networkInfos) {
                 if (info != null && info.isAvailable()) {
                     switch (info.getType()) {
-                        case ConnectivityManager.TYPE_MOBILE_BIP_GPRS1:
+                        case ConnectivityManager.TYPE_MOBILE_CBS:
                             state = info.getState();
                             if (state != NetworkInfo.State.CONNECTING
                                     && state != NetworkInfo.State.SUSPENDED
                                     && state != NetworkInfo.State.CONNECTED) {
-                                    bipApns.add(PhoneConstants.APN_TYPE_BIP_GPRS1);
-                            }
-                            break;
-                        case ConnectivityManager.TYPE_MOBILE_BIP_GPRS2:
-                            state = info.getState();
-                            if (state != NetworkInfo.State.CONNECTING
-                                    && state != NetworkInfo.State.SUSPENDED
-                                    && state != NetworkInfo.State.CONNECTED) {
-                                    bipApns.add(PhoneConstants.APN_TYPE_BIP_GPRS2);
+                                    bipApns.add(PhoneConstants.APN_TYPE_CBS);
                             }
                             break;
                     }
@@ -815,8 +807,7 @@ public class BipGateWay {
                        new String[] {"_id", "mcc", "mnc", "apn", "type"},
                        "numeric = '" + numeric + "'" + " AND  apn = '" +
                        newChannel.networkAccessName + "'" +
-                       " AND (type = '" + PhoneConstants.APN_TYPE_BIP_GPRS1 +
-                       "' OR type = '" + PhoneConstants.APN_TYPE_BIP_GPRS2 + "')",
+                       " AND (type = '" + PhoneConstants.APN_TYPE_CBS + "')",
 
                        null,
                        null
@@ -829,12 +820,12 @@ public class BipGateWay {
                 if (apnCursor.getCount() == 0) {
                     // Case where APN received from Proactive Command don't exist in
                     // APN list yet and add it. Add this in apnlist and tag it as type bip_gprs1.
-                    mToBeUsedApnType = PhoneConstants.APN_TYPE_BIP_GPRS1;
+                    mToBeUsedApnType = PhoneConstants.APN_TYPE_CBS;
 
                     int id = insertAPN(mcc, mnc, BIP_APN_NAME, newChannel.networkAccessName,
                            newChannel.userLogin,
                            newChannel.userPassword,
-                           PhoneConstants.APN_TYPE_BIP_GPRS1);
+                           PhoneConstants.APN_TYPE_CBS);
                 }
                 else if (apnCursor.getCount() > 0) {
                    // Case where APN received from Proactive Command exists in APN list.
