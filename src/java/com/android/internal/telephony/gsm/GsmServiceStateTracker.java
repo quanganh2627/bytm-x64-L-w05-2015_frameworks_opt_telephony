@@ -973,7 +973,7 @@ public class GsmServiceStateTracker extends ServiceStateTracker {
          *  not roaming between operators.
          */
         boolean roaming = (mGsmRoaming || mDataRoaming);
-        if ((mGsmRoaming && !isSameNamedOperators(tmpSS)
+        if ((mGsmRoaming && isSameNamedOperators(tmpSS)
                    && !isSameNamedOperatorConsideredRoaming(tmpSS))
                    || isOperatorConsideredNonRoaming(tmpSS)) {
             roaming = false;
