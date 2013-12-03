@@ -18,6 +18,7 @@ package android.telephony;
 
 import android.app.ActivityThread;
 import android.app.PendingIntent;
+import android.os.Binder;
 import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.text.TextUtils;
@@ -317,8 +318,10 @@ public final class SmsManager {
         try {
             ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService("isms"));
             if (iccISms != null) {
-                success = iccISms.updateMessageOnIccEf(ActivityThread.currentPackageName(),
-                        messageIndex, STATUS_ON_ICC_FREE, pdu);
+                String callingPackage = ActivityThread.getPackageManager().getNameForUid(
+                        Binder.getCallingUid());
+                success = iccISms.updateMessageOnIccEf(callingPackage, messageIndex,
+                        STATUS_ON_ICC_FREE, pdu);
             }
         } catch (RemoteException ex) {
             // ignore it
@@ -347,8 +350,10 @@ public final class SmsManager {
         try {
             ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService("isms"));
             if (iccISms != null) {
-                success = iccISms.updateMessageOnIccEf(ActivityThread.currentPackageName(),
-                        messageIndex, newStatus, pdu);
+                String callingPackage = ActivityThread.getPackageManager().getNameForUid(
+                        Binder.getCallingUid());
+                success = iccISms.updateMessageOnIccEf(callingPackage, messageIndex,
+                        newStatus, pdu);
             }
         } catch (RemoteException ex) {
             // ignore it
