@@ -489,7 +489,7 @@ public final class GsmCallTracker extends CallTracker {
         } else if (oldState == PhoneConstants.State.IDLE && oldState != mState) {
             mVoiceCallStartedRegistrants.notifyRegistrants (
                     new AsyncResult(null, null, null));
-            checkAndBroadcastEmergencyCallEnded();
+            checkAndBroadcastEmergencyCallStarted();
         }
 
         if (mState != oldState) {
