@@ -158,6 +158,7 @@ public class SIMRecords extends IccRecords {
     private static final int EVENT_GET_CFIS_DONE = 32;
     private static final int EVENT_GET_CSP_CPHS_DONE = 33;
     private static final int EVENT_GET_GID1_DONE = 34;
+    private static final int EVENT_ICC_LOCKED = 35;
 
     // Lookup table for carriers known to produce SIMs which incorrectly indicate MNC length.
 
@@ -202,6 +203,7 @@ public class SIMRecords extends IccRecords {
         // Start off by setting empty state
         resetRecords();
         mParentApp.registerForReady(this, EVENT_APP_READY, null);
+        mParentApp.registerForLocked(this, EVENT_ICC_LOCKED, null);
         if (DBG) log("SIMRecords X ctor this=" + this);
     }
 
@@ -212,6 +214,7 @@ public class SIMRecords extends IccRecords {
         mCi.unregisterForIccRefresh(this);
         mCi.unSetOnSmsOnSim(this);
         mParentApp.unregisterForReady(this);
+        mParentApp.unregisterForLocked(this);
         resetRecords();
         super.dispose();
     }
@@ -585,6 +588,13 @@ public class SIMRecords extends IccRecords {
         try { switch (msg.what) {
             case EVENT_APP_READY:
                 onReady();
+                break;
+
+            case EVENT_ICC_LOCKED:
+                // resetRecords essentially for setting mRecordsRequested to false. This
+                // will prevent sending the recordsloaded event. Records will be requested
+                // again on app ready.
+                resetRecords();
                 break;
 
             /* IO events */
