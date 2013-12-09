@@ -110,6 +110,8 @@ public final class DcTracker extends DcTrackerBase {
 
     private boolean mCanSetPreferApn = false;
 
+    private boolean mIsImsSupported = false;
+
     private AtomicBoolean mAttached = new AtomicBoolean(false);
 
     /** Watches for changes to the APN db. */
@@ -143,6 +145,8 @@ public final class DcTracker extends DcTrackerBase {
                 DctConstants.EVENT_PS_RESTRICT_DISABLED, null);
 
         mDataConnectionTracker = this;
+
+        mIsImsSupported = TelephonyManager.getImsOnApStatic();
 
         mApnObserver = new ApnChangeObserver();
         p.getContext().getContentResolver().registerContentObserver(
@@ -654,10 +658,12 @@ public final class DcTracker extends DcTrackerBase {
             return true;
         }
 
-        boolean desiredPowerState = mPhone.getServiceStateTracker().getDesiredPowerState();
+        /* The APN used for IMS needs always to be setup, even if data disabled by the user */
+        boolean isImsApn = mIsImsSupported && apnContext.isHandlingIMS();
+        if (DBG && isImsApn) log("trySetupData: The current APN is used for IMS");
 
-        if (apnContext.isConnectable() &&
-                isDataAllowed(apnContext) && getAnyDataEnabled() && !isEmergency()) {
+        if (apnContext.isConnectable() && isDataAllowed(apnContext)
+                && (getAnyDataEnabled() || isImsApn) && !isEmergency()) {
             if (apnContext.getState() == DctConstants.State.FAILED) {
                 if (DBG) log("trySetupData: make a FAILED ApnContext IDLE so its reusable");
                 apnContext.setState(DctConstants.State.IDLE);
@@ -737,6 +743,17 @@ public final class DcTracker extends DcTrackerBase {
         for (ApnContext apnContext : mApnContexts.values()) {
             if (apnContext.isDisconnected() == false) didDisconnect = true;
             // TODO - only do cleanup if not disconnected
+
+            /* Keep active the APN used to handle IMS, even if the user has explicitly decided
+             * to disable the data */
+            if (reason == Phone.REASON_DATA_DISABLED
+                    && mIsImsSupported && apnContext.isHandlingIMS()
+                    && apnContext.getState() == DctConstants.State.CONNECTED) {
+                if (DBG) log("The current APN used to handle IMS will not be deactivated."
+                        + " apnContext=" + apnContext);
+                continue;
+            }
+
             apnContext.setReason(reason);
             cleanUpConnection(tearDown, apnContext);
         }
