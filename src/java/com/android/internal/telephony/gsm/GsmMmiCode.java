@@ -179,7 +179,7 @@ public final class GsmMmiCode extends Handler implements MmiCode {
      * Please see flow chart in TS 22.030 6.5.3.2
      */
 
-    static GsmMmiCode
+    public static GsmMmiCode
     newFromDialString(String dialString, GSMPhone phone, UiccCardApplication app) {
         Matcher m;
         GsmMmiCode ret = null;
@@ -418,6 +418,11 @@ public final class GsmMmiCode extends Handler implements MmiCode {
 
     //***** MmiCode implementation
 
+    public String
+    getDialingNumber() {
+        return mDialingNumber;
+    }
+
     @Override
     public State
     getState() {
@@ -474,6 +479,28 @@ public final class GsmMmiCode extends Handler implements MmiCode {
     boolean
     isMMI() {
         return mPoundString != null;
+    }
+
+    public boolean isUssdCode() {
+        boolean isUssd = false;
+
+        if (isShortCode()) {
+            isUssd = true;
+        } else if (mDialingNumber == null
+                && mSc != null
+                && isServiceCodeCallBarring(mSc)
+                || isServiceCodeCallForwarding(mSc)
+                || mSc.equals(SC_CLIP)
+                || mSc.equals(SC_CLIR)
+                || mSc.equals(SC_PWD)
+                || mSc.equals(SC_WAIT)
+                || isPinPukCommand() ) {
+            isUssd = false;
+        } else if (mDialingNumber == null
+                && mPoundString != null) {
+            isUssd = true;
+        }
+        return isUssd;
     }
 
     /* Is this a 1 or 2 digit "short code" as defined in TS 22.030 sec 6.5.3.2? */
@@ -576,8 +603,7 @@ public final class GsmMmiCode extends Handler implements MmiCode {
      *  In temporary mode, to invoke CLIR for a single call enter:
      *       " # 31 # [called number] SEND "
      */
-    boolean
-    isTemporaryModeCLIR() {
+    public boolean isTemporaryModeCLIR() {
         return mSc != null && mSc.equals(SC_CLIR) && mDialingNumber != null
                 && (isActivate() || isDeactivate());
     }
@@ -586,8 +612,7 @@ public final class GsmMmiCode extends Handler implements MmiCode {
      * returns CommandsInterface.CLIR_*
      * See also isTemporaryModeCLIR()
      */
-    int
-    getCLIRMode() {
+    public int getCLIRMode() {
         if (mSc != null && mSc.equals(SC_CLIR)) {
             if (isActivate()) {
                 return CommandsInterface.CLIR_SUPPRESSION;
