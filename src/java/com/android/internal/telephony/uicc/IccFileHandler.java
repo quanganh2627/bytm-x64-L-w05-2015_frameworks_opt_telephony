@@ -170,8 +170,7 @@ public abstract class IccFileHandler extends Handler implements IccConstants {
                         onLoaded));
 
         mCi.iccIOForApp(COMMAND_GET_RESPONSE, IccConstants.EF_IMG,
-                    getEFPath(IccConstants.EF_IMG), recordNum,
-                    READ_RECORD_MODE_ABSOLUTE, GET_RESPONSE_EF_IMG_SIZE_BYTES,
+                    getEFPath(IccConstants.EF_IMG), 0, 0, GET_RESPONSE_EF_SIZE_BYTES,
                     null, null, mAid, response);
     }
 

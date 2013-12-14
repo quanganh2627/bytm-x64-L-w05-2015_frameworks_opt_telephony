@@ -67,6 +67,12 @@ public interface IccCard {
     public void unregisterForNetworkLocked(Handler h);
 
     /**
+     * Notifies handler of any transition into IccCardConstants.State.NETWORK_LOCKED_PUK
+     */
+    public void registerForNetworkLockedPuk(Handler h, int what, Object obj);
+    public void unregisterForNetworkLockedPuk(Handler h);
+
+    /**
      * Notifies handler of any transition into IccCardConstants.State.isPinLocked()
      */
     public void registerForLocked(Handler h, int what, Object obj);
@@ -106,6 +112,13 @@ public interface IccCard {
      * Supply the ICC PUK2 to the ICC
      */
     public void supplyPuk2 (String puk2, String newPin2, Message onComplete);
+
+    /**
+     * Check whether fdn (fixed dialing number) service is available.
+     * @return true if ICC fdn service available
+     *         false if ICC fdn service not available
+    */
+    public boolean getIccFdnAvailable();
 
     /**
      * Supply Network depersonalization code to the RIL
@@ -214,4 +227,24 @@ public interface IccCard {
      * @return true if a ICC card is present
      */
     public boolean hasIccCard();
+
+    /**
+     * @return true if ICC card is PIN2 blocked
+     */
+    public boolean getIccPin2Blocked();
+
+    /**
+     * @return true if ICC card is PUK2 blocked
+     */
+    public boolean getIccPuk2Blocked();
+
+    public void exchangeAPDU(int cla, int command, int channel, int p1, int p2,
+            int p3, String data, Message onComplete);
+
+    public void openLogicalChannel(String aid, Message onComplete);
+
+    public void closeLogicalChannel(int channel, Message onComplete);
+
+    public void exchangeSimIO(int fileID, int command,
+            int p1, int p2, int p3, String pathID, Message onComplete);
 }

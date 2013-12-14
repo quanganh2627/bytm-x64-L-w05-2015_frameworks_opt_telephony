@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2006 The Android Open Source Project
- * Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +18,7 @@ package com.android.internal.telephony.gsm;
 
 import android.content.ContentValues;
 import android.content.Context;
+import android.content.res.Resources;
 import android.content.SharedPreferences;
 import android.database.SQLException;
 import android.net.Uri;
@@ -123,7 +123,7 @@ public class GSMPhone extends PhoneBase {
     private String mImeiSv;
     private String mVmNumber;
 
-    GsmInboundSmsHandler mGsmInboundSmsHandler;
+    private boolean mIsEmergencyCallOngoing;
 
     // Create Cfu (Call forward unconditional) so that dialling number &
     // mOnComplete (Message object passed by client) can be packed &
@@ -138,6 +138,10 @@ public class GSMPhone extends PhoneBase {
         }
     }
 
+    protected void initSst() {
+        mSST = new GsmServiceStateTracker(this);
+    }
+
     // Constructors
 
     public
@@ -148,14 +152,18 @@ public class GSMPhone extends PhoneBase {
     public
     GSMPhone (Context context, CommandsInterface ci, PhoneNotifier notifier, boolean unitTestMode) {
         super("GSM", notifier, context, ci, unitTestMode);
+        initSst();
+        init(context, ci, notifier, unitTestMode);
+    }
 
+    private void init(Context context, CommandsInterface ci, PhoneNotifier notifier,
+            boolean unitTestMode) {
         if (ci instanceof SimulatedRadioControl) {
             mSimulatedRadioControl = (SimulatedRadioControl) ci;
         }
 
         mCi.setPhoneType(PhoneConstants.PHONE_TYPE_GSM);
         mCT = new GsmCallTracker(this);
-        mSST = new GsmServiceStateTracker (this);
 
         mDcTracker = new DcTracker(this);
         if (!unitTestMode) {
@@ -255,7 +263,12 @@ public class GSMPhone extends PhoneBase {
     @Override
     public ServiceState
     getServiceState() {
-        return mSST.mSS;
+        if (mSST != null) {
+            return mSST.mSS;
+        } else {
+            // avoid potential NPE in EmergencyCallHelper during Phone switch
+            return new ServiceState();
+        }
     }
 
     @Override
@@ -293,15 +306,23 @@ public class GSMPhone extends PhoneBase {
     public PhoneConstants.DataState getDataConnectionState(String apnType) {
         PhoneConstants.DataState ret = PhoneConstants.DataState.DISCONNECTED;
 
+        String dataState = "";
+        try {
+            if (mContext.getResources().getBoolean(
+                    com.android.internal.R.bool.config_usage_oem_hooks_supported)) {
+
+                String oemproperty = mContext
+                        .getText(com.android.internal.R.string.oemhook_datastate_property)
+                        .toString();
+                dataState = SystemProperties.get(oemproperty,"");
+            }
+        } catch (Resources.NotFoundException ex) {
+        }
+
         if (mSST == null) {
             // Radio Technology Change is ongoning, dispose() and removeReferences() have
             // already been called
 
-            ret = PhoneConstants.DataState.DISCONNECTED;
-        } else if (mSST.getCurrentDataConnectionState()
-                != ServiceState.STATE_IN_SERVICE) {
-            // If we're out of service, open TCP sockets may still work
-            // but no data will flow
             ret = PhoneConstants.DataState.DISCONNECTED;
         } else if (mDcTracker.isApnTypeEnabled(apnType) == false ||
                 mDcTracker.isApnTypeActive(apnType) == false) {
@@ -309,6 +330,9 @@ public class GSMPhone extends PhoneBase {
             //      Dataconnection or not. Checking each ApnState below should
             //      provide the same state. Calling isApnTypeActive() can be removed.
             ret = PhoneConstants.DataState.DISCONNECTED;
+        } else if (dataState.equals("suspended")) {
+            Rlog.d(LOG_TAG, "Data state is suspended");
+            ret = PhoneConstants.DataState.SUSPENDED;
         } else { /* mSST.gprsState == ServiceState.STATE_IN_SERVICE */
             switch (mDcTracker.getState(apnType)) {
                 case RETRYING:
@@ -749,11 +773,21 @@ public class GSMPhone extends PhoneBase {
         }
     }
 
+    public final void
+    setEmergencyCallOngoing(boolean isEmergencyCallOngoing) {
+        mIsEmergencyCallOngoing = isEmergencyCallOngoing;
+    }
+
+    public final boolean
+    isEmergencyCallOngoing() {
+        return mIsEmergencyCallOngoing;
+    }
+
     @Override
     public boolean handlePinMmi(String dialString) {
         GsmMmiCode mmi = GsmMmiCode.newFromDialString(dialString, this, mUiccApplication.get());
 
-        if (mmi != null && mmi.isPinCommand()) {
+        if (mmi != null && mmi.isPinPukCommand()) {
             mPendingMMIs.add(mmi);
             mMmiRegistrants.notifyRegistrants(new AsyncResult(null, mmi, null));
             mmi.processCode();
@@ -1233,6 +1267,7 @@ public class GSMPhone extends PhoneBase {
             return;
         }
         switch (msg.what) {
+            case EVENT_RADIO_ON:
             case EVENT_RADIO_AVAILABLE: {
                 mCi.getBasebandVersion(
                         obtainMessage(EVENT_GET_BASEBAND_VERSION_DONE));
@@ -1240,9 +1275,6 @@ public class GSMPhone extends PhoneBase {
                 mCi.getIMEI(obtainMessage(EVENT_GET_IMEI_DONE));
                 mCi.getIMEISV(obtainMessage(EVENT_GET_IMEISV_DONE));
             }
-            break;
-
-            case EVENT_RADIO_ON:
             break;
 
             case EVENT_REGISTERED_TO_NETWORK:
@@ -1494,6 +1526,31 @@ public class GSMPhone extends PhoneBase {
             Rlog.e(LOG_TAG, "failed to commit network selection preference");
         }
 
+        /* Empty operator numeric means network selection mode is automatic */
+        mIsAutomaticNetworkSelection = TextUtils.isEmpty(nsm.operatorNumeric);
+
+        if (ar.exception != null) {
+            /*
+             * Incase of network selection mode failure, reset the network selection
+             * mode to automatic.
+             */
+            mIsAutomaticNetworkSelection = true;
+
+            /*
+             * There won't be any service state change when the previous network
+             * selection also has failed. So, generate a dummy service state
+             * change event to make sure the UI notifications are updated.
+             *
+             * Note: This is an ugly hack due to PhoneApp implementation.
+             */
+            notifyServiceStateChanged(getServiceState());
+        }
+
+        editor.putBoolean(NETWORK_SELECTION_MODE, mIsAutomaticNetworkSelection);
+        // commit and log the result.
+        if (!editor.commit()) {
+            Rlog.e(LOG_TAG, "failed to commit network selection mode preference");
+        }
     }
 
     /**

@@ -23,6 +23,7 @@ import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.res.Resources;
 import android.content.SharedPreferences;
 import android.database.ContentObserver;
 import android.net.ConnectivityManager;
@@ -63,12 +64,14 @@ import com.android.internal.util.ArrayUtils;
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.PriorityQueue;
 
 /**
  * {@hide}
@@ -251,8 +254,18 @@ public abstract class DcTrackerBase extends Handler {
                                     new HashMap<String, Integer>();
 
     /** Phone.APN_TYPE_* ===> ApnContext */
-    protected ConcurrentHashMap<String, ApnContext> mApnContexts =
+    protected final ConcurrentHashMap<String, ApnContext> mApnContexts =
                                     new ConcurrentHashMap<String, ApnContext>();
+
+    /** kept in sync with mApnContexts
+     * Higher numbers are higher priority and sorted so highest priority is first */
+    protected final PriorityQueue<ApnContext>mPrioritySortedApnContexts =
+            new PriorityQueue<ApnContext>(5,
+            new Comparator<ApnContext>() {
+                public int compare(ApnContext c1, ApnContext c2) {
+                    return c2.priority - c1.priority;
+                }
+            } );
 
     /* Currently active APN */
     protected ApnSetting mActiveApn;
@@ -604,8 +617,12 @@ public abstract class DcTrackerBase extends Handler {
                 Settings.Global.TETHER_DUN_APN);
         ApnSetting dunSetting = ApnSetting.fromString(apnData);
         if (dunSetting != null) {
-            if (VDBG) log("fetchDunApn: global TETHER_DUN_APN dunSetting=" + dunSetting);
-            return dunSetting;
+            IccRecords r = mIccRecords.get();
+            String operator = (r != null) ? r.getOperatorNumeric() : "";
+            if (dunSetting.numeric.equals(operator)) {
+                if (VDBG) log("fetchDunApn: global TETHER_DUN_APN dunSetting=" + dunSetting);
+                return dunSetting;
+            }
         }
 
         apnData = c.getResources().getString(R.string.config_tether_apndata);
@@ -970,6 +987,10 @@ public abstract class DcTrackerBase extends Handler {
             return DctConstants.APN_CBS_ID;
         } else if (TextUtils.equals(type, PhoneConstants.APN_TYPE_IA)) {
             return DctConstants.APN_IA_ID;
+        } else if (TextUtils.equals(type, PhoneConstants.APN_TYPE_BIP_GPRS1)) {
+            return DctConstants.APN_BIP_GPRS1_ID;
+        } else if (TextUtils.equals(type, PhoneConstants.APN_TYPE_BIP_GPRS2)) {
+            return DctConstants.APN_BIP_GPRS2_ID;
         } else {
             return DctConstants.APN_INVALID_ID;
         }
@@ -995,6 +1016,10 @@ public abstract class DcTrackerBase extends Handler {
             return PhoneConstants.APN_TYPE_CBS;
         case DctConstants.APN_IA_ID:
             return PhoneConstants.APN_TYPE_IA;
+        case DctConstants.APN_BIP_GPRS1_ID:
+            return PhoneConstants.APN_TYPE_BIP_GPRS1;
+        case DctConstants.APN_BIP_GPRS2_ID:
+            return PhoneConstants.APN_TYPE_BIP_GPRS2;
         default:
             log("Unknown id (" + id + ") in apnIdToType");
             return PhoneConstants.APN_TYPE_DEFAULT;
@@ -1435,6 +1460,24 @@ public abstract class DcTrackerBase extends Handler {
         }
     }
 
+    public void cancelDataRecovery() {
+        if (DBG) log("cancelDataRecovery()");
+
+        try {
+            if (mPhone.getContext().getResources().getBoolean(
+                    com.android.internal.R.bool.config_usage_oem_hooks_supported)) {
+                String oemproperty = mPhone.getContext().getText(
+                        com.android.internal.R.string.oemhook_concurrentdata_property).toString();
+                SystemProperties.set(oemproperty, "notallowed");
+            }
+        } catch (Resources.NotFoundException ex) {
+            log("ignore exception");
+        }
+
+        cleanUpAllConnections(Phone.REASON_PDP_RESET);
+        putRecoveryAction(RecoveryAction.GET_DATA_CALL_LIST);
+    }
+
     public int getRecoveryAction() {
         int action = Settings.System.getInt(mPhone.getContext().getContentResolver(),
                 "radio.data.stall.recovery.action", RecoveryAction.GET_DATA_CALL_LIST);
@@ -1470,6 +1513,11 @@ public abstract class DcTrackerBase extends Handler {
                 putRecoveryAction(RecoveryAction.REREGISTER);
                 break;
             case RecoveryAction.REREGISTER:
+                if (mPhone.getState() != PhoneConstants.State.IDLE) {
+                    cancelDataRecovery();
+                    return;
+                }
+
                 EventLog.writeEvent(EventLogTags.DATA_STALL_RECOVERY_REREGISTER,
                         mSentSinceLastRecv);
                 if (DBG) log("doRecovery() re-register");
@@ -1477,6 +1525,11 @@ public abstract class DcTrackerBase extends Handler {
                 putRecoveryAction(RecoveryAction.RADIO_RESTART);
                 break;
             case RecoveryAction.RADIO_RESTART:
+                if (mPhone.getState() != PhoneConstants.State.IDLE) {
+                    cancelDataRecovery();
+                    return;
+                }
+
                 EventLog.writeEvent(EventLogTags.DATA_STALL_RECOVERY_RADIO_RESTART,
                         mSentSinceLastRecv);
                 if (DBG) log("restarting radio");
@@ -1484,6 +1537,10 @@ public abstract class DcTrackerBase extends Handler {
                 restartRadio();
                 break;
             case RecoveryAction.RADIO_RESTART_WITH_PROP:
+                if (mPhone.getState() != PhoneConstants.State.IDLE) {
+                    cancelDataRecovery();
+                    return;
+                }
                 // This is in case radio restart has not recovered the data.
                 // It will set an additional "gsm.radioreset" property to tell
                 // RIL or system to take further action.
@@ -1606,7 +1663,7 @@ public abstract class DcTrackerBase extends Handler {
             intent.putExtra(DATA_STALL_ALARM_TAG_EXTRA, mDataStallAlarmTag);
             mDataStallAlarmIntent = PendingIntent.getBroadcast(mPhone.getContext(), 0, intent,
                     PendingIntent.FLAG_UPDATE_CURRENT);
-            mAlarmManager.set(AlarmManager.ELAPSED_REALTIME_WAKEUP,
+            mAlarmManager.set(AlarmManager.ELAPSED_REALTIME,
                     SystemClock.elapsedRealtime() + delayInMs, mDataStallAlarmIntent);
         } else {
             if (VDBG_STALL) {

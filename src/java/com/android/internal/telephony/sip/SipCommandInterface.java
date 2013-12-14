@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2010 The Android Open Source Project
- * Copyright (c) 2012-13, The Linux Foundation. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -555,5 +554,18 @@ class SipCommandInterface extends BaseCommands implements CommandsInterface {
     @Override
     public void setInitialAttachApn(String apn, String protocol, int authType, String username,
             String password, Message result) {
+    }
+
+    @Override
+    public void iccExchangeAPDU(int cla, int command, int channel, int p1,
+            int p2, int p3, String data, Message response) {
+    }
+
+    @Override
+    public void iccOpenChannel(String AID, Message response) {
+    }
+
+    @Override
+    public void iccCloseChannel(int channel, Message response) {
     }
 }

@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2008 The Android Open Source Project
- * Copyright (c) 2013, The Linux Foundation. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -90,8 +89,7 @@ public class IccSmsInterfaceManager extends ISms.Stub {
                     ar = (AsyncResult)msg.obj;
                     synchronized (mLock) {
                         if (ar.exception == null) {
-                            mSms  = (List<SmsRawData>)
-                                    buildValidRawData((ArrayList<byte[]>) ar.result);
+                            mSms = buildValidRawData((ArrayList<byte[]>) ar.result);
                             //Mark SMS as read after importing it from card.
                             markMessagesAsRead((ArrayList<byte[]>) ar.result);
                         } else {
@@ -158,10 +156,6 @@ public class IccSmsInterfaceManager extends ISms.Stub {
                  }
              }
         }
-    }
-
-    public void dispose() {
-        mDispatcher.dispose();
     }
 
     protected void updatePhoneObject(PhoneBase phone) {
@@ -666,13 +660,9 @@ public class IccSmsInterfaceManager extends ISms.Stub {
          * @return true if successful, false otherwise
          */
         protected boolean finishUpdate() {
-            if (mConfigList.isEmpty()) {
-                return true;
-            } else {
-                SmsBroadcastConfigInfo[] configs =
-                        mConfigList.toArray(new SmsBroadcastConfigInfo[mConfigList.size()]);
-                return setCellBroadcastConfig(configs);
-            }
+            SmsBroadcastConfigInfo[] configs =
+                    mConfigList.toArray(new SmsBroadcastConfigInfo[mConfigList.size()]);
+            return setCellBroadcastConfig(configs);
         }
     }
 

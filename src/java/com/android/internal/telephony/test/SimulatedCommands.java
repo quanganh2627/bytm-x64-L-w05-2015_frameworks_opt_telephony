@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2006 The Android Open Source Project
- * Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -1676,6 +1675,22 @@ public final class SimulatedCommands extends BaseCommands
     @Override
     public void sendImsGsmSms(String smscPDU, String pdu,
             int retry, int messageRef, Message response){
+        unimplemented(response);
+    }
+
+    @Override
+    public void iccExchangeAPDU (int cla, int command, int channel, int p1,
+            int p2, int p3, String data, Message response) {
+        unimplemented(response);
+    }
+
+    @Override
+    public void iccOpenChannel(String AID, Message response) {
+        unimplemented(response);
+    }
+
+    @Override
+    public void iccCloseChannel(int channel, Message response) {
         unimplemented(response);
     }
 }

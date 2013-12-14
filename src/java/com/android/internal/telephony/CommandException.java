@@ -42,6 +42,10 @@ public class CommandException extends RuntimeException {
         MODE_NOT_SUPPORTED,
         FDN_CHECK_FAILURE,
         ILLEGAL_SIM_OR_ME,
+        NETWORK_PUK_REQUIRED,
+        MISSING_RESOURCE,
+        NO_SUCH_ELEMENT,
+        INVALID_PARAMETER,
     }
 
     public CommandException(Error e) {
@@ -83,6 +87,14 @@ public class CommandException extends RuntimeException {
                 return new CommandException(Error.FDN_CHECK_FAILURE);
             case RILConstants.ILLEGAL_SIM_OR_ME:
                 return new CommandException(Error.ILLEGAL_SIM_OR_ME);
+            case RILConstants.NETWORK_PUK_REQUIRED:
+                return new CommandException(Error.NETWORK_PUK_REQUIRED);
+            case RILConstants.MISSING_RESOURCE:
+                return new CommandException(Error.MISSING_RESOURCE);
+            case RILConstants.NO_SUCH_ELEMENT:
+                return new CommandException(Error.NO_SUCH_ELEMENT);
+            case RILConstants.INVALID_PARAMETER:
+                return new CommandException(Error.INVALID_PARAMETER);
             default:
                 Rlog.e("GSM", "Unrecognized RIL errno " + ril_errno);
                 return new CommandException(Error.INVALID_RESPONSE);

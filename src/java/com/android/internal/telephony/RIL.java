@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2006 The Android Open Source Project
- * Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +24,7 @@ import static android.telephony.TelephonyManager.NETWORK_TYPE_UMTS;
 import static android.telephony.TelephonyManager.NETWORK_TYPE_HSDPA;
 import static android.telephony.TelephonyManager.NETWORK_TYPE_HSUPA;
 import static android.telephony.TelephonyManager.NETWORK_TYPE_HSPA;
+import static android.telephony.TelephonyManager.NETWORK_TYPE_HSPAP;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -33,6 +33,7 @@ import android.content.IntentFilter;
 import android.net.ConnectivityManager;
 import android.net.LocalSocket;
 import android.net.LocalSocketAddress;
+import android.provider.Settings;
 import android.os.AsyncResult;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -193,7 +194,7 @@ class RILRequest {
 
         if (RIL.RILJ_LOGD) Rlog.d(LOG_TAG, serialString() + "< "
             + RIL.requestToString(mRequest)
-            + " error: " + ex);
+            + " error: " + ex + " ret=" + RIL.retToString(mRequest, ret));
 
         if (mResult != null) {
             AsyncResult.forMessage(mResult, ret, ex);
@@ -1269,7 +1270,7 @@ public final class RIL extends BaseCommands implements CommandsInterface {
             Message result) {
         RILRequest rr = RILRequest.obtain(RIL_REQUEST_IMS_SEND_SMS, result);
 
-        rr.mParcel.writeInt(1); //RIL_IMS_SMS_Format.FORMAT_3GPP
+        rr.mParcel.writeInt(RILConstants.GSM_PHONE);
         rr.mParcel.writeByte((byte)retry);
         rr.mParcel.writeInt(messageRef);
 
@@ -1284,7 +1285,7 @@ public final class RIL extends BaseCommands implements CommandsInterface {
     sendImsCdmaSms(byte[] pdu, int retry, int messageRef, Message result) {
         RILRequest rr = RILRequest.obtain(RIL_REQUEST_IMS_SEND_SMS, result);
 
-        rr.mParcel.writeInt(2); //RIL_IMS_SMS_Format.FORMAT_3GPP2
+        rr.mParcel.writeInt(RILConstants.CDMA_PHONE);
         rr.mParcel.writeByte((byte)retry);
         rr.mParcel.writeInt(messageRef);
 
@@ -1427,8 +1428,27 @@ public final class RIL extends BaseCommands implements CommandsInterface {
     setRadioPower(boolean on, Message result) {
         RILRequest rr = RILRequest.obtain(RIL_REQUEST_RADIO_POWER, result);
 
-        rr.mParcel.writeInt(1);
+        rr.mParcel.writeInt(2);
         rr.mParcel.writeInt(on ? 1 : 0);
+
+        int radioOffReason = 0;//RILConstants.RADIO_OFF_REASON_NONE;
+
+        if (!on) {
+            String rebootOrShutdownRequested =
+                    SystemProperties.get("sys.shutdown.requested", null);
+            if (rebootOrShutdownRequested != null
+                    && rebootOrShutdownRequested.length() > 0) {
+                char reason = rebootOrShutdownRequested.charAt(0);
+                if (reason == '0' || reason == '1') {
+                    radioOffReason = 1;//RILConstants.RADIO_OFF_REASON_SHUTDOWN;
+                }
+            } else if (Settings.Global.getInt(mContext.getContentResolver(),
+                    Settings.Global.AIRPLANE_MODE_ON, 0) != 0) {
+                radioOffReason = 2;//RILConstants.RADIO_OFF_REASON_AIRPLANE_MODE;
+            }
+        }
+
+        rr.mParcel.writeInt(radioOffReason);
 
         if (RILJ_LOGD) {
             riljLog(rr.serialString() + "> " + requestToString(rr.mRequest)
@@ -2436,6 +2456,10 @@ public final class RIL extends BaseCommands implements CommandsInterface {
             case RIL_REQUEST_SET_INITIAL_ATTACH_APN: ret = responseVoid(p); break;
             case RIL_REQUEST_IMS_REGISTRATION_STATE: ret = responseInts(p); break;
             case RIL_REQUEST_IMS_SEND_SMS: ret =  responseSMS(p); break;
+            case RIL_REQUEST_SIM_TRANSMIT_BASIC: ret =  responseICC_IO(p); break;
+            case RIL_REQUEST_SIM_OPEN_CHANNEL: ret  = responseInts(p); break;
+            case RIL_REQUEST_SIM_CLOSE_CHANNEL: ret  = responseVoid(p); break;
+            case RIL_REQUEST_SIM_TRANSMIT_CHANNEL: ret = responseICC_IO(p); break;
             default:
                 throw new RuntimeException("Unrecognized solicited response: " + rr.mRequest);
             //break;
@@ -2501,7 +2525,7 @@ public final class RIL extends BaseCommands implements CommandsInterface {
         return rr;
     }
 
-    private String
+    static String
     retToString(int req, Object ret) {
         if (ret == null) return "";
         switch (req) {
@@ -3405,6 +3429,8 @@ public final class RIL extends BaseCommands implements CommandsInterface {
            radioType = NETWORK_TYPE_HSUPA;
        } else if (radioString.equals("HSPA")) {
            radioType = NETWORK_TYPE_HSPA;
+       } else if (radioString.equals("HSPAP")) {
+           radioType = NETWORK_TYPE_HSPAP;
        } else {
            radioType = NETWORK_TYPE_UNKNOWN;
        }
@@ -3741,6 +3767,10 @@ public final class RIL extends BaseCommands implements CommandsInterface {
             case RIL_REQUEST_SET_INITIAL_ATTACH_APN: return "RIL_REQUEST_SET_INITIAL_ATTACH_APN";
             case RIL_REQUEST_IMS_REGISTRATION_STATE: return "RIL_REQUEST_IMS_REGISTRATION_STATE";
             case RIL_REQUEST_IMS_SEND_SMS: return "RIL_REQUEST_IMS_SEND_SMS";
+            case RIL_REQUEST_SIM_TRANSMIT_BASIC: return "SIM_TRANSMIT_BASIC";
+            case RIL_REQUEST_SIM_OPEN_CHANNEL: return "SIM_OPEN_CHANNEL";
+            case RIL_REQUEST_SIM_CLOSE_CHANNEL: return "SIM_CLOSE_CHANNEL";
+            case RIL_REQUEST_SIM_TRANSMIT_CHANNEL: return "SIM_TRANSMIT_CHANNEL";
             default: return "<unknown request>";
         }
     }
@@ -4110,5 +4140,66 @@ public final class RIL extends BaseCommands implements CommandsInterface {
         }
         pw.println(" mLastNITZTimeInfo=" + mLastNITZTimeInfo);
         pw.println(" mTestingEmergencyCall=" + mTestingEmergencyCall.get());
+    }
+
+    public void
+    iccExchangeAPDU(int cla, int command, int channel, int p1, int p2, int p3,
+            String data, Message result) {
+        RILRequest rr;
+        if (channel == 0) {
+            rr = RILRequest.obtain(RIL_REQUEST_SIM_TRANSMIT_BASIC, result);
+        } else {
+            rr = RILRequest.obtain(RIL_REQUEST_SIM_TRANSMIT_CHANNEL, result);
+        }
+
+        rr.mParcel.writeInt(cla);
+        rr.mParcel.writeInt(command);
+        rr.mParcel.writeInt(channel);
+        rr.mParcel.writeString(null);
+        rr.mParcel.writeInt(p1);
+        rr.mParcel.writeInt(p2);
+        rr.mParcel.writeInt(p3);
+        rr.mParcel.writeString(data);
+        rr.mParcel.writeString(null);
+
+        if (RILJ_LOGD) {
+            riljLog(rr.serialString() + "> iccExchangeAPDU: "
+                    + requestToString(rr.mRequest)
+                    + " 0x" + Integer.toHexString(cla)
+                    + " 0x" + Integer.toHexString(command)
+                    + " 0x" + Integer.toHexString(channel) + " "
+                    + p1 + "," + p2 + "," + p3);
+        }
+
+        send(rr);
+    }
+
+    public void
+    iccOpenChannel(String aid, Message result) {
+        RILRequest rr = RILRequest.obtain(RIL_REQUEST_SIM_OPEN_CHANNEL, result);
+
+        rr.mParcel.writeString(aid);
+
+        if (RILJ_LOGD) {
+            riljLog(rr.serialString() + "> iccOpenChannel: "
+                    + requestToString(rr.mRequest) + " " + aid);
+        }
+
+        send(rr);
+    }
+
+    public void
+    iccCloseChannel(int channel, Message result) {
+        RILRequest rr = RILRequest.obtain(RIL_REQUEST_SIM_CLOSE_CHANNEL, result);
+
+        rr.mParcel.writeInt(1);
+        rr.mParcel.writeInt(channel);
+
+        if (RILJ_LOGD) {
+            riljLog(rr.serialString() + "> iccCloseChannel: "
+                    + requestToString(rr.mRequest) + " " + channel);
+        }
+
+        send(rr);
     }
 }

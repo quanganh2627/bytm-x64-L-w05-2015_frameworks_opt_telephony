@@ -230,8 +230,13 @@ public class SIMRecords extends IccRecords {
         mIccId = null;
         // -1 means no EF_SPN found; treat accordingly.
         mSpnDisplayCondition = -1;
+        mSpn = null;
         mEfMWIS = null;
         mEfCPHS_MWI = null;
+        setVoiceMessageWaiting(1, 0);
+        mEfCfis = null;
+        mEfCff = null;
+        setVoiceCallForwardingFlag(1, false, null);
         mSpdiNetworks = null;
         mPnnHomeName = null;
         mGid1 = null;
@@ -471,7 +476,8 @@ public class SIMRecords extends IccRecords {
         mRecordsEventsRegistrants.notifyResult(EVENT_CFI);
 
         try {
-            if (validEfCfis(mEfCfis)) {
+            if (validEfCfis(mEfCfis)
+                    && mUsimServiceTable.isAvailable(UsimServiceTable.UsimService.CFI_STATUS)) {
                 // lsb is of byte 1 is voice status
                 if (enable) {
                     mEfCfis[1] |= 1;
@@ -488,11 +494,14 @@ public class SIMRecords extends IccRecords {
                     log("EF_CFIS: updating cf number, " + dialNumber);
                     byte[] bcdNumber = PhoneNumberUtils.numberToCalledPartyBCD(dialNumber);
 
-                    System.arraycopy(bcdNumber, 0, mEfCfis, CFIS_TON_NPI_OFFSET, bcdNumber.length);
+                    if (bcdNumber != null) {
+                        System.arraycopy(bcdNumber, 0, mEfCfis, CFIS_TON_NPI_OFFSET,
+                                bcdNumber.length);
 
-                    mEfCfis[CFIS_BCD_NUMBER_LENGTH_OFFSET] = (byte) (bcdNumber.length);
-                    mEfCfis[CFIS_ADN_CAPABILITY_ID_OFFSET] = (byte) 0xFF;
-                    mEfCfis[CFIS_ADN_EXTENSION_ID_OFFSET] = (byte) 0xFF;
+                        mEfCfis[CFIS_BCD_NUMBER_LENGTH_OFFSET] = (byte) (bcdNumber.length);
+                        mEfCfis[CFIS_ADN_CAPABILITY_ID_OFFSET] = (byte) 0xFF;
+                        mEfCfis[CFIS_ADN_EXTENSION_ID_OFFSET] = (byte) 0xFF;
+                    }
                 }
 
                 mFh.updateEFLinearFixed(
@@ -533,8 +542,8 @@ public class SIMRecords extends IccRecords {
         if (fileChanged) {
             // A future optimization would be to inspect fileList and
             // only reload those files that we care about.  For now,
-            // just re-fetch all SIM records that we cache.
-            fetchSimRecords();
+            // just re-fetch all SIM records that we cache starting with EFad.
+            getEFad();
         }
     }
 
@@ -581,6 +590,9 @@ public class SIMRecords extends IccRecords {
             /* IO events */
             case EVENT_GET_IMSI_DONE:
                 isRecordLoadResponse = true;
+
+                // Now fetch all the SIM files.
+                fetchSimRecords();
 
                 ar = (AsyncResult)msg.obj;
 
@@ -892,6 +904,9 @@ public class SIMRecords extends IccRecords {
                         MccTable.updateMccMncConfiguration(mContext,
                                 mImsi.substring(0, 3 + mMncLength));
                     }
+
+                    mCi.getIMSIForApp(mParentApp.getAid(), obtainMessage(EVENT_GET_IMSI_DONE));
+                    mRecordsToLoad++;
                 }
             break;
 
@@ -1197,7 +1212,7 @@ public class SIMRecords extends IccRecords {
                 // voicemail number.
                 // TODO: Handle other cases, instead of fetching all.
                 mAdnCache.reset();
-                fetchSimRecords();
+                getEFad();
                 break;
         }
     }
@@ -1371,16 +1386,23 @@ public class SIMRecords extends IccRecords {
 
     @Override
     public void onReady() {
-        fetchSimRecords();
+        getEFad();
+    }
+
+    protected void getEFad() {
+        /*
+         * Upon sim refresh or sim ready, EFad and EFimsi files will be read first.
+         * Once the EFad and EFimsi files are read, other SIM files will be read.
+         */
+        mRecordsRequested = true;
+        mFh.loadEFTransparent(EF_AD, obtainMessage(EVENT_GET_AD_DONE));
+        mRecordsToLoad++;
     }
 
     protected void fetchSimRecords() {
         mRecordsRequested = true;
 
         if (DBG) log("fetchSimRecords " + mRecordsToLoad);
-
-        mCi.getIMSIForApp(mParentApp.getAid(), obtainMessage(EVENT_GET_IMSI_DONE));
-        mRecordsToLoad++;
 
         mFh.loadEFTransparent(EF_ICCID, obtainMessage(EVENT_GET_ICCID_DONE));
         mRecordsToLoad++;
@@ -1393,9 +1415,6 @@ public class SIMRecords extends IccRecords {
 
         // Record number is subscriber profile
         mFh.loadEFLinearFixed(EF_MBI, 1, obtainMessage(EVENT_GET_MBI_DONE));
-        mRecordsToLoad++;
-
-        mFh.loadEFTransparent(EF_AD, obtainMessage(EVENT_GET_AD_DONE));
         mRecordsToLoad++;
 
         // Record number is subscriber profile

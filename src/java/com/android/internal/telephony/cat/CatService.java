@@ -16,24 +16,46 @@
 
 package com.android.internal.telephony.cat;
 
+import android.app.ActivityManagerNative;
+import android.app.IActivityManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.content.res.Resources;
+import android.content.res.Configuration;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
+import android.net.NetworkUtils;
+import android.telephony.ServiceState;
 import android.content.res.Resources.NotFoundException;
 import android.os.AsyncResult;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Message;
+import android.os.RemoteException;
 import android.os.SystemProperties;
+import android.telephony.ServiceState;
 
 import com.android.internal.telephony.CommandsInterface;
+import com.android.internal.telephony.dataconnection.DcTrackerBase;
+import com.android.internal.telephony.Phone;
+import com.android.internal.telephony.PhoneBase;
+import com.android.internal.telephony.PhoneConstants;
+import com.android.internal.telephony.PhoneFactory;
+import com.android.internal.telephony.PhoneProxy;
 import com.android.internal.telephony.uicc.IccFileHandler;
 import com.android.internal.telephony.uicc.IccRecords;
 import com.android.internal.telephony.uicc.IccUtils;
 import com.android.internal.telephony.uicc.UiccCard;
 import com.android.internal.telephony.uicc.UiccCardApplication;
 
+import com.android.internal.telephony.cat.BearerDescription.BearerType;
+import com.android.internal.telephony.cat.CatCmdMessage.ChannelSettings;
+import com.android.internal.telephony.cat.CatCmdMessage.DataSettings;
+import com.android.internal.telephony.cat.Duration.TimeUnit;
+import com.android.internal.telephony.cat.InterfaceTransportLevel.TransportProtocol;
+import com.android.internal.telephony.ITelephony;
 
 import java.io.ByteArrayOutputStream;
 import java.util.List;
@@ -68,6 +90,7 @@ public class CatService extends Handler implements AppInterface {
     // Class members
     private static IccRecords mIccRecords;
     private static UiccCardApplication mUiccApplication;
+    private static boolean sRegisterForRilEvents = true;
 
     // Service members.
     // Protects singleton instance lazy initialization.
@@ -77,6 +100,8 @@ public class CatService extends Handler implements AppInterface {
     private Context mContext;
     private CatCmdMessage mCurrntCmd = null;
     private CatCmdMessage mMenuCmd = null;
+    private byte[] mEventList = null;
+    private BipGateWay mBipGateWay;
 
     private RilMessageDecoder mMsgDecoder = null;
     private boolean mStkAppInstalled = false;
@@ -91,14 +116,23 @@ public class CatService extends Handler implements AppInterface {
     static final int MSG_ID_SIM_READY                = 7;
 
     static final int MSG_ID_RIL_MSG_DECODED          = 10;
+    static final int MSG_ID_NETWORK_SEARCH_MODE_CHANGE   = 11;
 
     // Events to signal SIM presence or absent in the device.
     private static final int MSG_ID_ICC_RECORDS_LOADED       = 20;
 
     private static final int DEV_ID_KEYPAD      = 0x01;
-    private static final int DEV_ID_UICC        = 0x81;
-    private static final int DEV_ID_TERMINAL    = 0x82;
-    private static final int DEV_ID_NETWORK     = 0x83;
+    public static final int DEV_ID_DISPLAY      = 0x02;
+    public static final int DEV_ID_EARPIECE     = 0x03;
+    public static final int DEV_ID_UICC        = 0x81;
+    public static final int DEV_ID_TERMINAL    = 0x82;
+    public static final int DEV_ID_NETWORK     = 0x83;
+
+    // Network type selection
+    static final int NETWORK_SELECTION_MODE_MANUAL         = 0x00;
+    static final int NETWORK_SELECTION_MODE_AUTOMATIC      = 0x01;
+
+    private int mCurrentNetworkSelectionMode;
 
     static final String STK_DEFAULT = "Default Message";
 
@@ -117,11 +151,9 @@ public class CatService extends Handler implements AppInterface {
         mMsgDecoder = RilMessageDecoder.getInstance(this, fh);
 
         // Register ril events handling.
-        mCmdIf.setOnCatSessionEnd(this, MSG_ID_SESSION_END, null);
-        mCmdIf.setOnCatProactiveCmd(this, MSG_ID_PROACTIVE_COMMAND, null);
-        mCmdIf.setOnCatEvent(this, MSG_ID_EVENT_NOTIFY, null);
-        mCmdIf.setOnCatCallSetUp(this, MSG_ID_CALL_SETUP, null);
-        //mCmdIf.setOnSimRefresh(this, MSG_ID_REFRESH, null);
+        if (sRegisterForRilEvents) {
+            registerForRilEvents();
+        }
 
         mIccRecords = ir;
         mUiccApplication = ca;
@@ -129,6 +161,8 @@ public class CatService extends Handler implements AppInterface {
         // Register for SIM ready event.
         mUiccApplication.registerForReady(this, MSG_ID_SIM_READY, null);
         mIccRecords.registerForRecordsLoaded(this, MSG_ID_ICC_RECORDS_LOADED, null);
+
+        mBipGateWay = new BipGateWay(this, mCmdIf, mContext);
 
         // Check if STK application is availalbe
         mStkAppInstalled = isStkAppInstalled();
@@ -143,12 +177,26 @@ public class CatService extends Handler implements AppInterface {
         mCmdIf.unSetOnCatEvent(this);
         mCmdIf.unSetOnCatCallSetUp(this);
 
+        if (mUiccApplication != null) {
+            mUiccApplication.unregisterForReady(this);
+        }
+
         removeCallbacksAndMessages(null);
+        PhoneFactory.getDefaultPhone().unregisterForServiceStateChanged(this);
+        sRegisterForRilEvents = true;
     }
 
     @Override
     protected void finalize() {
         CatLog.d(this, "Service finalized");
+    }
+
+    private void registerForRilEvents() {
+        mCmdIf.setOnCatSessionEnd(this, MSG_ID_SESSION_END, null);
+        mCmdIf.setOnCatProactiveCmd(this, MSG_ID_PROACTIVE_COMMAND, null);
+        mCmdIf.setOnCatEvent(this, MSG_ID_EVENT_NOTIFY, null);
+        mCmdIf.setOnCatCallSetUp(this, MSG_ID_CALL_SETUP, null);
+        sRegisterForRilEvents = false;
     }
 
     private void handleRilMsg(RilMessage rilMsg) {
@@ -236,6 +284,11 @@ public class CatService extends Handler implements AppInterface {
                 }
                 break;
             case REFRESH:
+                // Invalidate event list if the SIM resets
+                if (cmdParams.mCmdDet.commandQualifier
+                        == CommandParamsFactory.REFRESH_UICC_RESET) {
+                    mEventList = null;
+                }
                 // ME side only handles refresh commands which meant to remove IDLE
                 // MODE TEXT.
                 cmdParams.mCmdDet.typeOfCommand = CommandType.SET_UP_IDLE_MODE_TEXT.value();
@@ -254,12 +307,25 @@ public class CatService extends Handler implements AppInterface {
                         resp = new LanguageResponseData(Locale.getDefault().getLanguage());
                         sendTerminalResponse(cmdParams.mCmdDet, ResultCode.OK, false, 0, resp);
                         break;
+                    case CommandParamsFactory.SEARCH_MODE_SETTING:
+                        resp = new NetworkSearchModeResponseData(getNetworkSelectionMode());
+                        sendTerminalResponse(cmdParams.mCmdDet, ResultCode.OK, false, 0, resp);
+                        break;
                     default:
                         sendTerminalResponse(cmdParams.mCmdDet, ResultCode.OK, false, 0, null);
                 }
                 // No need to start STK app here.
                 return;
             case LAUNCH_BROWSER:
+                ConnectivityManager cm = (ConnectivityManager) mContext
+                        .getSystemService(Context.CONNECTIVITY_SERVICE);
+
+                if (cm != null && !cm.getMobileDataEnabled()) {
+                    sendTerminalResponse(cmdParams.mCmdDet, ResultCode.BEYOND_TERMINAL_CAPABILITY,
+                            false, 0, null);
+                    return;
+                }
+
                 if ((((LaunchBrowserParams) cmdParams).mConfirmMsg.text != null)
                         && (((LaunchBrowserParams) cmdParams).mConfirmMsg.text.equals(STK_DEFAULT))) {
                     message = mContext.getText(com.android.internal.R.string.launchBrowserDefault);
@@ -289,58 +355,69 @@ public class CatService extends Handler implements AppInterface {
                     ((CallSetupParams) cmdParams).mConfirmMsg.text = message.toString();
                 }
                 break;
+            case LANGUAGE_NOTIFICATION:
+                String preLang = SystemProperties.get("persist.sys.language");
+                if ((cmdParams.mCmdDet.commandQualifier & 0x01) == 0x01) {
+                   String language = ((LanguageParams)cmdParams).lang;
+                    if (language != null && language.length() == 2
+                            && !language.equals(preLang)) {
+                        updateLanguage(new Locale(language));
+                    }
+                } else {
+                    updateLanguage(new Locale(preLang));
+                }
+                sendTerminalResponse(cmdParams.mCmdDet, ResultCode.OK, false, 0, null);
+                return;
+            case SET_UP_EVENT_LIST:
+                // Store eventlist
+                mCurrntCmd = cmdMsg;
+                mEventList = mCurrntCmd.getEventList();
+                if (mEventList != null) {
+                    for (byte b : mEventList) {
+                        CatLog.d(this, "Registered Event: " + b);
+                    }
+                    if (isEventDownloadActive(EventCode.NETWORK_SEARCH_MODE_CHANGE.value())) {
+                        mCurrentNetworkSelectionMode = getNetworkSelectionMode();
+                        PhoneFactory.getDefaultPhone().registerForServiceStateChanged(
+                                this, MSG_ID_NETWORK_SEARCH_MODE_CHANGE, null);
+                    }
+                } else {
+                    CatLog.d( this, "WARNING: No Event in event list!" );
+                }
+
+                sendTerminalResponse(cmdParams.mCmdDet, ResultCode.OK, false, 0, null);
+                break;
+            case ACTIVATE:
+                 sendTerminalResponse(cmdParams.mCmdDet,
+                         ResultCode.BEYOND_TERMINAL_CAPABILITY, false, 0, null);
+                 return;
             case OPEN_CHANNEL:
+                ChannelSettings newChannel = cmdMsg.getChannelSettings();
+                if (newChannel == null) {
+                    // Send TR cmd data not understood
+                    sendTerminalResponse(cmdParams.mCmdDet, ResultCode.CMD_DATA_NOT_UNDERSTOOD,
+                            false, 0, null);
+                    return;
+                }
+                // Check if BipProxy can handle more channels
+                if (!mBipGateWay.available()) {
+                   resp = new OpenChannelResponseData(newChannel.bufSize, null,
+                           newChannel.bearerDescription);
+                   sendTerminalResponse(cmdParams.mCmdDet, ResultCode.BIP_ERROR, true, 0x01, resp);
+                   return;
+                }
+                // Check if user confirmation is needed
+                if (cmdMsg.geTextMessage() != null && cmdMsg.geTextMessage().responseNeeded) {
+                    break;
+                }
+            // fall through
             case CLOSE_CHANNEL:
             case RECEIVE_DATA:
             case SEND_DATA:
-                BIPClientParams cmd = (BIPClientParams) cmdParams;
-                /* Per 3GPP specification 102.223,
-                 * if the alpha identifier is not provided by the UICC,
-                 * the terminal MAY give information to the user
-                 * noAlphaUsrCnf defines if you need to show user confirmation or not
-                 */
-                boolean noAlphaUsrCnf = false;
-                try {
-                    noAlphaUsrCnf = mContext.getResources().getBoolean(
-                            com.android.internal.R.bool.config_stkNoAlphaUsrCnf);
-                } catch (NotFoundException e) {
-                    noAlphaUsrCnf = false;
-                }
-                if ((cmd.mTextMsg.text == null) && (cmd.mHasAlphaId || noAlphaUsrCnf)) {
-                    CatLog.d(this, "cmd " + cmdParams.getCommandType() + " with null alpha id");
-                    // If alpha length is zero, we just respond with OK.
-                    if (isProactiveCmd) {
-                        if (cmdParams.getCommandType() == CommandType.OPEN_CHANNEL) {
-                            mCmdIf.handleCallSetupRequestFromSim(true, null);
-                        } else {
-                            sendTerminalResponse(cmdParams.mCmdDet, ResultCode.OK, false, 0, null);
-                        }
-                    }
-                    return;
-                }
-                // Respond with permanent failure to avoid retry if STK app is not present.
-                if (!mStkAppInstalled) {
-                    CatLog.d(this, "No STK application found.");
-                    if (isProactiveCmd) {
-                        sendTerminalResponse(cmdParams.mCmdDet,
-                                             ResultCode.BEYOND_TERMINAL_CAPABILITY,
-                                             false, 0, null);
-                        return;
-                    }
-                }
-                /*
-                 * CLOSE_CHANNEL, RECEIVE_DATA and SEND_DATA can be delivered by
-                 * either PROACTIVE_COMMAND or EVENT_NOTIFY.
-                 * If PROACTIVE_COMMAND is used for those commands, send terminal
-                 * response here.
-                 */
-                if (isProactiveCmd &&
-                    ((cmdParams.getCommandType() == CommandType.CLOSE_CHANNEL) ||
-                     (cmdParams.getCommandType() == CommandType.RECEIVE_DATA) ||
-                     (cmdParams.getCommandType() == CommandType.SEND_DATA))) {
-                    sendTerminalResponse(cmdParams.mCmdDet, ResultCode.OK, false, 0, null);
-                }
-                break;
+            case GET_CHANNEL_STATUS:
+                mCurrntCmd = cmdMsg;
+                mBipGateWay.handleBipCommand(cmdMsg);
+                return;
             default:
                 CatLog.d(this, "Unsupported command");
                 return;
@@ -349,6 +426,7 @@ public class CatService extends Handler implements AppInterface {
         Intent intent = new Intent(AppInterface.CAT_CMD_ACTION);
         intent.putExtra("STK CMD", cmdMsg);
         mContext.sendBroadcast(intent);
+        mBipGateWay.handleBipCommand(null);
     }
 
     /**
@@ -363,7 +441,7 @@ public class CatService extends Handler implements AppInterface {
         mContext.sendBroadcast(intent);
     }
 
-    private void sendTerminalResponse(CommandDetails cmdDet,
+    public void sendTerminalResponse(CommandDetails cmdDet,
             ResultCode resultCode, boolean includeAdditionalInfo,
             int additionalInfo, ResponseData resp) {
 
@@ -493,14 +571,14 @@ public class CatService extends Handler implements AppInterface {
         buf.write(0x00); // place holder
 
         // device identities
-        tag = 0x80 | ComprehensionTlvTag.DEVICE_IDENTITIES.value();
+        tag = ComprehensionTlvTag.DEVICE_IDENTITIES.value();
         buf.write(tag);
         buf.write(0x02); // length
         buf.write(DEV_ID_KEYPAD); // source device id
         buf.write(DEV_ID_UICC); // destination device id
 
         // item identifier
-        tag = 0x80 | ComprehensionTlvTag.ITEM_ID.value();
+        tag = ComprehensionTlvTag.ITEM_ID.value();
         buf.write(tag);
         buf.write(0x01); // length
         buf.write(menuId); // menu identifier chosen
@@ -552,6 +630,15 @@ public class CatService extends Handler implements AppInterface {
                         || ic == null) {
                     return null;
                 }
+
+                try {
+                    if (!context.getResources()
+                            .getBoolean(com.android.internal.R.bool.config_cat_support)) {
+                        return null;
+                   }
+                } catch (Resources.NotFoundException ex) {
+                }
+
                 HandlerThread thread = new HandlerThread("Cat Telephony service");
                 thread.start();
                 sInstance = new CatService(ci, ca, ir, context, fh, ic);
@@ -576,6 +663,12 @@ public class CatService extends Handler implements AppInterface {
             } else {
                 CatLog.d(sInstance, "Return current sInstance");
             }
+
+            // Register ril events handling.
+            if (sRegisterForRilEvents) {
+                sInstance.registerForRilEvents();
+            }
+
             return sInstance;
         }
     }
@@ -587,6 +680,93 @@ public class CatService extends Handler implements AppInterface {
      */
     public static AppInterface getInstance() {
         return getInstance(null, null, null);
+    }
+
+    public boolean isEventDownloadActive(int event) {
+        if (mEventList != null) {
+            for (byte b : mEventList) {
+                if (b == (byte)event) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    public void updateEventList(byte event, byte value) {
+        if (mEventList != null) {
+            for (int i = 0; i < mEventList.length; i++) {
+                if (mEventList[i] == event) {
+                    mEventList[i] = value;
+                    break;
+                }
+            }
+        }
+    }
+
+    public void onEventDownload(CatEventMessage eventMsg) {
+        CatLog.d(this, "Download event: " + eventMsg.getEvent());
+        eventDownload(eventMsg.getEvent(),
+                eventMsg.getSourceId(),
+                eventMsg.getDestId(),
+                eventMsg.getAdditionalInfo(),
+                eventMsg.isOneShot());
+    }
+
+    private void eventDownload(int event, int sourceId, int destinationId,
+            byte[] additionalInfo, boolean oneShot) {
+
+        CatLog.d(this, "eventDownload()  "+ event+ "  " + sourceId + " ");
+        // Check if the SIM have subscribed to this event using setup eventlist
+        boolean allowed = isEventDownloadActive((byte)event);
+        if (!allowed) {
+            CatLog.d(this, "(U)SIM has not subscribed for event: " + event);
+            return;
+        }
+
+        if (oneShot) {
+            updateEventList((byte)event, (byte)EventCode.INVALID_EVENT.value());
+        }
+
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+
+        // tag
+        int tag = BerTlv.BER_EVENT_DOWNLOAD_TAG;
+        buf.write(tag);
+
+        // length
+        buf.write(0x00); // place holder, assume length < 128.
+
+        // event list
+        tag = ComprehensionTlvTag.EVENT_LIST.value();
+        buf.write(tag);
+        buf.write(0x01); // length
+        buf.write(event); // event value
+
+        // device identities
+        tag = ComprehensionTlvTag.DEVICE_IDENTITIES.value();
+        buf.write(tag);
+        buf.write(0x02); // length
+        buf.write(sourceId); // source device id
+        buf.write(destinationId); // destination device id
+
+        // additional information
+        if (additionalInfo != null) {
+            for (byte b : additionalInfo) {
+                buf.write(b);
+            }
+        }
+
+        byte[] rawData = buf.toByteArray();
+
+        // write real length
+        int len = rawData.length - 2; // minus (tag + length)
+        rawData[1] = (byte) len;
+
+        String hexString = IccUtils.bytesToHexString(rawData);
+
+        mCmdIf.sendEnvelope(hexString, null);
     }
 
     @Override
@@ -626,6 +806,9 @@ public class CatService extends Handler implements AppInterface {
             CatLog.d(this, "SIM ready. Reporting STK service running now...");
             mCmdIf.reportStkServiceIsRunning(null);
             break;
+        case MSG_ID_NETWORK_SEARCH_MODE_CHANGE:
+            onNetworkSearchModeChange(msg);
+            break;
         default:
             throw new AssertionError("Unrecognized CAT command: " + msg.what);
         }
@@ -642,7 +825,7 @@ public class CatService extends Handler implements AppInterface {
     }
 
     private boolean validateResponse(CatResponseMessage resMsg) {
-        if (mCurrntCmd != null) {
+        if (mCurrntCmd != null && resMsg != null) {
             return (resMsg.mCmdDet.compareTo(mCurrntCmd.mCmdDet));
         }
         return false;
@@ -661,6 +844,10 @@ public class CatService extends Handler implements AppInterface {
     }
 
     private void handleCmdResponse(CatResponseMessage resMsg) {
+        if ((resMsg != null) && (resMsg.mEnvelopeCmd != null)) {
+            mCmdIf.sendEnvelope(resMsg.mEnvelopeCmd, null);
+            return;
+        }
         // Make sure the response details match the last valid command. An invalid
         // response is a one that doesn't have a corresponding proactive command
         // and sending it can "confuse" the baseband/ril.
@@ -694,6 +881,7 @@ public class CatService extends Handler implements AppInterface {
         case PRFRMD_NAA_NOT_ACTIVE:
         case PRFRMD_TONE_NOT_PLAYED:
         case TERMINAL_CRNTLY_UNABLE_TO_PROCESS:
+        case LAUNCH_BROWSER_ERROR:
             switch (type) {
             case SET_UP_MENU:
                 helpRequired = resMsg.mResCode == ResultCode.HELP_INFO_REQUIRED;
@@ -718,10 +906,22 @@ public class CatService extends Handler implements AppInterface {
                 }
                 break;
             case DISPLAY_TEXT:
-            case LAUNCH_BROWSER:
                 break;
-            // 3GPP TS.102.223: Open Channel alpha confirmation should not send TR
+            case LAUNCH_BROWSER:
+                if (resMsg.mResCode == ResultCode.OK && resMsg.mUsersConfirm) {
+                    PhoneFactory.getDefaultPhone()
+                            .enableApnType(PhoneConstants.APN_TYPE_DEFAULT);
+                }
+                break;
+            // 3GPP TS.102.223: Open Channel alpha confirmation should not send TR TODO verify this
             case OPEN_CHANNEL:
+                CatLog.d(this, "OPEN_CHANNEL");
+                if (resMsg.mResCode == ResultCode.OK && resMsg.mUsersConfirm) {
+                    // user has accepted OPEN CHANNEL
+                    mBipGateWay.handleBipCommand(mCurrntCmd);
+                    return;
+                }
+                break;
             case SET_UP_CALL:
                 mCmdIf.handleCallSetupRequestFromSim(resMsg.mUsersConfirm, null);
                 // No need to send terminal response for SET UP CALL. The user's
@@ -739,10 +939,22 @@ public class CatService extends Handler implements AppInterface {
             // setup call/open channel, consider that as the user
             // rejecting the call. Use dedicated API for this, rather than
             // sending a terminal response.
-            if (type == CommandType.SET_UP_CALL || type == CommandType.OPEN_CHANNEL) {
+            if (type == CommandType.SET_UP_CALL) {
                 mCmdIf.handleCallSetupRequestFromSim(false, null);
                 mCurrntCmd = null;
                 return;
+            } else if (type == CommandType.OPEN_CHANNEL) {
+                CatLog.d(this, "OPEN_CHANNEL - User rejection");
+                if (!resMsg.mUsersConfirm
+                         && mCurrntCmd.geTextMessage().responseNeeded) {
+                    // user has OPEN CHANNEL rejected
+                    ChannelSettings params = mCurrntCmd.getChannelSettings();
+                    resMsg.mResCode = ResultCode.USER_NOT_ACCEPT;
+                    resp = new OpenChannelResponseData(params.bufSize,
+                            null, params.bearerDescription);
+                } else {
+                    CatLog.d(this, "OPEN_CHANNEL - User rejection, NO Response Needed");
+                }
             } else {
                 resp = null;
             }
@@ -767,5 +979,50 @@ public class CatService extends Handler implements AppInterface {
         int numReceiver = broadcastReceivers == null ? 0 : broadcastReceivers.size();
 
         return (numReceiver > 0);
+    }
+
+    private void updateLanguage(Locale locale) {
+        CatLog.d(this, "change locale language to: " + locale);
+        IActivityManager am = ActivityManagerNative.getDefault();
+        try {
+            Configuration config = am.getConfiguration();
+            config.locale = locale;
+            config.userSetLocale = false;
+            am.updateConfiguration(config);
+        } catch (RemoteException e) {
+            CatLog.d(this, "failed to change locale language");
+        }
+    }
+
+    private int getNetworkSelectionMode() {
+        Phone phone = ((PhoneProxy)PhoneFactory.getDefaultPhone()).getActivePhone();
+        boolean isManual = ((PhoneBase)phone).getServiceState().getIsManualSelection();
+        CatLog.d(this, "Network selection mode is " + (isManual ? "MANUAL" : "AUTOMATIC"));
+
+        return isManual ? NETWORK_SELECTION_MODE_MANUAL : NETWORK_SELECTION_MODE_AUTOMATIC;
+    }
+
+    private void onNetworkSearchModeChange(Message msg) {
+        if (isEventDownloadActive(EventCode.NETWORK_SEARCH_MODE_CHANGE.value())) {
+            ServiceState state = (ServiceState)((AsyncResult) msg.obj).result;
+
+            boolean isManual = state.getIsManualSelection();
+            int mode = isManual ? NETWORK_SELECTION_MODE_MANUAL : NETWORK_SELECTION_MODE_AUTOMATIC;
+
+            if ((mCurrentNetworkSelectionMode ^ mode) != 0) {
+                mCurrentNetworkSelectionMode = mode;
+                byte[] additionalInfo = new byte[3];
+                additionalInfo[0] = (byte)ComprehensionTlvTag.NETWORK_SEARCH_MODE.value();
+                additionalInfo[1] = 0x01;
+                additionalInfo[2] = (byte)mode;
+
+                CatLog.d(this, "Network selection mode is " + (isManual ? "MANUAL" : "AUTOMATIC"));
+
+                onEventDownload(new CatEventMessage(
+                        EventCode.NETWORK_SEARCH_MODE_CHANGE.value(), additionalInfo, false));
+            }
+        } else {
+            PhoneFactory.getDefaultPhone().unregisterForServiceStateChanged(this);
+        }
     }
 }

@@ -76,6 +76,9 @@ public interface Phone {
     static final String FEATURE_ENABLE_IMS = "enableIMS";
     static final String FEATURE_ENABLE_CBS = "enableCBS";
 
+    static final String FEATURE_ENABLE_BIP_GPRS1 = "enableBIP1";
+    static final String FEATURE_ENABLE_BIP_GPRS2 = "enableBIP2";
+
     /**
      * Optional reasons for disconnect and connect
      */
@@ -103,6 +106,7 @@ public interface Phone {
     static final String REASON_DATA_DEPENDENCY_UNMET = "dependencyUnmet";
     static final String REASON_LOST_DATA_CONNECTION = "lostDataConnection";
     static final String REASON_CONNECTED = "connected";
+    static final String REASON_SINGLE_PDN_ARBITRATION = "SinglePdnArbitration";
 
     // Used for band mode selection methods
     static final int BM_UNSPECIFIED = 0; // selected by baseband automatically

@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2006 The Android Open Source Project
- * Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -113,11 +112,11 @@ public interface CommandsInterface {
     /**
      * response.obj.result is an int[2]
      *
-     * response.obj.result[0] is registration state
+     * response.obj.result[0] is IMS registration state
      *                        0 - Not registered
      *                        1 - Registered
-     * response.obj.result[1] is of type const RIL_IMS_SMS_Format,
-     *                        corresponds to sms format used for SMS over IMS.
+     * response.obj.result[1] is of type RILConstants.GSM_PHONE or
+     *                                    RILConstants.CDMA_PHONE
      */
     void getImsRegistrationState(Message result);
 
@@ -429,6 +428,17 @@ public interface CommandsInterface {
     void registerForSignalInfo(Handler h, int what, Object obj);
     void unregisterForSignalInfo(Handler h);
 
+     /**
+     * Sets the handler for OEM Hook Raw Notifications.
+     * Unlike the register* methods, there's only one notification handler
+     *
+     * @param h Handler for notification message.
+     * @param what User-defined message code.
+     * @param obj User object.
+     */
+     void setOnUnsolOemHookRaw(Handler h, int what, Object obj);
+     void unSetOnUnsolOemHookRaw(Handler h);
+
     /**
      * Registers the handler for CDMA number information record
      * Unlike the register* methods, there's only one notification handler
@@ -574,6 +584,9 @@ public interface CommandsInterface {
      *  This exception is CommandException with an error of PASSWORD_INCORRECT
      *  if the password is incorrect
      *
+     *  ar.result is an optional array of integers where the first entry
+     *  is the number of attempts remaining before the ICC will be PUK locked.
+     *
      * ar.exception and ar.result are null on success
      */
 
@@ -590,6 +603,9 @@ public interface CommandsInterface {
      *  This exception is CommandException with an error of PASSWORD_INCORRECT
      *  if the password is incorrect
      *
+     *  ar.result is an optional array of integers where the first entry
+     *  is the number of attempts remaining before the ICC will be PUK locked.
+     *
      * ar.exception and ar.result are null on success
      */
 
@@ -604,6 +620,9 @@ public interface CommandsInterface {
      *  This exception is CommandException with an error of PASSWORD_INCORRECT
      *  if the password is incorrect
      *
+     *  ar.result is an optional array of integers where the first entry
+     *  is the number of attempts remaining before the ICC is permanently disabled.
+     *
      * ar.exception and ar.result are null on success
      */
 
@@ -614,11 +633,13 @@ public interface CommandsInterface {
      *
      *  AID (Application ID), See ETSI 102.221 8.1 and 101.220 4
      *
-     *  returned message
      *  retMsg.obj = AsyncResult ar
      *  ar.exception carries exception on failure
      *  This exception is CommandException with an error of PASSWORD_INCORRECT
      *  if the password is incorrect
+     *
+     *  ar.result is an optional array of integers where the first entry
+     *  is the number of attempts remaining before the ICC is permanently disabled.
      *
      * ar.exception and ar.result are null on success
      */
@@ -635,6 +656,9 @@ public interface CommandsInterface {
      *  ar.exception carries exception on failure
      *  This exception is CommandException with an error of PASSWORD_INCORRECT
      *  if the password is incorrect
+     *
+     *  ar.result is an optional array of integers where the first entry
+     *  is the number of attempts remaining before the ICC will be PUK locked.
      *
      * ar.exception and ar.result are null on success
      */
@@ -654,6 +678,9 @@ public interface CommandsInterface {
      *  This exception is CommandException with an error of PASSWORD_INCORRECT
      *  if the password is incorrect
      *
+     *  ar.result is an optional array of integers where the first entry
+     *  is the number of attempts remaining before the ICC will be PUK locked.
+     *
      * ar.exception and ar.result are null on success
      */
 
@@ -669,6 +696,9 @@ public interface CommandsInterface {
      *  ar.exception carries exception on failure
      *  This exception is CommandException with an error of PASSWORD_INCORRECT
      *  if the password is incorrect
+     *
+     *  ar.result is an optional array of integers where the first entry
+     *  is the number of attempts remaining before the ICC is permanently disabled.
      *
      * ar.exception and ar.result are null on success
      */
@@ -688,11 +718,15 @@ public interface CommandsInterface {
      *  This exception is CommandException with an error of PASSWORD_INCORRECT
      *  if the password is incorrect
      *
+     *  ar.result is an optional array of integers where the first entry
+     *  is the number of attempts remaining before the ICC is permanently disabled.
+     *
      * ar.exception and ar.result are null on success
      */
 
     void supplyIccPuk2ForApp(String puk2, String newPin2, String aid, Message result);
 
+    // TODO: Add java doc and indicate that msg.arg1 contains the number of attempts remaining.
     void changeIccPin(String oldPin, String newPin, Message result);
     void changeIccPinForApp(String oldPin, String newPin, String aidPtr, Message result);
     void changeIccPin2(String oldPin2, String newPin2, Message result);
@@ -1682,4 +1716,11 @@ public interface CommandsInterface {
      * @return version of the ril.
      */
     int getRilVersion();
+
+    void iccExchangeAPDU(int cla, int command, int channel, int p1, int p2,
+            int p3, String data, Message response);
+
+    void iccOpenChannel(String AID, Message response);
+
+    void iccCloseChannel(int channel, Message response);
 }

@@ -101,7 +101,7 @@ public final class MccTable
         } else {
             Locale locale;
             if (entry.mLanguage == null) {
-                locale = new Locale(entry.mIso);
+                locale = new Locale("", entry.mIso);
             } else {
                 locale = new Locale(entry.mLanguage, entry.mIso);
             }
@@ -429,7 +429,7 @@ public final class MccTable
                 sTable.add(new MccEntry(294,"mk",2));   //The Former Yugoslav Republic of Macedonia
 		sTable.add(new MccEntry(295,"li",2));	//Liechtenstein (Principality of)
                 sTable.add(new MccEntry(297,"me",2));    //Montenegro (Republic of)
-		sTable.add(new MccEntry(302,"ca",3,""));	//Canada
+		sTable.add(new MccEntry(302,"ca",3,"en"));	//Canada
 		sTable.add(new MccEntry(308,"pm",2));	//Saint Pierre and Miquelon (Collectivit territoriale de la Rpublique franaise)
 		sTable.add(new MccEntry(310,"us",3,"en"));	//United States of America
 		sTable.add(new MccEntry(311,"us",3,"en"));	//United States of America
