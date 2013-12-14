@@ -28,9 +28,6 @@ import com.android.internal.telephony.cdma.CDMALTEPhone;
 import com.android.internal.telephony.cdma.CDMAPhone;
 import com.android.internal.telephony.cdma.CdmaSubscriptionSourceManager;
 import com.android.internal.telephony.gsm.GSMPhone;
-import com.android.internal.telephony.gsm.GsmLtePhone;
-import com.android.internal.telephony.ims.ImsPhoneBase;
-import com.android.internal.telephony.ims.ImsPhoneFactory;
 import com.android.internal.telephony.sip.SipPhone;
 import com.android.internal.telephony.sip.SipPhoneFactory;
 import com.android.internal.telephony.uicc.UiccController;
@@ -121,15 +118,9 @@ public class PhoneFactory {
 
                 int phoneType = TelephonyManager.getPhoneType(networkMode);
                 if (phoneType == PhoneConstants.PHONE_TYPE_GSM) {
-                    if (TelephonyManager.getLteOnGsmModeStatic()) {
-                        Rlog.i(LOG_TAG, "Creating GsmLtePhone");
-                        sProxyPhone = new PhoneProxy(new GsmLtePhone(context,
-                                sCommandsInterface, sPhoneNotifier));
-                    } else {
-                        Rlog.i(LOG_TAG, "Creating GSMPhone");
-                        sProxyPhone = new PhoneProxy(new GSMPhone(context,
-                                sCommandsInterface, sPhoneNotifier));
-                    }
+                    Rlog.i(LOG_TAG, "Creating GSMPhone");
+                    sProxyPhone = new PhoneProxy(new GSMPhone(context,
+                            sCommandsInterface, sPhoneNotifier));
                 } else if (phoneType == PhoneConstants.PHONE_TYPE_CDMA) {
                     switch (TelephonyManager.getLteOnCdmaModeStatic()) {
                         case PhoneConstants.LTE_ON_CDMA_TRUE:
@@ -193,13 +184,8 @@ public class PhoneFactory {
     }
 
     public static Phone getGsmPhone() {
-        Phone phone;
         synchronized(PhoneProxy.lockForRadioTechnologyChange) {
-            if (TelephonyManager.getLteOnGsmModeStatic()) {
-                phone = new GsmLtePhone(sContext, sCommandsInterface, sPhoneNotifier);
-            } else {
-                phone = new GSMPhone(sContext, sCommandsInterface, sPhoneNotifier);
-            }
+            Phone phone = new GSMPhone(sContext, sCommandsInterface, sPhoneNotifier);
             return phone;
         }
     }
@@ -211,19 +197,5 @@ public class PhoneFactory {
      */
     public static SipPhone makeSipPhone(String sipUri) {
         return SipPhoneFactory.makePhone(sipUri, sContext, sPhoneNotifier);
-    }
-
-    public static ImsPhoneBase makeImsPhone(PhoneBase parentPhone) {
-        ImsPhoneBase ret = null;
-
-        if (parentPhone == null) {
-            throw new IllegalArgumentException("parentPhone");
-        }
-        if (TelephonyManager.getImsOnApStatic()) {
-            Rlog.i(LOG_TAG, "Creating ImsPhone");
-            ret = ImsPhoneFactory.makePhone(sContext, sPhoneNotifier, parentPhone,
-                parentPhone.getUnitTestMode());
-        }
-        return ret;
     }
 }

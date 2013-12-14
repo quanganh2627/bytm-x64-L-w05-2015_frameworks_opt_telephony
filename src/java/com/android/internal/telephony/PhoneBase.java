@@ -77,12 +77,6 @@ public abstract class PhoneBase extends Handler implements Phone {
     // Key used to read and write the saved network selection operator name
     public static final String NETWORK_SELECTION_NAME_KEY = "network_selection_name_key";
 
-    /*
-     * Key used to read/write the network selection mode
-     *          true - Automatic network selection mode
-     *          false - Manual network selection mode
-     */
-    public static final String NETWORK_SELECTION_MODE = "network_selection_mode";
 
     // Key used to read/write "disable data connection on boot" pref (used for testing)
     public static final String DATA_DISABLED_ON_BOOT_KEY = "disabled_on_boot_key";
@@ -147,7 +141,6 @@ public abstract class PhoneBase extends Handler implements Phone {
     protected AtomicReference<UiccCardApplication> mUiccApplication =
             new AtomicReference<UiccCardApplication>();
 
-    public boolean mIsAutomaticNetworkSelection = true;
     private TelephonyTester mTelephonyTester;
     private final String mName;
     private final String mActionDetached;
@@ -276,7 +269,6 @@ public abstract class PhoneBase extends Handler implements Phone {
         SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(context);
         mDnsCheckDisabled = sp.getBoolean(DNS_SERVER_CHECK_DISABLED_KEY, false);
         mCi.setOnCallRing(this, EVENT_CALL_RING, null);
-        mIsAutomaticNetworkSelection = sp.getBoolean(NETWORK_SELECTION_MODE, true);
 
         /* "Voice capable" means that this device supports circuit-switched
         * (i.e. voice) phone calls over the telephony network, and is allowed
@@ -587,8 +579,8 @@ public abstract class PhoneBase extends Handler implements Phone {
         // retrieve the operator id
         String networkSelection = getSavedNetworkSelection();
 
-        // by default, network selection mode is automatic.
-        if (mIsAutomaticNetworkSelection || TextUtils.isEmpty(networkSelection)) {
+        // set to auto if the id is empty, otherwise select the network.
+        if (TextUtils.isEmpty(networkSelection)) {
             mCi.setNetworkSelectionModeAutomatic(response);
         } else {
             mCi.setNetworkSelectionModeManual(networkSelection, response);

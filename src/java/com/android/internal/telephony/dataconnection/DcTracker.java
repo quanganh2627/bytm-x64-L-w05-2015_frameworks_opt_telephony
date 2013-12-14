@@ -75,10 +75,6 @@ import java.util.HashMap;
 public final class DcTracker extends DcTrackerBase {
     protected final String LOG_TAG = "DCT";
 
-    // This change is kept in DcTracker so as to help in enabling
-    // LTE is PDK builds as framework/base is not open in PDK
-    private static final int EVENT_IMSI_READY = DctConstants.BASE + 40;
-
     /**
      * Handles changes to the APN db.
      */
@@ -278,12 +274,6 @@ public final class DcTracker extends DcTrackerBase {
                 break;
             case ConnectivityManager.TYPE_MOBILE_IA:
                 apnContext = addApnContext(PhoneConstants.APN_TYPE_IA, networkConfig);
-                break;
-            case ConnectivityManager.TYPE_MOBILE_BIP_GPRS1:
-                apnContext = addApnContext(PhoneConstants.APN_TYPE_BIP_GPRS1, networkConfig);
-                break;
-            case ConnectivityManager.TYPE_MOBILE_BIP_GPRS2:
-                apnContext = addApnContext(PhoneConstants.APN_TYPE_BIP_GPRS2, networkConfig);
                 break;
             default:
                 log("initApnContexts: skipping unknown type=" + networkConfig.type);
@@ -550,21 +540,6 @@ public final class DcTracker extends DcTrackerBase {
         if (DBG) log("onDataConnectionAttached");
         mAttached.set(true);
         if (getOverallState() == DctConstants.State.CONNECTED) {
-            if (!getAnyDataEnabled()) {
-                /*
-                 * If the user disables "Data enabled" in out of service state,
-                 * data deactivation request is ignored due to device out of
-                 * service. When the device gets back to registered state,
-                 * browsing is allowed even when the data is disabled by user.
-                 * Check the data enabled state and cleanup all connection if data
-                 * is disabled. ATTACHED state is notified as this may be needed
-                 * to update UI.
-                 */
-                onCleanUpAllConnections(Phone.REASON_DATA_DISABLED);
-                notifyDataConnection(Phone.REASON_DATA_ATTACHED);
-                return;
-            }
-
             if (DBG) log("onDataConnectionAttached: start polling notify attached");
             startNetStatPoll();
             startDataStallAlarm(DATA_STALL_NOT_SUSPECTED);
@@ -573,6 +548,7 @@ public final class DcTracker extends DcTrackerBase {
             // update APN availability so that APN can be enabled.
             notifyOffApnsOfAvailability(Phone.REASON_DATA_ATTACHED);
         }
+        mAutoAttachOnCreation = true;
         setupDataOnConnectableApns(Phone.REASON_DATA_ATTACHED);
     }
 
@@ -1000,10 +976,6 @@ public final class DcTracker extends DcTrackerBase {
                 }
             } while (cursor.moveToNext());
         }
-        if (cursor != null) {
-            cursor.close();
-        }
-
         if (DBG) log("createApnList: X result=" + result);
         return result;
     }
@@ -1183,12 +1155,6 @@ public final class DcTracker extends DcTrackerBase {
             if (isAnyDataCallActive) startNetStatPoll();
         }
 
-        if (dataCallStates.size() == 0) {
-            if (DBG) log("onDataStateChange(ar): NoData calls Stop stall alarm");
-            stopNetStatPoll();
-            stopDataStallAlarm();
-        }
-
         if (DBG) log("onDataStateChanged(ar): X");
     }
 
@@ -1278,7 +1244,9 @@ public final class DcTracker extends DcTrackerBase {
     }
 
     private void onRecordsLoaded() {
-        if (DBG) log("onRecordsLoaded");
+        if (DBG) log("onRecordsLoaded: createAllApnList");
+        createAllApnList();
+        setInitialAttachApn();
         if (mPhone.mCi.getRadioState().isOn()) {
             if (DBG) log("onRecordsLoaded: notifying data availability");
             notifyOffApnsOfAvailability(Phone.REASON_SIM_LOADED);
@@ -1537,9 +1505,8 @@ public final class DcTracker extends DcTrackerBase {
                 log("completeConnection: MOBILE_PROVISIONING_ACTION url="
                         + mProvisioningUrl);
             }
-            Intent newIntent = Intent.makeMainSelectorActivity(Intent.ACTION_MAIN,
-                    Intent.CATEGORY_APP_BROWSER);
-            newIntent.setData(Uri.parse(mProvisioningUrl));
+            Intent newIntent =
+                    new Intent(Intent.ACTION_VIEW, Uri.parse(mProvisioningUrl));
             newIntent.setFlags(Intent.FLAG_ACTIVITY_BROUGHT_TO_FRONT |
                     Intent.FLAG_ACTIVITY_NEW_TASK);
             try {
@@ -1796,7 +1763,7 @@ public final class DcTracker extends DcTrackerBase {
         }
 
         // If APN is still enabled, try to bring it back up automatically
-        if (mAttached.get() && isDataAllowed(apnContext)
+        if (mAttached.get() && apnContext.isReady()
                 && retryAfterDisconnected(apnContext.getReason())) {
             SystemProperties.set(PUPPET_MASTER_RADIO_STRESS_TEST, "false");
             // Wait a bit before trying the next APN, so that
@@ -1855,10 +1822,6 @@ public final class DcTracker extends DcTrackerBase {
         if (DBG) log("onVoiceCallEnded");
         mInVoiceCall = false;
         if (isConnected()) {
-            if (!getAnyDataEnabled()) {
-                 onCleanUpAllConnections(Phone.REASON_DATA_DISABLED);
-                return;
-            }
             if (!mPhone.getServiceStateTracker().isConcurrentVoiceAndDataAllowed()) {
                 startNetStatPoll();
                 startDataStallAlarm(DATA_STALL_NOT_SUSPECTED);
@@ -2244,11 +2207,6 @@ public final class DcTracker extends DcTrackerBase {
                 }
                 break;
 
-            case EVENT_IMSI_READY:
-                if (DBG) log("IMSI READY: createAllApnList and set Initial apn");
-                createAllApnList();
-                setInitialAttachApn();
-                break;
             default:
                 // handle the message in the super class DataConnectionTracker
                 super.handleMessage(msg);
@@ -2263,12 +2221,6 @@ public final class DcTracker extends DcTrackerBase {
             return RILConstants.DATA_PROFILE_FOTA;
         } else if (TextUtils.equals(apnType, PhoneConstants.APN_TYPE_CBS)) {
             return RILConstants.DATA_PROFILE_CBS;
-        } else if (TextUtils.equals(apnType, PhoneConstants.APN_TYPE_MMS)) {
-            return (RILConstants.DATA_PROFILE_MMS);
-        } else if (TextUtils.equals(apnType, PhoneConstants.APN_TYPE_SUPL)) {
-            return (RILConstants.DATA_PROFILE_SUPL);
-        } else if (TextUtils.equals(apnType, PhoneConstants.APN_TYPE_HIPRI)) {
-            return (RILConstants.DATA_PROFILE_HIPRI);
         } else if (TextUtils.equals(apnType, PhoneConstants.APN_TYPE_IA)) {
             return RILConstants.DATA_PROFILE_DEFAULT; // DEFAULT for now
         } else if (TextUtils.equals(apnType, PhoneConstants.APN_TYPE_DUN)) {
@@ -2305,7 +2257,6 @@ public final class DcTracker extends DcTrackerBase {
             if (r != null) {
                 log("Removing stale icc objects.");
                 r.unregisterForRecordsLoaded(this);
-                r.unregisterForImsiReady(this);
                 mIccRecords.set(null);
             }
             if (newIccRecords != null) {
@@ -2313,31 +2264,8 @@ public final class DcTracker extends DcTrackerBase {
                 mIccRecords.set(newIccRecords);
                 newIccRecords.registerForRecordsLoaded(
                         this, DctConstants.EVENT_RECORDS_LOADED, null);
-                newIccRecords.registerForImsiReady(this, EVENT_IMSI_READY, null);
             }
         }
-    }
-
-    public void onDataSuspended() {
-        if (DBG) log("onDataSuspended");
-        if (isConnected()) {
-            if (DBG) log("onDataSuspended stop polling");
-            stopNetStatPoll();
-            stopDataStallAlarm();
-            notifyDataConnection(null);
-        }
-
-        notifyOffApnsOfAvailability(null);
-    }
-
-    public void onDataResumed() {
-        if (DBG) log("onDataResumed");
-        if (isConnected()) {
-            startNetStatPoll();
-            startDataStallAlarm(DATA_STALL_NOT_SUSPECTED);
-            notifyDataConnection(null);
-        }
-        notifyOffApnsOfAvailability(null);
     }
 
     @Override

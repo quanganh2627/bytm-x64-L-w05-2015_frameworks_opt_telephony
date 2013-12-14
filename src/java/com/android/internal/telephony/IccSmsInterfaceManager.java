@@ -666,9 +666,13 @@ public class IccSmsInterfaceManager extends ISms.Stub {
          * @return true if successful, false otherwise
          */
         protected boolean finishUpdate() {
-            SmsBroadcastConfigInfo[] configs =
-                    mConfigList.toArray(new SmsBroadcastConfigInfo[mConfigList.size()]);
-            return setCellBroadcastConfig(configs);
+            if (mConfigList.isEmpty()) {
+                return true;
+            } else {
+                SmsBroadcastConfigInfo[] configs =
+                        mConfigList.toArray(new SmsBroadcastConfigInfo[mConfigList.size()]);
+                return setCellBroadcastConfig(configs);
+            }
         }
     }
 

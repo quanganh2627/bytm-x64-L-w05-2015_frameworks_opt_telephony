@@ -25,15 +25,6 @@ public class CatResponseMessage {
         boolean mUsersConfirm = false;
         boolean mIncludeAdditionalInfo = false;
         int mAdditionalInfo = 0;
-        String mEnvelopeCmd;
-        byte[] mChannelData;
-        int mChannelDataLength;
-        int[] mChannelStatus;
-
-        public CatResponseMessage(String envCmd) {
-            this.mEnvelopeCmd = envCmd;
-        }
-
         public CatResponseMessage(CatCmdMessage cmdMsg) {
             mCmdDet = cmdMsg.mCmdDet;
         }
@@ -66,14 +57,4 @@ public class CatResponseMessage {
         CommandDetails getCmdDetails() {
             return mCmdDet;
         }
-
-        public void setChannelData(byte[] data, int len) {
-            this.mChannelData = data;
-            this.mChannelDataLength = len;
-        }
-
-        public void setChannelStatus(int[] status) {
-            this.mChannelStatus = status;
-        }
-
     }

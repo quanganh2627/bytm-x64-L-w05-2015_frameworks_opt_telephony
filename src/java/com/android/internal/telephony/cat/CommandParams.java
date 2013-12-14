@@ -63,15 +63,13 @@ class LaunchBrowserParams extends CommandParams {
     TextMessage mConfirmMsg;
     LaunchBrowserMode mMode;
     String mUrl;
-    String mProxy;
 
     LaunchBrowserParams(CommandDetails cmdDet, TextMessage confirmMsg,
-            String url, LaunchBrowserMode mode, String proxy) {
+            String url, LaunchBrowserMode mode) {
         super(cmdDet);
         mConfirmMsg = confirmMsg;
         mMode = mode;
         mUrl = url;
-        mProxy = proxy;
     }
 
     @Override
@@ -179,14 +177,6 @@ class GetInputParams extends CommandParams {
     }
 }
 
-class LanguageParams extends CommandParams {
-    String lang;
-    LanguageParams(CommandDetails cmdDet, String lang) {
-        super(cmdDet);
-        this.lang = lang;
-    }
-}
-
 /*
  * BIP (Bearer Independent Protocol) is the mechanism for SIM card applications
  * to access data connection through the mobile device.
@@ -213,87 +203,4 @@ class BIPClientParams extends CommandParams {
         }
         return false;
     }
-}
-
-class EventListParams extends CommandParams {
-    byte[] eventList = null;
-    EventListParams(CommandDetails cmdDet, byte[] eventList) {
-        super(cmdDet);
-        this.eventList = eventList;
-    }
-}
-
-class ActivateParams extends CommandParams {
-    int target = 0;
-    ActivateParams(CommandDetails cmdDet, int target) {
-        super(cmdDet);
-        this.target = target;
-    }
-}
-
-/*
- * BIP (Bearer Independent Protocol) is the mechanism for SIM card applications
- * to access data connection through the mobile device.
- * This is Intel Implementation
- */
-class OpenChannelParams extends CommandParams {
-    TextMessage confirmMsg;
-    int bufSize;
-    InterfaceTransportLevel itl;
-    byte[] destinationAddress;
-    BearerDescription bearerDescription;
-    String networkAccessName;
-    String userLogin;
-    String userPassword;
-    OpenChannelParams(CommandDetails cmdDet, TextMessage confirmMsg,
-            int bufSize, InterfaceTransportLevel itl, byte[] destAddress,
-            BearerDescription bearerDesc, String netAccessName,
-            String usrLogin, String userPasswd) {
-        super(cmdDet);
-        this.confirmMsg = confirmMsg;
-        this.bufSize = bufSize;
-        this.itl = itl;
-        this.destinationAddress = destAddress;
-        this.bearerDescription = bearerDesc;
-        this.networkAccessName = netAccessName;
-        this.userLogin = usrLogin;
-        this.userPassword = userPasswd;
-    }
-}
-
-class CloseChannelParams extends CommandParams {
-    int channel;
-
-    CloseChannelParams(CommandDetails cmdDet, int channel) {
-        super(cmdDet);
-        this.channel = channel;
-    }
-}
-
-class ReceiveDataParams extends CommandParams {
-    int datLen;
-    int channel;
-
-    ReceiveDataParams(CommandDetails cmdDet, int channel, int datLen) {
-        super(cmdDet);
-        this.channel = channel;
-        this.datLen = datLen;
-    }
-}
-
-class SendDataParams extends CommandParams {
-    byte[] data;
-    int channel;
-
-    SendDataParams(CommandDetails cmdDet, int channel, byte[] data) {
-        super(cmdDet);
-        this.channel = channel;
-        this.data = data;
-    }
-}
-
-class GetChannelStatusParams extends CommandParams {
-    GetChannelStatusParams(CommandDetails cmdDet) {
-        super(cmdDet);
-     }
 }
