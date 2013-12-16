@@ -380,8 +380,9 @@ public class BipGateWay {
                  * If a retry is targeted we also ignore the disconnect state. We wait
                  * for the end of all retries to complete.
                  */
-                if (mIsDataCallRetry || mDataConnectionTracker.getState(mToBeUsedApnType)
-                        == DctConstants.State.RETRYING) {
+                if ((mToBeUsedApnType != null) && (mIsDataCallRetry
+                        || mDataConnectionTracker.getState(mToBeUsedApnType)
+                        == DctConstants.State.RETRYING)) {
                     CatLog.d(this, "Disconnect due to retrying state");
                     mIsDataCallRetry = false;
                     return;
