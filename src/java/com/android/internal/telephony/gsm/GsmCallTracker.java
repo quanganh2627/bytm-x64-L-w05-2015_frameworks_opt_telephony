@@ -980,6 +980,48 @@ public final class GsmCallTracker extends CallTracker {
         return null;
     }
 
+    /**
+     * @param calls List of DriverCalls to inject
+     * @param callTimings List of timings, each item being an array of long
+     * with this order: creation time, connection time, disconnection time,
+     * connection real time, duration, holding start time.
+     */
+    public void injectCalls(List<DriverCall> calls, List<Long[]> callTimings) {
+        log("injectCalls " + calls);
+        if (calls == null || callTimings == null || calls.size() != callTimings.size()) {
+            log("Invalid arguments");
+            return;
+        }
+        AsyncResult ar = new AsyncResult(null, calls, null);
+        handlePollCalls(ar);
+        /* handlePollCalls() created all GsmConnections
+         * Now we need to update each connection with proper call durations
+         */
+        for (int i = 0; i < calls.size(); i++) {
+            DriverCall call = calls.get(i);
+            GsmConnection conn = null;
+            // we look for connection in all current calls
+            for (GsmConnection cnx : mConnections) {
+                if (cnx.mIndex == call.index) {
+                    conn = cnx;
+                    break;
+                }
+            }
+            if (conn != null) {
+                log("Updating call duration for connection " + call.index);
+                Long[] timings = callTimings.get(i);
+                conn.mCreateTime = timings[0];
+                conn.mConnectTime = timings[1];
+                conn.mDisconnectTime = timings[2];
+                conn.mConnectTimeReal = timings[3];
+                conn.mDuration = timings[4];
+                conn.mHoldingStartTime = timings[5];
+            } else {
+                log("No connection found for call index " + call.index);
+            }
+        }
+    }
+
     private Phone.SuppService getFailedService(int what) {
         switch (what) {
             case EVENT_SWITCH_RESULT:
