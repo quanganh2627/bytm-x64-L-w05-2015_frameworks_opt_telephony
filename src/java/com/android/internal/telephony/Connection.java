@@ -65,8 +65,10 @@ public abstract class Connection {
         CDMA_RETRY_ORDER,               /* requested service is rejected, retry delay is set */
         CDMA_ACCESS_FAILURE,
         CDMA_PREEMPTED,
-        CDMA_NOT_EMERGENCY,              /* not an emergency call */
+        CDMA_NOT_EMERGENCY,             /* not an emergency call */
         CDMA_ACCESS_BLOCKED,            /* Access Blocked by CDMA network */
+        IMS_SRVCC_TRANSFER_SUCCESS,     /* IMS connection was transfered to CS domain */
+        IMS_SRVCC_TRANSFER_FAILURE,     /* IMS connection transfer to CS domain failed */
         ERROR_UNSPECIFIED
     }
 

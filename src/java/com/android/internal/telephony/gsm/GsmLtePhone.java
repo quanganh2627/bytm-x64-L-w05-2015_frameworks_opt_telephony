@@ -26,7 +26,7 @@ import com.android.internal.telephony.PhoneNotifier;
  * {@hide}
  */
 public class GsmLtePhone extends GSMPhone {
-    static final String LOG_TAG = "GsmLte";
+    private static final String LOG_TAG = "GsmLte";
 
     public GsmLtePhone(Context context, CommandsInterface ci, PhoneNotifier notifier) {
         this(context, ci, notifier, false);
