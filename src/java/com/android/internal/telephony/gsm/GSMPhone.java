@@ -976,7 +976,7 @@ public class GSMPhone extends PhoneBase implements SupplementaryServiceSupport {
         }
     }
 
-    private boolean isValidCommandInterfaceCFReason (int commandInterfaceCFReason) {
+    public boolean isValidCommandInterfaceCFReason(int commandInterfaceCFReason) {
         switch (commandInterfaceCFReason) {
         case CF_REASON_UNCONDITIONAL:
         case CF_REASON_BUSY:
@@ -990,7 +990,7 @@ public class GSMPhone extends PhoneBase implements SupplementaryServiceSupport {
         }
     }
 
-    private boolean isValidCommandInterfaceCFAction (int commandInterfaceCFAction) {
+    public boolean isValidCommandInterfaceCFAction(int commandInterfaceCFAction) {
         switch (commandInterfaceCFAction) {
         case CF_ACTION_DISABLE:
         case CF_ACTION_ENABLE:
@@ -1002,7 +1002,7 @@ public class GSMPhone extends PhoneBase implements SupplementaryServiceSupport {
         }
     }
 
-    protected  boolean isCfEnable(int action) {
+    public  boolean isCfEnable(int action) {
         return (action == CF_ACTION_ENABLE) || (action == CF_ACTION_REGISTRATION);
     }
 
@@ -1572,7 +1572,7 @@ public class GSMPhone extends PhoneBase implements SupplementaryServiceSupport {
         }
     }
 
-    private void handleCfuQueryResult(CallForwardInfo[] infos) {
+    public void handleCfuQueryResult(CallForwardInfo[] infos) {
         IccRecords r = mIccRecords.get();
         if (r != null) {
             if (infos == null || infos.length == 0) {
