@@ -69,10 +69,10 @@ public final class GsmMmiCode extends Handler implements MmiCode {
     static final String SC_CLIR    = "31";
 
     // Call Forwarding
-    static final String SC_CFU     = "21";
-    static final String SC_CFB     = "67";
-    static final String SC_CFNRy   = "61";
-    static final String SC_CFNR    = "62";
+    public static final String SC_CFU     = "21";
+    public static final String SC_CFB     = "67";
+    public static final String SC_CFNRy   = "61";
+    public static final String SC_CFNR    = "62";
 
     static final String SC_CF_All = "002";
     static final String SC_CF_All_Conditional = "004";
@@ -81,15 +81,15 @@ public final class GsmMmiCode extends Handler implements MmiCode {
     static final String SC_WAIT     = "43";
 
     // Call Barring
-    static final String SC_BAOC         = "33";
-    static final String SC_BAOIC        = "331";
-    static final String SC_BAOICxH      = "332";
-    static final String SC_BAIC         = "35";
-    static final String SC_BAICr        = "351";
+    public static final String SC_BAOC         = "33";
+    public static final String SC_BAOIC        = "331";
+    public static final String SC_BAOICxH      = "332";
+    public static final String SC_BAIC         = "35";
+    public static final String SC_BAICr        = "351";
 
-    static final String SC_BA_ALL       = "330";
-    static final String SC_BA_MO        = "333";
-    static final String SC_BA_MT        = "353";
+    public static final String SC_BA_ALL       = "330";
+    public static final String SC_BA_MO        = "333";
+    public static final String SC_BA_MT        = "353";
 
     // Supp Service Password registration
     static final String SC_PWD          = "03";
@@ -121,7 +121,7 @@ public final class GsmMmiCode extends Handler implements MmiCode {
     String mAction;              // One of ACTION_*
     String mSc;                  // Service Code
     String mSia, mSib, mSic;       // Service Info a,b,c
-    String mPoundString;         // Entire MMI string up to and including #
+    public String mPoundString;         // Entire MMI string up to and including #
     String mDialingNumber;
     String mPwd;                 // For password registration
 
@@ -131,8 +131,8 @@ public final class GsmMmiCode extends Handler implements MmiCode {
     private boolean mIsUssdRequest;
 
     private boolean mIsCallFwdReg;
-    State mState = State.PENDING;
-    CharSequence mMessage;
+    public State mState = State.PENDING;
+    public CharSequence mMessage;
 
     //***** Class Variables
 
@@ -1000,7 +1000,7 @@ public final class GsmMmiCode extends Handler implements MmiCode {
     }
     //***** Private instance methods
 
-    private CharSequence getErrorMessage(AsyncResult ar) {
+    public CharSequence getErrorMessage(AsyncResult ar) {
 
         if (ar.exception instanceof CommandException) {
             CommandException.Error err = ((CommandException)(ar.exception)).getCommandError();
@@ -1013,7 +1013,7 @@ public final class GsmMmiCode extends Handler implements MmiCode {
         return mContext.getText(com.android.internal.R.string.mmiError);
     }
 
-    private CharSequence getScString() {
+    public CharSequence getScString() {
         if (mSc != null) {
             if (isServiceCodeCallBarring(mSc)) {
                 return mContext.getText(com.android.internal.R.string.BaMmi);
