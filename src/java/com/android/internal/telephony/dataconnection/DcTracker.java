@@ -60,7 +60,9 @@ import com.android.internal.telephony.TelephonyIntents;
 import com.android.internal.telephony.gsm.GSMPhone;
 import com.android.internal.telephony.PhoneConstants;
 import com.android.internal.telephony.RILConstants;
+import com.android.internal.telephony.uicc.IccCardApplicationStatus.AppState;
 import com.android.internal.telephony.uicc.IccRecords;
+import com.android.internal.telephony.uicc.UiccCardApplication;
 import com.android.internal.telephony.uicc.UiccController;
 import com.android.internal.util.AsyncChannel;
 
@@ -75,10 +77,6 @@ import java.util.HashMap;
  */
 public final class DcTracker extends DcTrackerBase {
     protected final String LOG_TAG = "DCT";
-
-    // This change is kept in DcTracker so as to help in enabling
-    // LTE is PDK builds as framework/base is not open in PDK
-    private static final int EVENT_IMSI_READY = DctConstants.BASE + 40;
 
     /**
      * Handles changes to the APN db.
@@ -122,6 +120,7 @@ public final class DcTracker extends DcTrackerBase {
     public DcTracker(PhoneBase p) {
         super(p);
         if (DBG) log("GsmDCT.constructor");
+        p.mCi.registerForOn(this, DctConstants.EVENT_RADIO_ON, null);
         p.mCi.registerForAvailable (this, DctConstants.EVENT_RADIO_AVAILABLE, null);
         p.mCi.registerForOffOrNotAvailable(this, DctConstants.EVENT_RADIO_OFF_OR_NOT_AVAILABLE,
                 null);
@@ -1332,7 +1331,9 @@ public final class DcTracker extends DcTrackerBase {
     }
 
     private void onRecordsLoaded() {
-        if (DBG) log("onRecordsLoaded");
+        if (DBG) log("onRecordsLoaded: createAllApnList");
+        createAllApnList();
+        setInitialAttachApn();
         if (mPhone.mCi.getRadioState().isOn()) {
             if (DBG) log("onRecordsLoaded: notifying data availability");
             notifyOffApnsOfAvailability(Phone.REASON_SIM_LOADED);
@@ -1537,6 +1538,32 @@ public final class DcTracker extends DcTrackerBase {
             if (DBG) log("onRoamingOn: Tear down data connection on roaming.");
             cleanUpAllConnections(true, Phone.REASON_ROAMING_ON);
             notifyOffApnsOfAvailability(Phone.REASON_ROAMING_ON);
+        }
+    }
+
+    private void restoreSavedNetworkSelection() {
+        if (DBG) log("restoreSavedNetworkSelection");
+        if (mUiccApplication != null
+                && mUiccApplication.getState() == AppState.APPSTATE_READY
+                && mPhone.mCi.getRadioState().isOn()) {
+            boolean skipRestoringSelection = mPhone.getContext().getResources().getBoolean(
+                    com.android.internal.R.bool.skip_restoring_network_selection);
+
+            if (!skipRestoringSelection) {
+                // restore the previous network selection.
+                mPhone.restoreSavedNetworkSelection(null);
+            }
+        }
+    }
+
+    @Override
+    protected void onRadioOn() {
+        if (DBG) log("onRadioOn");
+        IccRecords r = mIccRecords.get();
+        if (mUiccApplication != null
+                && r != null && r.getRecordsLoaded()) {
+            createAllApnList();
+            setInitialAttachApn();
         }
     }
 
@@ -1850,8 +1877,8 @@ public final class DcTracker extends DcTrackerBase {
             }
         }
 
-        // If APN is still enabled, try to bring it back up automatically
-        if (mAttached.get() && apnContext.isReady() && retryAfterDisconnected(apnContext)) {
+        // If data is still enabled and allowed, try to bring it back up automatically
+        if (mAttached.get() && isDataAllowed(apnContext) && retryAfterDisconnected(apnContext)) {
             SystemProperties.set(PUPPET_MASTER_RADIO_STRESS_TEST, "false");
             // Wait a bit before trying the next APN, so that
             // we're not tying up the RIL command channel.
@@ -2321,11 +2348,10 @@ public final class DcTracker extends DcTrackerBase {
                 }
                 break;
 
-            case EVENT_IMSI_READY:
-                if (DBG) log("IMSI READY: createAllApnList and set Initial apn");
-                createAllApnList();
-                setInitialAttachApn();
+            case DctConstants.EVENT_SET_INITIAL_ATTACH_DONE:
+                restoreSavedNetworkSelection();
                 break;
+
             default:
                 // handle the message in the super class DataConnectionTracker
                 super.handleMessage(msg);
@@ -2371,26 +2397,32 @@ public final class DcTracker extends DcTrackerBase {
 
     @Override
     protected void onUpdateIcc() {
-        if (mUiccController == null ) {
+        if (mUiccController == null) {
             return;
         }
 
-        IccRecords newIccRecords = mUiccController.getIccRecords(UiccController.APP_FAM_3GPP);
+        UiccCardApplication newUiccApplication =
+                mUiccController.getUiccCardApplication(UiccController.APP_FAM_3GPP);
 
-        IccRecords r = mIccRecords.get();
-        if (r != newIccRecords) {
-            if (r != null) {
+        if (mUiccApplication != newUiccApplication) {
+            if (mUiccApplication != null) {
                 log("Removing stale icc objects.");
-                r.unregisterForRecordsLoaded(this);
-                r.unregisterForImsiReady(this);
-                mIccRecords.set(null);
+                IccRecords r = mIccRecords.get();
+                if (r != null) {
+                    r.unregisterForRecordsLoaded(this);
+                    mIccRecords.set(null);
+                }
+                mUiccApplication = null;
             }
-            if (newIccRecords != null) {
-                log("New records found");
+            if (newUiccApplication != null) {
+                log("New card found");
+                mUiccApplication = newUiccApplication;
+                IccRecords newIccRecords = mUiccApplication.getIccRecords();
                 mIccRecords.set(newIccRecords);
-                newIccRecords.registerForRecordsLoaded(
-                        this, DctConstants.EVENT_RECORDS_LOADED, null);
-                newIccRecords.registerForImsiReady(this, EVENT_IMSI_READY, null);
+                if (newIccRecords != null) {
+                    newIccRecords.registerForRecordsLoaded(
+                            this, DctConstants.EVENT_RECORDS_LOADED, null);
+                }
             }
         }
     }
