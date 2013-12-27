@@ -80,7 +80,7 @@ public class BipGateWay {
             parse("content://telephony/carriers/preferapn");
 
     public static final String BIP_APN_NAME = "BIP APN";
-    public static final int BIP_MAX_APNTYPE = 2;
+    public static final int BIP_MAX_APNTYPE = 1;
     static final String APN_ID = "apn_id";
     static final long TIME_TO_APN_ADD = 200;
     static final long MAX_WAIT_TIME_ADD_APN = 4*TIME_TO_APN_ADD;
@@ -89,7 +89,7 @@ public class BipGateWay {
     private long mNotAvailableRetryTimeElapse;
     private static CatService mCatService;
     private static BipTransport mBipTransport;
-    private static boolean mIsDataCallRetry;
+    private DctConstants.State mApnStateBeforeEnabling;
 
     /*
      * Additional information for Bearer Independent Protocol.
@@ -126,7 +126,6 @@ public class BipGateWay {
     public BipGateWay(CatService catService, CommandsInterface cmdIf, Context context) {
         mCatService = catService;
         mBipTransport = new BipTransport(cmdIf, context);
-        mIsDataCallRetry = false;
     }
 
     public boolean available() {
@@ -372,21 +371,6 @@ public class BipGateWay {
 
             private void onDisconnected() {
                 CatLog.d(this, "onDisconnected");
-                /*
-                 * When we are in the RETRYING state, enabling the default APN trigger
-                 * a first disconnect before the retry tentative. So we ignore the first
-                 * disconnect event in this case.
-                 *
-                 * If a retry is targeted we also ignore the disconnect state. We wait
-                 * for the end of all retries to complete.
-                 */
-                if (mIsDataCallRetry || mDataConnectionTracker.getState(mToBeUsedApnType)
-                        == DctConstants.State.RETRYING) {
-                    CatLog.d(this, "Disconnect due to retrying state");
-                    mIsDataCallRetry = false;
-                    return;
-                }
-
                 Message msg = null;
                 synchronized (mSetupMessageLock) {
                     if (mOngoingSetupMessage == null)
@@ -394,16 +378,24 @@ public class BipGateWay {
                     msg = mOngoingSetupMessage;
                     mOngoingSetupMessage = null;
                 }
-                ConnectionSetupFailedException csfe =
-                        new ConnectionSetupFailedException("Default bearer failed to connect");
-                AsyncResult.forMessage(msg, null, csfe);
-                msg.sendToTarget();
+
+                if (mApnStateBeforeEnabling == DctConstants.State.RETRYING
+                        || mApnStateBeforeEnabling == DctConstants.State.CONNECTING) {
+                    CatLog.d(this, "Ignoring as disconnect can be due to " +
+                            "enableApnType issued in RETRYING or CONNECTING state");
+                    AsyncResult.forMessage(msg, null, null);
+                    msg.sendToTarget();
+                } else {
+                    ConnectionSetupFailedException csfe =
+                            new ConnectionSetupFailedException("Default bearer failed to connect");
+                    AsyncResult.forMessage(msg, null, csfe);
+                    msg.sendToTarget();
+                }
             }
 
             private void onConnected() {
                 CatLog.d(this, "onConnected");
                 Message msg = null;
-                mIsDataCallRetry = false;
                 synchronized (mSetupMessageLock) {
                     if (mOngoingSetupMessage == null)
                         return;
@@ -518,8 +510,6 @@ public class BipGateWay {
             mToBeUsedApnType = PhoneConstants.APN_TYPE_DEFAULT;
 
             /* Enable the default APN */
-            mIsDataCallRetry = mDataConnectionTracker
-                    .getState(mToBeUsedApnType) == DctConstants.State.RETRYING;
             if (handleDataConnection(cmdMsg)) {
                 /* The default APN is ongoing - Check its state */
                 defaultBearerNetInfo = cm.getActiveNetworkInfo();
@@ -654,6 +644,9 @@ public class BipGateWay {
                 throws ConnectionSetupFailedException {
             boolean result = false;
 
+            mApnStateBeforeEnabling = mDataConnectionTracker.getState(mToBeUsedApnType);
+            CatLog.d(this, "apn State before enabling" + mApnStateBeforeEnabling);
+
             int enableStatus = mDataConnectionTracker.enableApnType(mToBeUsedApnType);
 
             if (enableStatus == PhoneConstants.APN_ALREADY_ACTIVE) {
@@ -765,20 +758,12 @@ public class BipGateWay {
             for (NetworkInfo info : networkInfos) {
                 if (info != null && info.isAvailable()) {
                     switch (info.getType()) {
-                        case ConnectivityManager.TYPE_MOBILE_BIP_GPRS1:
+                        case ConnectivityManager.TYPE_MOBILE_CBS:
                             state = info.getState();
                             if (state != NetworkInfo.State.CONNECTING
                                     && state != NetworkInfo.State.SUSPENDED
                                     && state != NetworkInfo.State.CONNECTED) {
-                                    bipApns.add(PhoneConstants.APN_TYPE_BIP_GPRS1);
-                            }
-                            break;
-                        case ConnectivityManager.TYPE_MOBILE_BIP_GPRS2:
-                            state = info.getState();
-                            if (state != NetworkInfo.State.CONNECTING
-                                    && state != NetworkInfo.State.SUSPENDED
-                                    && state != NetworkInfo.State.CONNECTED) {
-                                    bipApns.add(PhoneConstants.APN_TYPE_BIP_GPRS2);
+                                    bipApns.add(PhoneConstants.APN_TYPE_CBS);
                             }
                             break;
                     }
@@ -814,8 +799,7 @@ public class BipGateWay {
                        new String[] {"_id", "mcc", "mnc", "apn", "type"},
                        "numeric = '" + numeric + "'" + " AND  apn = '" +
                        newChannel.networkAccessName + "'" +
-                       " AND (type = '" + PhoneConstants.APN_TYPE_BIP_GPRS1 +
-                       "' OR type = '" + PhoneConstants.APN_TYPE_BIP_GPRS2 + "')",
+                       " AND (type = '" + PhoneConstants.APN_TYPE_CBS + "')",
 
                        null,
                        null
@@ -828,12 +812,12 @@ public class BipGateWay {
                 if (apnCursor.getCount() == 0) {
                     // Case where APN received from Proactive Command don't exist in
                     // APN list yet and add it. Add this in apnlist and tag it as type bip_gprs1.
-                    mToBeUsedApnType = PhoneConstants.APN_TYPE_BIP_GPRS1;
+                    mToBeUsedApnType = PhoneConstants.APN_TYPE_CBS;
 
                     int id = insertAPN(mcc, mnc, BIP_APN_NAME, newChannel.networkAccessName,
                            newChannel.userLogin,
                            newChannel.userPassword,
-                           PhoneConstants.APN_TYPE_BIP_GPRS1);
+                           PhoneConstants.APN_TYPE_CBS);
                 }
                 else if (apnCursor.getCount() > 0) {
                    // Case where APN received from Proactive Command exists in APN list.
@@ -983,7 +967,8 @@ public class BipGateWay {
                 mCatService.sendTerminalResponse(cmdMsg.mCmdDet,
                         ResultCode.NETWORK_CRNTLY_UNABLE_TO_PROCESS, false, 0, resp);
                 cleanupBipChannel(cmdMsg.getChannelSettings().channel);
-            } else {
+            } else if (mDataConnectionTracker
+                    .getState(mToBeUsedApnType) == DctConstants.State.CONNECTED) {
                 ChannelSettings newChannel = cmdMsg.getChannelSettings();
                 CatLog.d(this, "Succeeded to setup data connection for channel "
                         + cmdMsg.getChannelSettings().channel
@@ -998,6 +983,20 @@ public class BipGateWay {
                 mDefaultBearerStateReceiver.setOngoingSetupMessage(resultMsg);
                 if (mDefaultBearerStateReceiver.isOnListening()) {
                     mDefaultBearerStateReceiver.startListening();
+                }
+            } else {
+                CatLog.d(this, "enable data connection again");
+                try {
+                    handleDataConnection(cmdMsg);
+                } catch (ConnectionSetupFailedException csfe) {
+                    CatLog.d(this, "Failed to setup data connection for channel: "
+                            + cmdMsg.getChannelSettings().channel);
+                    ResponseData resp = new OpenChannelResponseData(
+                            cmdMsg.getChannelSettings().bufSize,
+                            null, cmdMsg.getChannelSettings().bearerDescription);
+                    mCatService.sendTerminalResponse(cmdMsg.mCmdDet,
+                            ResultCode.NETWORK_CRNTLY_UNABLE_TO_PROCESS, false, 0, resp);
+                    cleanupBipChannel(cmdMsg.getChannelSettings().channel);
                 }
             }
         }
