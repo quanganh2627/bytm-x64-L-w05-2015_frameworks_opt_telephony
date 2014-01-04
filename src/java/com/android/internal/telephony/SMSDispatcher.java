@@ -127,7 +127,7 @@ public abstract class SMSDispatcher extends Handler {
     protected PhoneBase mPhone;
     protected final Context mContext;
     protected final ContentResolver mResolver;
-    protected final CommandsInterface mCi;
+    protected CommandsInterface mCi;
     protected final TelephonyManager mTelephonyManager;
 
     /** Maximum number of times to retry sending a failed SMS. */
@@ -216,6 +216,7 @@ public abstract class SMSDispatcher extends Handler {
         mPhone = phone;
         mUsageMonitor = phone.mSmsUsageMonitor;
         Rlog.d(TAG, "Active phone changed to " + mPhone.getPhoneName() );
+        mCi = phone.mCi;
     }
 
     /** Unregister for incoming SMS events. */
