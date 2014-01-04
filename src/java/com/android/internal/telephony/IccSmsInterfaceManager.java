@@ -158,7 +158,7 @@ public class IccSmsInterfaceManager extends ISms.Stub {
         }
     }
 
-    protected void updatePhoneObject(PhoneBase phone) {
+    public void updatePhoneObject(PhoneBase phone) {
         mPhone = phone;
         mDispatcher.updatePhoneObject(phone);
     }
