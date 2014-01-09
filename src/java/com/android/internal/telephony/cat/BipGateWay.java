@@ -1167,20 +1167,11 @@ public class BipGateWay {
                     InetAddress addr = null;
                     if (mChannelSettings.protocol == TransportProtocol.TCP_CLIENT_REMOTE) {
                         addr = InetAddress.getByAddress(mChannelSettings.destinationAddress);
-                        SSLContext sslContext = SSLContext.getInstance("TLS");
-                        sslContext.init(new KeyManager[0],
-                               new TrustManager[] {new SCWSTrustManager()},
-                               null);
-                        SSLSocket socket = (SSLSocket)sslContext.getSocketFactory().createSocket();
-                        mSocket = socket;
-                        socket.connect(new InetSocketAddress(addr, mChannelSettings.port));
-                        socket.startHandshake();
                     } else {
                         addr = InetAddress.getLocalHost();
-                        mSocket = new Socket(addr, mChannelSettings.port);
                     }
-
-                    mSocket = new Socket(addr, mChannelSettings.port);
+                    mSocket = new Socket();
+                    mSocket.connect(new InetSocketAddress(addr, mChannelSettings.port), 10000);
 
                     CatLog.d(this, "Connected client socket to "
                             + addr.getHostAddress() + ":"
