@@ -154,6 +154,7 @@ public class GsmInboundSmsHandler extends InboundSmsHandler {
         mCellBroadcastHandler.dispose();
         mCellBroadcastHandler = GsmCellBroadcastHandler
                 .makeGsmCellBroadcastHandler(mContext, phone);
+        phone.mCi.setOnNewGsmSms(getHandler(), EVENT_NEW_SMS, null);
     }
 
     /**
