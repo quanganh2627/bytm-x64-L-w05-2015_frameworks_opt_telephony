@@ -16,8 +16,6 @@
 
 package com.android.internal.telephony;
 
-import com.android.internal.telephony.sip.SipPhone;
-
 import android.content.Context;
 import android.media.AudioManager;
 import android.os.AsyncResult;
@@ -29,6 +27,10 @@ import android.telephony.PhoneNumberUtils;
 import android.telephony.PhoneStateListener;
 import android.telephony.ServiceState;
 import android.telephony.Rlog;
+
+import com.android.internal.telephony.Connection.VideoMode;
+import com.android.internal.telephony.ims.ImsPhoneBase;
+import com.android.internal.telephony.sip.SipPhone;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -80,6 +82,7 @@ public final class CallManager {
     private static final int EVENT_SUPP_SERVICE_FAILED = 117;
     private static final int EVENT_SERVICE_STATE_CHANGED = 118;
     private static final int EVENT_POST_DIAL_CHARACTER = 119;
+    private static final int EVENT_CALL_VIDEO_MODE_CHANGED = 120;
 
     // Singleton instance
     private static final CallManager INSTANCE = new CallManager();
@@ -166,6 +169,9 @@ public final class CallManager {
     = new RegistrantList();
 
     protected final RegistrantList mPostDialCharacterRegistrants
+    = new RegistrantList();
+
+    protected final RegistrantList mCallVideoModeChangedRegistrants
     = new RegistrantList();
 
     private CallManager() {
@@ -468,6 +474,12 @@ public final class CallManager {
             phone.registerForCallWaiting(mHandler, EVENT_CALL_WAITING, null);
             phone.registerForEcmTimerReset(mHandler, EVENT_ECM_TIMER_RESET, null);
         }
+
+        // for events supported only by IMS phone
+        if (phone.getPhoneType() == PhoneConstants.PHONE_TYPE_IMS) {
+            ((ImsPhoneBase) phone).registerForCallVideoModeUpdate(mHandler,
+                    EVENT_CALL_VIDEO_MODE_CHANGED, null);
+        }
     }
 
     private void unregisterForPhoneStates(Phone phone) {
@@ -501,6 +513,11 @@ public final class CallManager {
             phone.unregisterForCallWaiting(mHandler);
             phone.unregisterForEcmTimerReset(mHandler);
         }
+
+        // for events supported only by IMS phone
+        if (phone.getPhoneType() == PhoneConstants.PHONE_TYPE_IMS) {
+            ((ImsPhoneBase) phone).unregisterForCallVideoModeUpdate(mHandler);
+        }
     }
 
     /**
@@ -517,6 +534,23 @@ public final class CallManager {
      * @exception CallStateException when call is not ringing or waiting
      */
     public void acceptCall(Call ringingCall) throws CallStateException {
+        acceptCall(ringingCall, VideoMode.NONE);
+    }
+
+    /**
+     * Answers a ringing or waiting call, specifying a desired video mode.
+     *
+     * Active call, if any, go on hold.
+     * If active call can't be held, i.e., a background call of the same channel exists,
+     * the active call will be hang up.
+     *
+     * Answering occurs asynchronously, and final notification occurs via
+     * {@link #registerForPreciseCallStateChanged(android.os.Handler, int,
+     * java.lang.Object) registerForPreciseCallStateChanged()}.
+     *
+     * @exception CallStateException when call is not ringing or waiting
+     */
+    public void acceptCall(Call ringingCall, VideoMode videoMode) throws CallStateException {
         Phone ringingPhone = ringingCall.getPhone();
 
         if (VDBG) {
@@ -559,10 +593,99 @@ public final class CallManager {
             }
         }
 
-        ringingPhone.acceptCall();
+        if (videoMode == VideoMode.NONE) {
+            ringingPhone.acceptCall();
+        } else if (ringingPhone.getPhoneType() == PhoneConstants.PHONE_TYPE_IMS) {
+            ((ImsPhoneBase) ringingPhone).acceptCall(videoMode);
+        } else {
+            throw new CallStateException("Only IMS phone supports video mode");
+        }
 
         if (VDBG) {
             Rlog.d(LOG_TAG, "End acceptCall(" +ringingCall + ")");
+            Rlog.d(LOG_TAG, toString());
+        }
+    }
+
+    /**
+     * Acknowledges a video mode change on the specified call.
+     *
+     * Client should register to video mode changes through
+     * {@link #registerForCallVideoModeUpdate(android.os.Handler, int,
+     * java.lang.Object) registerForCallVideoModeUpdate()}.
+     *
+     * @exception CallStateException when call is not
+     * foreground or if the phone is not IMS
+     */
+    public void acknowledgeCallVideoMode(Call foregroundCall, VideoMode videoMode)
+            throws CallStateException {
+        Phone activePhone = foregroundCall.getPhone();
+
+        if (VDBG) {
+            Rlog.d(LOG_TAG, "acknowledgeCallVideoMode(" + foregroundCall
+                    + " from " + foregroundCall.getPhone() + ")");
+            Rlog.d(LOG_TAG, toString());
+        }
+
+        if (activePhone.getPhoneType() != PhoneConstants.PHONE_TYPE_IMS) {
+            Rlog.e(LOG_TAG, "Only IMS phone supports this operation");
+            throw new CallStateException("Only IMS phone supports this operation");
+        }
+
+        if (hasActiveFgCall()) {
+            if (foregroundCall != getActiveFgCall()) {
+                Rlog.e(LOG_TAG, "Only foreground call can be acknowledged");
+                throw new CallStateException("Only foreground call can be acknowledged");
+            }
+        } else {
+            throw new CallStateException("No foreground call to acknowledge");
+        }
+
+        ((ImsPhoneBase) activePhone).acknowledgeVideoMode(videoMode);
+
+        if (VDBG) {
+            Rlog.d(LOG_TAG, "End acknowledgeCallVideoMode(" + foregroundCall + ")");
+            Rlog.d(LOG_TAG, toString());
+        }
+    }
+
+    /**
+     * Updates the video mode of a foreground call.
+     *
+     * If not active call, no operation performed.
+     * Only IMS phone supports this operation.
+     *
+     * @exception CallStateException when call is not
+     * foreground or if the phone is not IMS
+     */
+    public void updateCallVideoMode(Call foregroundCall, VideoMode videoMode)
+            throws CallStateException {
+        Phone activePhone = foregroundCall.getPhone();
+
+        if (VDBG) {
+            Rlog.d(LOG_TAG, "updateCall(" + foregroundCall + " from "
+                    + foregroundCall.getPhone() + ")");
+            Rlog.d(LOG_TAG, toString());
+        }
+
+        if (activePhone.getPhoneType() != PhoneConstants.PHONE_TYPE_IMS) {
+            Rlog.e(LOG_TAG, "Only IMS phone supports this operation");
+            throw new CallStateException("Only IMS phone supports this operation");
+        }
+
+        if (hasActiveFgCall()) {
+            if (foregroundCall != getActiveFgCall()) {
+                Rlog.e(LOG_TAG, "Only foreground call can be updated");
+                throw new CallStateException("Only foreground call can be updated");
+            }
+        } else {
+            throw new CallStateException("No foreground call to update");
+        }
+
+        ((ImsPhoneBase) activePhone).updateVideoMode(videoMode);
+
+        if (VDBG) {
+            Rlog.d(LOG_TAG, "End updateCall(" + foregroundCall + ")");
             Rlog.d(LOG_TAG, toString());
         }
     }
@@ -742,11 +865,26 @@ public final class CallManager {
      * handled asynchronously.
      */
     public Connection dial(Phone phone, String dialString) throws CallStateException {
+        return dial(phone, dialString, VideoMode.NONE);
+    }
+
+    /**
+     * Initiate a new voice or video connection. This happens asynchronously, so you
+     * cannot assume the audio path is connected (or a call index has been
+     * assigned) until PhoneStateChanged notification has occurred.
+     *
+     * @exception CallStateException if a new outgoing call is not currently
+     * possible because no more call slots exist or a call exists that is
+     * dialing, alerting, ringing, or waiting.  Other errors are
+     * handled asynchronously.
+     */
+    public Connection dial(Phone phone, String dialString, VideoMode videoMode)
+            throws CallStateException {
         Phone basePhone = getPhoneBase(phone);
         Connection result;
 
         if (VDBG) {
-            Rlog.d(LOG_TAG, " dial(" + basePhone + ", "+ dialString + ")");
+            Rlog.d(LOG_TAG, " dial(" + basePhone + ", "+ dialString + ", " + videoMode + ")");
             Rlog.d(LOG_TAG, toString());
         }
 
@@ -782,8 +920,11 @@ public final class CallManager {
                 }
             }
         }
-
-        result = basePhone.dial(dialString);
+        if (basePhone.getPhoneType() == PhoneConstants.PHONE_TYPE_IMS) {
+            result = ((ImsPhoneBase) basePhone).dial(dialString, videoMode);
+        } else {
+            result = basePhone.dial(dialString);
+        }
 
         if (VDBG) {
             Rlog.d(LOG_TAG, "End dial(" + basePhone + ", "+ dialString + ")");
@@ -803,7 +944,26 @@ public final class CallManager {
      * dialing, alerting, ringing, or waiting.  Other errors are
      * handled asynchronously.
      */
-    public Connection dial(Phone phone, String dialString, UUSInfo uusInfo) throws CallStateException {
+    public Connection dial(Phone phone, String dialString, UUSInfo uusInfo)
+            throws CallStateException {
+        return phone.dial(dialString, uusInfo);
+    }
+
+    /**
+     * Initiate a new voice or video connection. This happens asynchronously, so you
+     * cannot assume the audio path is connected (or a call index has been
+     * assigned) until PhoneStateChanged notification has occurred.
+     *
+     * @exception CallStateException if a new outgoing call is not currently
+     * possible because no more call slots exist or a call exists that is
+     * dialing, alerting, ringing, or waiting.  Other errors are
+     * handled asynchronously.
+     */
+    public Connection dial(Phone phone, String dialString, UUSInfo uusInfo, VideoMode videoMode)
+            throws CallStateException {
+        if (phone.getPhoneType() == PhoneConstants.PHONE_TYPE_IMS) {
+            return ((ImsPhoneBase) phone).dial(dialString, videoMode, uusInfo);
+        }
         return phone.dial(dialString, uusInfo);
     }
 
@@ -1380,6 +1540,24 @@ public final class CallManager {
         mCallWaitingRegistrants.remove(h);
     }
 
+    /**
+     * Register for notifications when IMS call video mode changes
+     *
+     * @param h Handler that receives the notification message.
+     * @param what User-defined message code.
+     * @param obj User object.
+     */
+    public void registerForCallVideoModeUpdate(Handler h, int what, Object obj){
+        mCallVideoModeChangedRegistrants.addUnique(h, what, obj);
+    }
+
+    /**
+     * Unregister for notifications when IMS call video mode changes
+     * @param h Handler to be removed from the registrant list.
+     */
+    public void unregisterForCallVideoModeUpdate(Handler h){
+        mCallVideoModeChangedRegistrants.remove(h);
+    }
 
     /**
      * Register for signal information notifications from the network.
@@ -1845,6 +2023,11 @@ public final class CallManager {
                         notifyMsg.arg1 = msg.arg1;
                         notifyMsg.sendToTarget();
                     }
+                    break;
+                case EVENT_CALL_VIDEO_MODE_CHANGED:
+                    if (VDBG) Rlog.d(LOG_TAG, " handleMessage (EVENT_CALL_VIDEO_MODE_CHANGED) "
+                            + ((AsyncResult) msg.obj).result);
+                    mCallVideoModeChangedRegistrants.notifyRegistrants((AsyncResult) msg.obj);
                     break;
             }
         }
