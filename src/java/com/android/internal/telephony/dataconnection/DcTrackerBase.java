@@ -57,7 +57,6 @@ import com.android.internal.telephony.Phone;
 import com.android.internal.telephony.PhoneBase;
 import com.android.internal.telephony.PhoneConstants;
 import com.android.internal.telephony.uicc.IccRecords;
-import com.android.internal.telephony.uicc.UiccCardApplication;
 import com.android.internal.telephony.uicc.UiccController;
 import com.android.internal.util.AsyncChannel;
 import com.android.internal.util.ArrayUtils;
@@ -193,7 +192,6 @@ public abstract class DcTrackerBase extends Handler {
     // member variables
     protected PhoneBase mPhone;
     protected UiccController mUiccController;
-    protected UiccCardApplication mUiccApplication = null;
     protected AtomicReference<IccRecords> mIccRecords = new AtomicReference<IccRecords>();
     protected DctConstants.Activity mActivity = DctConstants.Activity.NONE;
     protected DctConstants.State mState = DctConstants.State.IDLE;
@@ -690,7 +688,6 @@ public abstract class DcTrackerBase extends Handler {
     protected abstract boolean onTrySetupData(String reason);
     protected abstract void onRoamingOff();
     protected abstract void onRoamingOn();
-    protected abstract void onRadioOn();
     protected abstract void onRadioAvailable();
     protected abstract void onRadioOffOrNotAvailable();
     protected abstract void onDataSetupComplete(AsyncResult ar);
@@ -737,10 +734,6 @@ public abstract class DcTrackerBase extends Handler {
 
             case DctConstants.EVENT_ROAMING_ON:
                 onRoamingOn();
-                break;
-
-            case DctConstants.EVENT_RADIO_ON:
-                onRadioOn();
                 break;
 
             case DctConstants.EVENT_RADIO_AVAILABLE:
@@ -1747,16 +1740,12 @@ public abstract class DcTrackerBase extends Handler {
 
         if (initialAttachApnSetting == null) {
             if (DBG) log("setInitialAttachApn: X There in no available apn");
-
-            mPhone.mCi.setInitialAttachApn(null, null, -1, null, null,
-                    obtainMessage(DctConstants.EVENT_SET_INITIAL_ATTACH_DONE));
         } else {
             if (DBG) log("setInitialAttachApn: X selected Apn=" + initialAttachApnSetting);
 
             mPhone.mCi.setInitialAttachApn(initialAttachApnSetting.apn,
                     initialAttachApnSetting.protocol, initialAttachApnSetting.authType,
-                    initialAttachApnSetting.user, initialAttachApnSetting.password,
-                    obtainMessage(DctConstants.EVENT_SET_INITIAL_ATTACH_DONE));
+                    initialAttachApnSetting.user, initialAttachApnSetting.password, null);
         }
     }
 
