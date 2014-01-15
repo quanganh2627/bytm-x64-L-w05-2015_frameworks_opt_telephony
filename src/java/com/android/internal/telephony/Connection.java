@@ -72,6 +72,23 @@ public abstract class Connection {
         ERROR_UNSPECIFIED
     }
 
+    public enum VideoMode {
+        NONE,
+        RECEIVE_ONLY,
+        SEND_ONLY,
+        SEND_RECEIVE
+    }
+
+    protected VideoMode mVideoMode = VideoMode.NONE;
+
+    public VideoMode getVideoMode() {
+        return mVideoMode;
+    }
+
+    public void setVideoMode(VideoMode videoMode) {
+        mVideoMode = videoMode;
+    }
+
     Object mUserData;
 
     /* Instance Methods */
@@ -306,7 +323,8 @@ public abstract class Connection {
         }
         str.append(" incoming: " + isIncoming())
                 .append(" state: " + getState())
-                .append(" post dial state: " + getPostDialState());
+                .append(" post dial state: " + getPostDialState())
+                .append(" video mode:" + getVideoMode());
         return str.toString();
     }
 }

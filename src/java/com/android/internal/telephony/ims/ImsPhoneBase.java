@@ -21,10 +21,15 @@ import android.os.Handler;
 import android.os.Message;
 import android.util.Log;
 
+import com.android.internal.telephony.CallStateException;
 import com.android.internal.telephony.CommandsInterface;
+import com.android.internal.telephony.Connection;
+import com.android.internal.telephony.Connection.VideoMode;
 import com.android.internal.telephony.Phone;
 import com.android.internal.telephony.PhoneBase;
+import com.android.internal.telephony.PhoneConstants;
 import com.android.internal.telephony.PhoneNotifier;
+import com.android.internal.telephony.UUSInfo;
 
 public abstract class ImsPhoneBase extends PhoneBase {
 
@@ -53,6 +58,10 @@ public abstract class ImsPhoneBase extends PhoneBase {
 
     public Phone getParentPhone() {
         return mParentPhone;
+    }
+
+    public int getPhoneType() {
+        return PhoneConstants.PHONE_TYPE_IMS;
     }
 
     /**
@@ -92,4 +101,20 @@ public abstract class ImsPhoneBase extends PhoneBase {
      * @param response to send back when the ACR status is written
      */
     public abstract void setACR(boolean setState, Message onComplete);
+
+    public abstract Connection dial(String dialString, VideoMode videoMode)
+            throws CallStateException;
+
+    public abstract Connection dial(String dialString, VideoMode videoMode, UUSInfo uusInfo)
+            throws CallStateException;
+
+    public abstract void acceptCall(VideoMode videoMode) throws CallStateException;
+
+    public abstract void updateVideoMode(VideoMode videoMode) throws CallStateException;
+
+    public abstract void acknowledgeVideoMode(VideoMode videoMode) throws CallStateException;
+
+    public abstract void registerForCallVideoModeUpdate(Handler h, int what, Object obj);
+
+    public abstract void unregisterForCallVideoModeUpdate(Handler h);
 }
