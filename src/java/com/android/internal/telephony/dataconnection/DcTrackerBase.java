@@ -1740,6 +1740,7 @@ public abstract class DcTrackerBase extends Handler {
 
         if (initialAttachApnSetting == null) {
             if (DBG) log("setInitialAttachApn: X There in no available apn");
+            mPhone.mCi.setInitialAttachApn(null, null, -1, null, null, null);
         } else {
             if (DBG) log("setInitialAttachApn: X selected Apn=" + initialAttachApnSetting);
 
