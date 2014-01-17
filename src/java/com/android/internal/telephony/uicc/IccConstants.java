@@ -41,6 +41,7 @@ public interface IccConstants {
     static final int EF_MSISDN = 0x6f40;
     static final int EF_SPDI = 0x6fcd;
     static final int EF_SST = 0x6f38;
+    static final int EF_EST = 0x6f56;
     static final int EF_CFIS = 0x6FCB;
     static final int EF_IMG = 0x4f20;
 
