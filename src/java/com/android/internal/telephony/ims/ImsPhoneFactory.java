@@ -31,6 +31,8 @@ public class ImsPhoneFactory {
 
     private static final String LOG_TAG = "ImsPhoneFactory";
 
+    private static ImsPhoneBase sImsPhone = null;
+
     /**
      * Makes an {@link ImsPhone} object.
      *
@@ -42,7 +44,6 @@ public class ImsPhoneFactory {
      */
     public static ImsPhoneBase makePhone(Context context,
             PhoneNotifier notifier, PhoneBase parentPhone, boolean unitTestMode) {
-        ImsPhoneBase ret = null;
         ImsPhoneCreator creator = null;
 
         if (parentPhone != null) {
@@ -63,7 +64,7 @@ public class ImsPhoneFactory {
                 creator = (ImsPhoneCreator) classLoader.loadClass(className)
                         .getConstructor().newInstance();
 
-                ret = creator.createImsPhone(context, notifier, parentPhone);
+                sImsPhone = creator.createImsPhone(context, notifier, parentPhone);
             } catch (Exception ex) {
                 Log.e(LOG_TAG, "Could not instantiate IMS phone: "
                         + ex);
@@ -71,6 +72,10 @@ public class ImsPhoneFactory {
         } else {
             Log.e(LOG_TAG, "parentPhone is null");
         }
-        return ret;
+        return sImsPhone;
+    }
+
+    public static ImsPhoneBase getImsPhone() {
+        return sImsPhone;
     }
 }
