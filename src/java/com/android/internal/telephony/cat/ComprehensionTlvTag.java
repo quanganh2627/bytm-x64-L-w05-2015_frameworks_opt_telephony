@@ -29,6 +29,9 @@ public enum ComprehensionTlvTag {
     DURATION(0x04),
     ALPHA_ID(0x05),
     ADDRESS(0x06),
+    CAPABILITY_CONFIG(0x07),
+    SUBADDRESS(0x08),
+    SS_STRING(0x09),
     USSD_STRING(0x0a),
     SMS_TPDU(0x0b),
     TEXT_STRING(0x0d),
@@ -37,11 +40,15 @@ public enum ComprehensionTlvTag {
     ITEM_ID(0x10),
     RESPONSE_LENGTH(0x11),
     FILE_LIST(0x12),
+    LOCATION_INFORMATION(0x13),
     HELP_REQUEST(0x15),
     DEFAULT_TEXT(0x17),
     EVENT_LIST(0x19),
+    TRANSACTION_IDENTIFIER(0x1c),
     ICON_ID(0x1e),
     ITEM_ICON_ID_LIST(0x1f),
+    CALL_CONTROL(0x27),
+    BC_REPEAT(0x2a),
     IMMEDIATE_RESPONSE(0x2b),
     LANGUAGE(0x2d),
     URL(0x31),
@@ -56,8 +63,10 @@ public enum ComprehensionTlvTag {
     OTHER_ADDRESS(0x3e),
     NETWORK_ACCESS_NAME(0x47),
     TEXT_ATTRIBUTE(0x50),
-    ACTIVATE_DESCRIPTOR(0x7b),
-    NETWORK_SEARCH_MODE(0x65);
+    NETWORK_SEARCH_MODE(0x65),
+    IMPU_LIST(0x77),
+    IMS_STATUS_CODE(0x78),
+    ACTIVATE_DESCRIPTOR(0x7b);
 
     private int mValue;
 
