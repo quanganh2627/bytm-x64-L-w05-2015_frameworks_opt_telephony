@@ -168,6 +168,7 @@ public final class DcTracker extends DcTrackerBase {
         cm.supplyMessenger(ConnectivityManager.TYPE_MOBILE_FOTA, new Messenger(this));
         cm.supplyMessenger(ConnectivityManager.TYPE_MOBILE_IMS, new Messenger(this));
         cm.supplyMessenger(ConnectivityManager.TYPE_MOBILE_CBS, new Messenger(this));
+        cm.supplyMessenger(ConnectivityManager.TYPE_MOBILE_EMERGENCY, new Messenger(this));
     }
 
     @Override
@@ -279,6 +280,12 @@ public final class DcTracker extends DcTrackerBase {
                 break;
             case ConnectivityManager.TYPE_MOBILE_IA:
                 apnContext = addApnContext(PhoneConstants.APN_TYPE_IA, networkConfig);
+                break;
+            case ConnectivityManager.TYPE_MOBILE_XCAP:
+                apnContext = addApnContext(PhoneConstants.APN_TYPE_XCAP, networkConfig);
+                break;
+            case ConnectivityManager.TYPE_MOBILE_EMERGENCY:
+                apnContext = addApnContext(PhoneConstants.APN_TYPE_EMERGENCY, networkConfig);
                 break;
             default:
                 log("initApnContexts: skipping unknown type=" + networkConfig.type);
@@ -2370,6 +2377,10 @@ public final class DcTracker extends DcTrackerBase {
             return RILConstants.DATA_PROFILE_DEFAULT; // DEFAULT for now
         } else if (TextUtils.equals(apnType, PhoneConstants.APN_TYPE_DUN)) {
             return RILConstants.DATA_PROFILE_TETHERED;
+        } else if (TextUtils.equals(apnType, PhoneConstants.APN_TYPE_XCAP)) {
+            return RILConstants.DATA_PROFILE_XCAP;
+        } else if (TextUtils.equals(apnType, PhoneConstants.APN_TYPE_EMERGENCY)) {
+            return (RILConstants.DATA_PROFILE_EMERGENCY);
         } else {
             return RILConstants.DATA_PROFILE_DEFAULT;
         }
