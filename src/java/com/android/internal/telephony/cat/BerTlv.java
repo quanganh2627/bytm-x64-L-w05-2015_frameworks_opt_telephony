@@ -33,6 +33,8 @@ class BerTlv {
     public static final int BER_UNKNOWN_TAG             = 0x00;
     public static final int BER_PROACTIVE_COMMAND_TAG   = 0xd0;
     public static final int BER_MENU_SELECTION_TAG      = 0xd3;
+    public static final int BER_CALL_CONTROL_TAG        = 0xd4;
+    public static final int BER_MO_SMS_CONTROL_TAG      = 0xd5;
     public static final int BER_EVENT_DOWNLOAD_TAG      = 0xd6;
 
     private BerTlv(int tag, List<ComprehensionTlv> ctlvs, boolean lengthValid) {

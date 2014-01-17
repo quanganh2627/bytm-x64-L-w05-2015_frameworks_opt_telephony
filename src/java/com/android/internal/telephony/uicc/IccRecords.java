@@ -505,6 +505,10 @@ public abstract class IccRecords extends Handler implements IccConstants {
         return null;
     }
 
+    public UsimServiceTable getUsimEnabledServiceTable() {
+        return null;
+    }
+
     public void dump(FileDescriptor fd, PrintWriter pw, String[] args) {
         pw.println("IccRecords: " + this);
         pw.println(" mDestroyed=" + mDestroyed);
