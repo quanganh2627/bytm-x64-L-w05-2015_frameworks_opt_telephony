@@ -41,4 +41,11 @@ public interface IsimRecords {
      * @return an array of IMS public user identity strings, or null if not available
      */
     String[] getIsimImpu();
+
+    /**
+     * Return an array of IMS P-CSCF server list (PCSCF).
+     * Returns null if the PCSCF hasn't been loaded or isn't present on the ISIM.
+     * @return an array of IMS P-CSCF server list strings, or null if not available
+     */
+    String[] getPcscf();
 }
