@@ -676,13 +676,11 @@ public class GsmServiceStateTracker extends ServiceStateTracker {
                     mNewSS.setState(regCodeToServiceState(regState));
                     mNewSS.setRilVoiceRadioTechnology(type);
 
-                    boolean isVoiceCapable = mPhoneBase.getContext().getResources()
-                            .getBoolean(com.android.internal.R.bool.config_voice_capable);
                     if ((regState == ServiceState.RIL_REG_STATE_DENIED_EMERGENCY_CALL_ENABLED
                          || regState == ServiceState.RIL_REG_STATE_NOT_REG_EMERGENCY_CALL_ENABLED
                          || regState == ServiceState.RIL_REG_STATE_SEARCHING_EMERGENCY_CALL_ENABLED
                          || regState == ServiceState.RIL_REG_STATE_UNKNOWN_EMERGENCY_CALL_ENABLED)
-                         && isVoiceCapable) {
+                         && mVoiceCapable) {
                         mEmergencyOnly = true;
                     } else {
                         mEmergencyOnly = false;
@@ -750,13 +748,6 @@ public class GsmServiceStateTracker extends ServiceStateTracker {
 
         } catch (RuntimeException ex) {
             loge("Exception while polling service state. Probably malformed RIL response." + ex);
-        }
-
-        final boolean voice_capable = mPhone.getContext().getResources().getBoolean(
-                com.android.internal.R.bool.config_voice_capable);
-        if ((!voice_capable || mNewSS.getState() != ServiceState.STATE_IN_SERVICE)
-                && mNewSS.getDataRegState() == ServiceState.STATE_IN_SERVICE) {
-             mNewSS.setState(mNewSS.getDataRegState());
         }
 
         mPollingContext[0]--;
