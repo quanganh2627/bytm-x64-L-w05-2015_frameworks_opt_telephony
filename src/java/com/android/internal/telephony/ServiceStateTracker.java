@@ -260,7 +260,9 @@ public abstract class ServiceStateTracker extends Handler {
      * data only devices, to fix that use DataRegState.
      */
     protected void useDataRegStateForDataOnlyDevices() {
-        if (mVoiceCapable == false) {
+        if ((mVoiceCapable == false
+                || mNewSS.getVoiceRegState() != ServiceState.STATE_IN_SERVICE)
+                && mNewSS.getDataRegState() == ServiceState.STATE_IN_SERVICE) {
             if (DBG) {
                 log("useDataRegStateForDataOnlyDevice: VoiceRegState=" + mNewSS.getVoiceRegState()
                     + " DataRegState=" + mNewSS.getDataRegState());
