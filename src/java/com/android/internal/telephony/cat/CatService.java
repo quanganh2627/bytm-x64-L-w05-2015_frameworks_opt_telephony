@@ -57,7 +57,10 @@ import com.android.internal.telephony.cat.Duration.TimeUnit;
 import com.android.internal.telephony.cat.InterfaceTransportLevel.TransportProtocol;
 import com.android.internal.telephony.ITelephony;
 
+import com.intel.nfc.NfcAdapterVendorExt;
+
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.util.List;
 import java.util.Locale;
 
@@ -388,9 +391,21 @@ public class CatService extends Handler implements AppInterface {
                 sendTerminalResponse(cmdParams.mCmdDet, ResultCode.OK, false, 0, null);
                 break;
             case ACTIVATE:
-                 sendTerminalResponse(cmdParams.mCmdDet,
-                         ResultCode.BEYOND_TERMINAL_CAPABILITY, false, 0, null);
-                 return;
+                ResultCode result = ResultCode.BEYOND_TERMINAL_CAPABILITY;
+
+                // Target - '01' = UICC-CLF interface according to TS 102 613
+                if ((((ActivateParams) cmdParams).target & 0x01) == 0x01) {
+                   try {
+                       NfcAdapterVendorExt.activeSwp();
+                       result = ResultCode.OK;
+                   } catch (RemoteException e) {
+                       result = ResultCode.TERMINAL_CRNTLY_UNABLE_TO_PROCESS;
+                   } catch (RuntimeException e) {
+                       result = ResultCode.TERMINAL_CRNTLY_UNABLE_TO_PROCESS;
+                   }
+                }
+                sendTerminalResponse(cmdParams.mCmdDet, result, false, 0, null);
+                return;
             case OPEN_CHANNEL:
                 ChannelSettings newChannel = cmdMsg.getChannelSettings();
                 if (newChannel == null) {
