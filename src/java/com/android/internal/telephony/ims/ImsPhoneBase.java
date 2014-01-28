@@ -17,6 +17,7 @@
 package com.android.internal.telephony.ims;
 
 import android.content.Context;
+import android.os.Handler;
 import android.os.Message;
 import android.util.Log;
 
@@ -64,4 +65,15 @@ public abstract class ImsPhoneBase extends PhoneBase {
      * Deactivate the emergency pdp
      */
     public abstract void stopEmergencyConnectivity(Message response);
+
+    /**
+     * To be notified or not about the changes on the IMS Registration status
+     */
+    public abstract void registerForImsRegStatusChanges(Handler h, int what, Object obj);
+    public abstract void unregisterForImsRegStatusChanges(Handler h);
+
+    /**
+     * To know the actual IMS Registration status
+     */
+    public abstract int getImsRegStatus();
 }
