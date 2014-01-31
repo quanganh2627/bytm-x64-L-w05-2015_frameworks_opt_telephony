@@ -58,7 +58,7 @@ public class ComprehensionTlv {
         mCr = cr;
         mLength = length;
         mValueIndex = valueIndex;
-        mRawValue = data;
+        mRawValue = data == null ? new byte[0] : data;
     }
 
     public int getTag() {
