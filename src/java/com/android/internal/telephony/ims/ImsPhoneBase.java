@@ -74,6 +74,9 @@ public abstract class ImsPhoneBase extends PhoneBase {
 
     /**
      * To know the actual IMS Registration status
+     * Possible values are :
+     *    - ServiceState.STATE_IN_SERVICE when IMS is connected
+     *    - ServiceState.STATE_OUT_OF_SERVICE otherwise
      */
     public abstract int getImsRegStatus();
 }
