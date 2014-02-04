@@ -58,6 +58,8 @@ import com.android.internal.telephony.DctConstants;
 import com.android.internal.telephony.EventLogTags;
 import com.android.internal.telephony.TelephonyIntents;
 import com.android.internal.telephony.gsm.GSMPhone;
+import com.android.internal.telephony.ims.ImsPhoneBase;
+import com.android.internal.telephony.ims.ImsPhoneFactory;
 import com.android.internal.telephony.PhoneConstants;
 import com.android.internal.telephony.RILConstants;
 import com.android.internal.telephony.uicc.IccCardApplicationStatus.AppState;
@@ -77,6 +79,8 @@ import java.util.HashMap;
  */
 public final class DcTracker extends DcTrackerBase {
     protected final String LOG_TAG = "DCT";
+
+    private static final int TEARDOWN_TIMER_MILLIS = 10 * 1000;
 
     /**
      * Handles changes to the APN db.
@@ -746,14 +750,47 @@ public final class DcTracker extends DcTrackerBase {
 
             /* Keep active the APN used to handle IMS, even if the user has explicitly decided
              * to disable the data */
-            if (reason == Phone.REASON_DATA_DISABLED
-                    && mIsImsSupported && apnContext.isHandlingIMS()
+            if (mIsImsSupported && apnContext.isHandlingIMS()
                     && apnContext.getState() == DctConstants.State.CONNECTED) {
-                if (DBG) log("The current APN used to handle IMS will not be deactivated."
-                        + " apnContext=" + apnContext);
-                continue;
-            }
 
+                if (reason == Phone.REASON_DATA_DISABLED) {
+                    if (DBG) log("The current APN used to handle IMS will not be deactivated."
+                            + " apnContext=" + apnContext);
+
+                    // skipping APN disconnection in this case
+                    continue;
+                } else if (reason == Phone.REASON_RADIO_TURNED_OFF) {
+
+                    ImsPhoneBase imsPhoneBase = ImsPhoneFactory.getImsPhone();
+
+                    if (imsPhoneBase != null) {
+                        if (DBG) log("Registering for IMS status changes");
+                        imsPhoneBase.registerForImsRegStatusChanges(this,
+                                DctConstants.EVENT_IMS_SERVICE_STATE, apnContext);
+
+                        if (imsPhoneBase.getImsRegStatus() == ServiceState.STATE_IN_SERVICE) {
+                            if (DBG) {
+                                log("Delaying IMS APN deactivation. Deactivation watchdog will "
+                                        + "fire in " + TEARDOWN_TIMER_MILLIS + " ms");
+                            }
+                            Message msg = obtainMessage(DctConstants.EVENT_DELAYED_TEARDOWN_TIMER,
+                                    apnContext);
+                            sendMessageDelayed(msg, TEARDOWN_TIMER_MILLIS);
+
+                             // Delaying APN disconnection in this case
+                            continue;
+                        } else {
+                            if (DBG) {
+                                log("Ims not in service. Unregistering for state changes "
+                                        + "and continue APN deactivation");
+                            }
+                            imsPhoneBase.unregisterForImsRegStatusChanges(this);
+                        }
+                    } else {
+                        loge("imsPhone is null");
+                    }
+                }
+            }
             apnContext.setReason(reason);
             cleanUpConnection(tearDown, apnContext);
         }
@@ -2368,6 +2405,44 @@ public final class DcTracker extends DcTrackerBase {
 
             case DctConstants.EVENT_SET_INITIAL_ATTACH_DONE:
                 restoreSavedNetworkSelection();
+                break;
+
+            case DctConstants.EVENT_DELAYED_TEARDOWN_TIMER:
+                {
+                if (DBG) log("Deactivating now IMS APN because TEARDOWN watchdog fired");
+                ImsPhoneBase imsPhoneBase = ImsPhoneFactory.getImsPhone();
+                ApnContext apnContext = (ApnContext) msg.obj;
+                if ((imsPhoneBase != null) && (apnContext != null)) {
+                    apnContext.setReason(Phone.REASON_RADIO_TURNED_OFF);
+                    cleanUpConnection(true, apnContext);
+                    imsPhoneBase.unregisterForImsRegStatusChanges(this);
+                } else {
+                    if (imsPhoneBase == null) loge("imsPhone is null");
+                    if (apnContext == null) loge("Can not retrieve ApnContext from msg");
+                    loge("Unable to deactivate IMS APN");
+                }
+                }
+                break;
+
+            case DctConstants.EVENT_IMS_SERVICE_STATE:
+                {
+                if (DBG) log("Got confirmation from imsstack it is unregistered from "
+                        + "IMS network. Deactivating IMS APN now");
+                removeMessages(DctConstants.EVENT_DELAYED_TEARDOWN_TIMER);
+                ImsPhoneBase imsPhoneBase = ImsPhoneFactory.getImsPhone();
+                AsyncResult ar = (AsyncResult) msg.obj;
+                ApnContext apn = (ApnContext) ar.userObj;
+                if ((ar != null) && (apn != null) && (imsPhoneBase != null)) {
+                    apn.setReason(Phone.REASON_RADIO_TURNED_OFF);
+                    cleanUpConnection(true, apn);
+                    imsPhoneBase.unregisterForImsRegStatusChanges(this);
+                } else {
+                    if (imsPhoneBase == null) loge("imsPhone is null");
+                    if (ar == null) loge("Can not retrieve async msg");
+                    if (apn == null) loge("Can not retrieve ApnContext from msg");
+                    loge("Unable to deactivate IMS APN");
+                }
+                }
                 break;
 
             default:
