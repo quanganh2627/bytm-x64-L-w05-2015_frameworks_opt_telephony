@@ -1207,6 +1207,13 @@ public class SmsMessage extends SmsMessageBase {
     }
 
     /**
+     * Returns the Recipient Address.
+     */
+    public GsmSmsAddress getRecipientAddress() {
+        return mRecipientAddress;
+    }
+
+    /**
      * {@inheritDoc}
      */
     @Override

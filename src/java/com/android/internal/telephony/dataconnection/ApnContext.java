@@ -24,6 +24,7 @@ import android.telephony.Rlog;
 import com.android.internal.R;
 import com.android.internal.telephony.DctConstants;
 import com.android.internal.telephony.Phone;
+import com.android.internal.telephony.PhoneConstants;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -235,6 +236,12 @@ public class ApnContext {
         } else {
             return false;
         }
+    }
+
+    public boolean isHandlingIMS() {
+        return (mApnType == PhoneConstants.APN_TYPE_IMS
+                || mApnType == PhoneConstants.APN_TYPE_XCAP
+                || mApnType == PhoneConstants.APN_TYPE_EMERGENCY);
     }
 
     @Override

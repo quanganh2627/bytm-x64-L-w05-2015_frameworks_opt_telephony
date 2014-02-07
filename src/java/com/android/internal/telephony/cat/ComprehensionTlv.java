@@ -17,7 +17,10 @@
 package com.android.internal.telephony.cat;
 
 import android.telephony.Rlog;
+import android.util.Log;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -29,13 +32,14 @@ import java.util.List;
  *
  * {@hide}
  */
-class ComprehensionTlv {
+public class ComprehensionTlv {
     private static final String LOG_TAG = "ComprehensionTlv";
     private int mTag;
     private boolean mCr;
     private int mLength;
     private int mValueIndex;
     private byte[] mRawValue;
+    private ArrayList<ComprehensionTlv> mChilds = new ArrayList<ComprehensionTlv>();
 
     /**
      * Constructor. Private on purpose. Use
@@ -199,5 +203,115 @@ class ComprehensionTlv {
                     "IndexOutOfBoundsException" + " startIndex=" + startIndex +
                     " curIndex=" + curIndex + " endIndex=" + endIndex);
         }
+    }
+
+    /**
+     * Add a child element to the element.
+     * This allows to build a tree of TLV for encoding.
+     *
+     * @param child the child element to add.
+     */
+    public void addChild(ComprehensionTlv child) {
+        mChilds.add(child);
+    }
+
+    /**
+     * Encode TLV data.
+     *
+     * @return the encoded byte array.
+     */
+    public byte[] encode() {
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        encode(buf);
+        return buf.toByteArray();
+    }
+
+    /**
+     * Encode TLV data into a Byte Array stream.
+     *
+     * @param buf the ByteArrayOutputStream to encode into.
+     *
+     * @return the encoded length.
+     */
+    public int encode(ByteArrayOutputStream buf) {
+        int ret = 0;
+        try {
+            if (mChilds.isEmpty()) {
+                buf.write(mTag);
+                ret += encodeLength(buf, mLength);
+                buf.write(mRawValue);
+                ret += mLength;
+            } else {
+                ByteArrayOutputStream innerBuf = new ByteArrayOutputStream();
+                int innerLength = 0;
+                for (ComprehensionTlv tlv : mChilds) {
+                    innerLength += 1; // Take tag into account.
+                    innerLength += tlv.encode(innerBuf);
+                }
+                buf.write(mTag);
+                ret += encodeLength(buf, innerLength);
+                buf.write(innerBuf.toByteArray());
+                ret += innerLength;
+            }
+        } catch (IOException e) {
+            Log.e(LOG_TAG, "Error encoding TLV " + e);
+        }
+        return ret;
+    }
+
+    /**
+     * Encode the length into an output byte stream
+     *
+     * @param buf the output stream on which to encode the length.
+     * @param length the length value to encode.
+     * @return the number of bytes the encoded length field occupies.
+     */
+    private int encodeLength(ByteArrayOutputStream buf, int length) {
+        int ret = 0;
+        if (length < 127) {
+            buf.write(length);
+            ret = 1;
+        } else if (length < 255) {
+            buf.write((byte) 0x81);
+            buf.write((byte) length);
+            ret = 2;
+        } else if (length < 65535) {
+            buf.write((byte) 0x82);
+            buf.write((byte) ((length >> 8) & 0xff));
+            buf.write((byte) (length & 0xff));
+            ret = 3;
+        } else if (length < 16777215) {
+            buf.write((byte) 0x83);
+            buf.write((byte) ((length >> 16) & 0xff));
+            buf.write((byte) ((length >> 8) & 0xff));
+            buf.write((byte) (length & 0xff));
+            ret = 4;
+        }
+        return ret;
+    }
+
+    public static ComprehensionTlv createLocationInfoTlv(byte[] operBytes, int cellId, int lac,
+            boolean extendedCellId) {
+
+        byte[] locData = new byte[7 + (extendedCellId ? 2 : 0)];
+        int i;
+        for (i = 0; i < 3; i++) {
+            locData[i] = operBytes[i];
+        }
+        locData[i++] = (byte) (lac >> 8);
+        locData[i++] = (byte) (lac);
+        if (extendedCellId) {
+            locData[i++] = (byte) (cellId >> 24);
+            locData[i++] = (byte) (cellId >> 16);
+            locData[i++] = (byte) (cellId >> 8);
+            locData[i++] = (byte) (cellId);
+        } else {
+            locData[i++] = (byte) (cellId >> 8);
+            locData[i++] = (byte) (cellId);
+        }
+
+        return new ComprehensionTlv(
+            ComprehensionTlvTag.LOCATION_INFORMATION.value(),
+            true, locData.length, locData, 0);
     }
 }

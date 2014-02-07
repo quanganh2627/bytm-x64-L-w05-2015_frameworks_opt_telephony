@@ -59,6 +59,7 @@ import com.android.internal.telephony.Connection;
 import com.android.internal.telephony.IccPhoneBookInterfaceManager;
 import com.android.internal.telephony.IccSmsInterfaceManager;
 import com.android.internal.telephony.MmiCode;
+import com.android.internal.telephony.SupplementaryServiceSupport;
 import com.android.internal.telephony.OperatorInfo;
 import com.android.internal.telephony.Phone;
 import com.android.internal.telephony.PhoneBase;
@@ -87,7 +88,7 @@ import java.util.List;
 /**
  * {@hide}
  */
-public class GSMPhone extends PhoneBase {
+public class GSMPhone extends PhoneBase implements SupplementaryServiceSupport {
     // NOTE that LOG_TAG here is "GSM", which means that log messages
     // from this file will go into the radio log rather than the main
     // log.  (Use "adb logcat -b radio" to see them.)
@@ -725,7 +726,8 @@ public class GSMPhone extends PhoneBase {
         return result;
     }
 
-    boolean isInCall() {
+    @Override
+    public boolean isInCall() {
         GsmCall.State foregroundCallState = getForegroundCall().getState();
         GsmCall.State backgroundCallState = getBackgroundCall().getState();
         GsmCall.State ringingCallState = getRingingCall().getState();
@@ -755,7 +757,7 @@ public class GSMPhone extends PhoneBase {
         // Only look at the Network portion for mmi
         String networkPortion = PhoneNumberUtils.extractNetworkPortionAlt(newDialString);
         GsmMmiCode mmi =
-                GsmMmiCode.newFromDialString(networkPortion, this, mUiccApplication.get());
+                GsmMmiCode.newFromDialString(networkPortion, this, mUiccApplication.get(), this);
         if (LOCAL_DEBUG) Rlog.d(LOG_TAG,
                                "dialing w/ mmi '" + mmi + "'...");
 
@@ -785,7 +787,8 @@ public class GSMPhone extends PhoneBase {
 
     @Override
     public boolean handlePinMmi(String dialString) {
-        GsmMmiCode mmi = GsmMmiCode.newFromDialString(dialString, this, mUiccApplication.get());
+        GsmMmiCode mmi = GsmMmiCode.newFromDialString(dialString,
+                this, mUiccApplication.get(), this);
 
         if (mmi != null && mmi.isPinPukCommand()) {
             mPendingMMIs.add(mmi);
@@ -799,7 +802,8 @@ public class GSMPhone extends PhoneBase {
 
     @Override
     public void sendUssdResponse(String ussdMessge) {
-        GsmMmiCode mmi = GsmMmiCode.newFromUssdUserInput(ussdMessge, this, mUiccApplication.get());
+        GsmMmiCode mmi = GsmMmiCode.newFromUssdUserInput(ussdMessge,
+                this, mUiccApplication.get(), this);
         mPendingMMIs.add(mmi);
         mMmiRegistrants.notifyRegistrants(new AsyncResult(null, mmi, null));
         mmi.sendUssd(ussdMessge);
@@ -972,7 +976,7 @@ public class GSMPhone extends PhoneBase {
         }
     }
 
-    private boolean isValidCommandInterfaceCFReason (int commandInterfaceCFReason) {
+    public boolean isValidCommandInterfaceCFReason(int commandInterfaceCFReason) {
         switch (commandInterfaceCFReason) {
         case CF_REASON_UNCONDITIONAL:
         case CF_REASON_BUSY:
@@ -986,7 +990,7 @@ public class GSMPhone extends PhoneBase {
         }
     }
 
-    private boolean isValidCommandInterfaceCFAction (int commandInterfaceCFAction) {
+    public boolean isValidCommandInterfaceCFAction(int commandInterfaceCFAction) {
         switch (commandInterfaceCFAction) {
         case CF_ACTION_DISABLE:
         case CF_ACTION_ENABLE:
@@ -998,7 +1002,7 @@ public class GSMPhone extends PhoneBase {
         }
     }
 
-    protected  boolean isCfEnable(int action) {
+    public  boolean isCfEnable(int action) {
         return (action == CF_ACTION_ENABLE) || (action == CF_ACTION_REGISTRATION);
     }
 
@@ -1176,8 +1180,7 @@ public class GSMPhone extends PhoneBase {
      * registrants that it is complete.
      * @param mmi MMI that is done
      */
-    /*package*/ void
-    onMMIDone(GsmMmiCode mmi) {
+    public void onMmiDone(GsmMmiCode mmi) {
         /* Only notify complete if it's on the pending list.
          * Otherwise, it's already been handled (eg, previously canceled).
          * The exception is cancellation of an incoming USSD-REQUEST, which is
@@ -1239,7 +1242,7 @@ public class GSMPhone extends PhoneBase {
                 mmi = GsmMmiCode.newNetworkInitiatedUssd(ussdMessage,
                                                    isUssdRequest,
                                                    GSMPhone.this,
-                                                   mUiccApplication.get());
+                                                   mUiccApplication.get(), this);
                 onNetworkInitiatedUssd(mmi);
             }
         }
@@ -1569,7 +1572,7 @@ public class GSMPhone extends PhoneBase {
         }
     }
 
-    private void handleCfuQueryResult(CallForwardInfo[] infos) {
+    public void handleCfuQueryResult(CallForwardInfo[] infos) {
         IccRecords r = mIccRecords.get();
         if (r != null) {
             if (infos == null || infos.length == 0) {

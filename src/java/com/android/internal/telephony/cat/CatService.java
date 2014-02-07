@@ -22,12 +22,11 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
-import android.content.res.Resources;
 import android.content.res.Configuration;
+import android.content.res.Resources;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.NetworkUtils;
-import android.telephony.ServiceState;
 import android.content.res.Resources.NotFoundException;
 import android.os.AsyncResult;
 import android.os.Handler;
@@ -35,6 +34,7 @@ import android.os.HandlerThread;
 import android.os.Message;
 import android.os.RemoteException;
 import android.os.SystemProperties;
+import android.telephony.PhoneNumberUtils;
 import android.telephony.ServiceState;
 
 import com.android.internal.telephony.CommandsInterface;
@@ -49,6 +49,8 @@ import com.android.internal.telephony.uicc.IccRecords;
 import com.android.internal.telephony.uicc.IccUtils;
 import com.android.internal.telephony.uicc.UiccCard;
 import com.android.internal.telephony.uicc.UiccCardApplication;
+import com.android.internal.telephony.uicc.UsimServiceTable;
+import com.android.internal.telephony.uicc.UsimServiceTable.UsimService;
 
 import com.android.internal.telephony.cat.BearerDescription.BearerType;
 import com.android.internal.telephony.cat.CatCmdMessage.ChannelSettings;
@@ -58,6 +60,8 @@ import com.android.internal.telephony.cat.InterfaceTransportLevel.TransportProto
 import com.android.internal.telephony.ITelephony;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -84,7 +88,7 @@ class RilMessage {
  *
  * {@hide}
  */
-public class CatService extends Handler implements AppInterface {
+public class CatService extends Handler implements AppInterface, ImsStkInterface {
     private static final boolean DBG = false;
 
     // Class members
@@ -133,6 +137,9 @@ public class CatService extends Handler implements AppInterface {
     static final int NETWORK_SELECTION_MODE_AUTOMATIC      = 0x01;
 
     private int mCurrentNetworkSelectionMode;
+
+    private boolean mIsImsCallControlEnabled;
+    private boolean mIsMoSmsControlEnabled;
 
     static final String STK_DEFAULT = "Default Message";
 
@@ -769,6 +776,150 @@ public class CatService extends Handler implements AppInterface {
         mCmdIf.sendEnvelope(hexString, null);
     }
 
+    private void eventDownload(int event, int sourceId, int destinationId,
+            List<ComprehensionTlv> additionalTlvs, boolean oneShot) {
+        CatLog.d(this, "eventDownload()  " + event + "  " + sourceId + " ");
+        // Check if the SIM have subscribed to this event using setup eventlist
+        boolean allowed = isEventDownloadActive((byte) event);
+        if (!allowed) {
+            CatLog.d(this, "(U)SIM has not subscribed for event: " + event);
+            return;
+        }
+
+        if (oneShot) {
+            updateEventList((byte)event, (byte) EventCode.INVALID_EVENT.value());
+        }
+
+        // tag
+        ComprehensionTlv tlv = new ComprehensionTlv(BerTlv.BER_EVENT_DOWNLOAD_TAG, true,
+                0, null, 0);
+
+        byte[] events = new byte[1];
+        events[0] = (byte) event;
+        ComprehensionTlv evtTlv = new ComprehensionTlv(ComprehensionTlvTag.EVENT_LIST.value(),
+                true, events.length, events, 0);
+        tlv.addChild(evtTlv);
+
+        byte[] devIds = new byte[2];
+        devIds[0] = (byte) sourceId;
+        devIds[1] = (byte) destinationId;
+        ComprehensionTlv devIdsTlv = new ComprehensionTlv(
+                ComprehensionTlvTag.DEVICE_IDENTITIES.value(), true, devIds.length, devIds, 0);
+        tlv.addChild(devIdsTlv);
+
+        for (ComprehensionTlv additional : additionalTlvs) {
+            tlv.addChild(additional);
+        }
+
+        byte[] rawData = tlv.encode();
+
+        String hexString = IccUtils.bytesToHexString(rawData);
+
+        mCmdIf.sendEnvelope(hexString, null);
+    }
+
+    private void sendEmptyResponse(Message message) {
+        AsyncResult.forMessage(message);
+        message.sendToTarget();
+    }
+
+    public void onCallControl(String address, String operator, int lac, int cellId,
+                boolean extendedCellId, Message response) {
+        CatLog.d(this, "callControl() " + address + " oper: " + operator + " lac: " + lac
+                + " cellId: " + cellId + " extendedCellId: " + extendedCellId);
+        if (!mIsImsCallControlEnabled) {
+            CatLog.d(this, "(U)SIM has not enabled call control");
+            sendEmptyResponse(response);
+            return;
+        }
+        byte[] operBytes = null;
+        operBytes = IccUtils.hexStringToBytes(operator);
+        if (operBytes == null) {
+            CatLog.d(this, "Invalid mnc/mcc passed");
+            sendEmptyResponse(response);
+            return;
+        }
+
+        ComprehensionTlv tlv = new ComprehensionTlv(BerTlv.BER_CALL_CONTROL_TAG, true, 0,
+                null, 0);
+
+        byte[] identData = new byte[2];
+        identData[0] = (byte) CatService.DEV_ID_TERMINAL;
+        identData[1] = (byte) CatService.DEV_ID_UICC;
+        tlv.addChild(new ComprehensionTlv(
+                ComprehensionTlvTag.DEVICE_IDENTITIES.value(), true, 2, identData, 0));
+
+        if (PhoneNumberUtils.isUriNumber(address)) {
+            tlv.addChild(new ComprehensionTlv(ComprehensionTlvTag.URL.value(), true,
+                    address.getBytes().length, address.getBytes(), 0));
+        } else {
+            byte[] bcdNumber = PhoneNumberUtils.numberToCalledPartyBCD(address);
+            if (bcdNumber == null) {
+                bcdNumber = new byte[1];
+            }
+            tlv.addChild(new ComprehensionTlv(
+                    ComprehensionTlvTag.ADDRESS.value(), true, bcdNumber.length, bcdNumber, 0));
+        }
+
+        tlv.addChild(ComprehensionTlv.createLocationInfoTlv(
+                operBytes, cellId, lac, extendedCellId));
+
+        byte[] rawData = tlv.encode();
+
+        String hexString = IccUtils.bytesToHexString(rawData);
+
+        mCmdIf.sendEnvelope(hexString, response);
+    }
+
+    public void onSmsControl(String address, String smsc, String operator, int lac, int cellId,
+            boolean extendedCellId, Message response) {
+        CatLog.d(this, "SMSControl() " + address + " ");
+        if (!mIsMoSmsControlEnabled) {
+            CatLog.d(this, "(U)SIM has not enabled SMS control");
+            sendEmptyResponse(response);
+            return;
+        }
+        byte[] operBytes = null;
+        operBytes = IccUtils.hexStringToBytes(operator);
+        if (operBytes == null) {
+            CatLog.d(this, "Invalid mnc/mcc passed");
+            sendEmptyResponse(response);
+            return;
+        }
+
+        ComprehensionTlv tlv = new ComprehensionTlv(BerTlv.BER_MO_SMS_CONTROL_TAG, true, 0,
+                null, 0);
+
+        byte[] identData = new byte[2];
+        identData[0] = (byte) CatService.DEV_ID_TERMINAL;
+        identData[1] = (byte) CatService.DEV_ID_UICC;
+        tlv.addChild(new ComprehensionTlv(
+                ComprehensionTlvTag.DEVICE_IDENTITIES.value(), true, 2, identData, 0));
+
+        byte[] bcdNumber = PhoneNumberUtils.numberToCalledPartyBCD(address);
+        if (bcdNumber == null) {
+            bcdNumber = new byte[1];
+        }
+        tlv.addChild(new ComprehensionTlv(
+                ComprehensionTlvTag.ADDRESS.value(), true, bcdNumber.length, bcdNumber, 0));
+
+        bcdNumber = PhoneNumberUtils.numberToCalledPartyBCD(smsc);
+        if (bcdNumber == null) {
+            bcdNumber = new byte[1];
+        }
+        tlv.addChild(new ComprehensionTlv(
+                ComprehensionTlvTag.ADDRESS.value(), true, bcdNumber.length, bcdNumber, 0));
+
+        tlv.addChild(ComprehensionTlv.createLocationInfoTlv(
+                operBytes, cellId, lac, extendedCellId));
+
+        byte[] rawData = tlv.encode();
+
+        String hexString = IccUtils.bytesToHexString(rawData);
+
+        mCmdIf.sendEnvelope(hexString, response);
+    }
+
     @Override
     public void handleMessage(Message msg) {
 
@@ -795,6 +946,16 @@ public class CatService extends Handler implements AppInterface {
             mMsgDecoder.sendStartDecodingMessageParams(new RilMessage(msg.what, null));
             break;
         case MSG_ID_ICC_RECORDS_LOADED:
+            UsimServiceTable sst = mIccRecords.getUsimServiceTable();
+            UsimServiceTable est = mIccRecords.getUsimEnabledServiceTable();
+            if (sst != null && est != null) {
+                mIsImsCallControlEnabled = sst.isAvailable(
+                        UsimService.IMS_COMMUNICATION_CONTROL_BY_USIM)
+                        && est.isAvailable(UsimService.IMS_COMMUNICATION_CONTROL_BY_USIM);
+                mIsMoSmsControlEnabled = sst.isAvailable(
+                        UsimService.MO_SMS_CONTROL_BY_USIM)
+                        && est.isAvailable(UsimService.MO_SMS_CONTROL_BY_USIM);
+            }
             break;
         case MSG_ID_RIL_MSG_DECODED:
             handleRilMsg((RilMessage) msg.obj);
@@ -1012,9 +1173,9 @@ public class CatService extends Handler implements AppInterface {
             if ((mCurrentNetworkSelectionMode ^ mode) != 0) {
                 mCurrentNetworkSelectionMode = mode;
                 byte[] additionalInfo = new byte[3];
-                additionalInfo[0] = (byte)ComprehensionTlvTag.NETWORK_SEARCH_MODE.value();
+                additionalInfo[0] = (byte) ComprehensionTlvTag.NETWORK_SEARCH_MODE.value();
                 additionalInfo[1] = 0x01;
-                additionalInfo[2] = (byte)mode;
+                additionalInfo[2] = (byte) mode;
 
                 CatLog.d(this, "Network selection mode is " + (isManual ? "MANUAL" : "AUTOMATIC"));
 
@@ -1024,5 +1185,107 @@ public class CatService extends Handler implements AppInterface {
         } else {
             PhoneFactory.getDefaultPhone().unregisterForServiceStateChanged(this);
         }
+    }
+
+    public void onMtCall(String address, int tid) {
+        if (isEventDownloadActive(EventCode.MT_CALL.value())) {
+            CatLog.d(this, "onMtCall  " + address + " tid: " + tid);
+            ArrayList<ComprehensionTlv> additionalTlv = new ArrayList<ComprehensionTlv>();
+            byte[] tidBuffer = new byte[1];
+            tidBuffer[0] = (byte)tid;
+            ComprehensionTlv addrTlv;
+            ComprehensionTlv tidTlv = new ComprehensionTlv(
+                    ComprehensionTlvTag.TRANSACTION_IDENTIFIER.value(),
+                    true, 1, tidBuffer, 0);
+            additionalTlv.add(tidTlv);
+            if (PhoneNumberUtils.isUriNumber(address)) {
+                addrTlv = new ComprehensionTlv(ComprehensionTlvTag.URL.value(),
+                        true, address.getBytes().length, address.getBytes(), 0);
+            } else {
+                byte[] addr = PhoneNumberUtils.numberToCalledPartyBCD(address);
+                if (addr != null) {
+                    addrTlv = new ComprehensionTlv(ComprehensionTlvTag.ADDRESS.value(),
+                            true, addr.length, addr, 0);
+                    additionalTlv.add(addrTlv);
+                } else {
+                    CatLog.d(this, "Error encoding phone number: " + address);
+                    // Don't send incomplete event to SIM.
+                    return;
+                }
+            }
+
+            eventDownload(EventCode.MT_CALL.value(), CatService.DEV_ID_NETWORK,
+                    CatService.DEV_ID_UICC, additionalTlv, false);
+        }
+    }
+
+    public void onCallConnected(int tid, boolean isMt) {
+        if (isEventDownloadActive(EventCode.CALL_CONNECTED.value())) {
+            CatLog.d(this, "onCallConnected " + tid + " isMt: " + isMt);
+            byte[] additionalInfo = new byte[3];
+            int index = 0;
+            additionalInfo[index++] = (byte) ComprehensionTlvTag.TRANSACTION_IDENTIFIER.value();
+            additionalInfo[index++] = 0x01;
+            additionalInfo[index++] = (byte) tid;
+
+            if (isMt) {
+                onEventDownload(new CatEventMessage(
+                        EventCode.CALL_CONNECTED.value(), additionalInfo, false));
+            } else {
+                onEventDownload(new CatEventMessage(
+                        EventCode.CALL_CONNECTED.value(), CatService.DEV_ID_NETWORK,
+                        CatService.DEV_ID_UICC, additionalInfo, false));
+            }
+        }
+    }
+
+    public void onCallDisconnected(int tid, boolean isLocal) {
+        if (isEventDownloadActive(EventCode.CALL_DISCONNECTED.value())) {
+            CatLog.d(this, "onCallDisconnected " + tid + " isLocal: " + isLocal);
+            byte[] additionalInfo = new byte[3];
+            int index = 0;
+            additionalInfo[index++] = (byte) ComprehensionTlvTag.TRANSACTION_IDENTIFIER.value();
+            additionalInfo[index++] = 0x01;
+            additionalInfo[index++] = (byte)tid;
+
+            if (isLocal) {
+                onEventDownload(new CatEventMessage(
+                        EventCode.CALL_DISCONNECTED.value(), additionalInfo, false));
+            } else {
+                onEventDownload(new CatEventMessage(
+                        EventCode.CALL_DISCONNECTED.value(), CatService.DEV_ID_NETWORK,
+                        CatService.DEV_ID_UICC, additionalInfo, false));
+            }
+        }
+    }
+
+    public void onImsRegistered(String[] impuList, String statusCode) {
+        if (isEventDownloadActive(EventCode.IMS_REGISTRATION.value())) {
+            CatLog.d(this, "onImsRegistered " + impuList + " status: " + statusCode);
+            ArrayList<ComprehensionTlv> additionalTlv = new ArrayList<ComprehensionTlv>();
+            if (statusCode.length() == 0) {
+                ComprehensionTlv impuListTlv = new ComprehensionTlv(
+                        ComprehensionTlvTag.IMPU_LIST.value(), true, 0, null, 0);
+                for (String impu : impuList) {
+                    ComprehensionTlv impuTlv = new ComprehensionTlv(
+                            ComprehensionTlvTag.URL.value(), true, impu.length(),
+                            impu.getBytes(), 0);
+                    impuListTlv.addChild(impuTlv);
+                }
+                additionalTlv.add(impuListTlv);
+            } else {
+                ComprehensionTlv imsStatusTlv = new ComprehensionTlv(
+                        ComprehensionTlvTag.IMS_STATUS_CODE.value(), true,
+                        statusCode.length(), statusCode.getBytes(), 0);
+                additionalTlv.add(imsStatusTlv);
+            }
+
+            eventDownload(EventCode.IMS_REGISTRATION.value(), CatService.DEV_ID_NETWORK,
+                    CatService.DEV_ID_UICC, additionalTlv, false);
+        }
+    }
+
+    public boolean isCallControlEnabled() {
+        return mIsImsCallControlEnabled;
     }
 }

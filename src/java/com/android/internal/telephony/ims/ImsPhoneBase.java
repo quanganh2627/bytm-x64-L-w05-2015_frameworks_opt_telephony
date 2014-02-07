@@ -17,6 +17,7 @@
 package com.android.internal.telephony.ims;
 
 import android.content.Context;
+import android.os.Message;
 import android.util.Log;
 
 import com.android.internal.telephony.CommandsInterface;
@@ -52,4 +53,15 @@ public abstract class ImsPhoneBase extends PhoneBase {
     public Phone getParentPhone() {
         return mParentPhone;
     }
+
+    /**
+     * Activate the emergency pdp
+     * @param response to send back when the pdp is activated
+     */
+    public abstract void startEmergencyConnectivity(Message response);
+
+    /**
+     * Deactivate the emergency pdp
+     */
+    public abstract void stopEmergencyConnectivity(Message response);
 }

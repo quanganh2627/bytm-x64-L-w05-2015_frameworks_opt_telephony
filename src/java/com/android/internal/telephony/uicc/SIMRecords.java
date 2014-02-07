@@ -92,6 +92,7 @@ public class SIMRecords extends IccRecords {
     String mPnnHomeName = null;
 
     UsimServiceTable mUsimServiceTable;
+    UsimServiceTable mUsimEnabledServiceTable;
 
     @Override
     public String toString() {
@@ -169,6 +170,7 @@ public class SIMRecords extends IccRecords {
     private static final int EVENT_ICC_LOCKED = 35;
     private static final int EVENT_GET_PL_DONE = 36;
     private static final int EVENT_GET_LI_DONE = 37;
+    private static final int EVENT_GET_EST_DONE = 38;
 
     // Lookup table for carriers known to produce SIMs which incorrectly indicate MNC length.
 
@@ -1220,6 +1222,20 @@ public class SIMRecords extends IccRecords {
                     if (DBG) log("EF_LI=" + IccUtils.bytesToHexString(mEFli));
                 }
                 break;
+            case EVENT_GET_EST_DONE:
+                isRecordLoadResponse = true;
+
+                ar = (AsyncResult)msg.obj;
+                data = (byte[])ar.result;
+
+                if (ar.exception != null) {
+                    loge("EST not found: " + ar.exception);
+                    break;
+                }
+
+                mUsimEnabledServiceTable = new UsimServiceTable(data);
+                if (DBG) log("EST: " + mUsimEnabledServiceTable);
+                break;
 
             default:
                 super.handleMessage(msg);   // IccRecords handles generic record load responses
@@ -1558,6 +1574,9 @@ public class SIMRecords extends IccRecords {
         mRecordsToLoad++;
 
         mFh.loadEFTransparent(EF_SST, obtainMessage(EVENT_GET_SST_DONE));
+        mRecordsToLoad++;
+
+        mFh.loadEFTransparent(EF_EST, obtainMessage(EVENT_GET_EST_DONE));
         mRecordsToLoad++;
 
         mFh.loadEFTransparent(EF_INFO_CPHS, obtainMessage(EVENT_GET_INFO_CPHS_DONE));

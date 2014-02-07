@@ -51,6 +51,8 @@ public final class IsimUiccRecords extends IccRecords implements IsimRecords {
     private String mIsimImpi;               // IMS private user identity
     private String mIsimDomain;             // IMS home network domain name
     private String[] mIsimImpu;             // IMS public user identity(s)
+    private String mIsimSmss;               // TP-Message-Reference
+    private String[] mIsimPcscf;            // IMS servers
 
     private static final int TAG_ISIM_VALUE = 0x80;     // From 3GPP TS 31.103
 
@@ -122,6 +124,14 @@ public final class IsimUiccRecords extends IccRecords implements IsimRecords {
                 IccRecords.EVENT_GET_ICC_RECORD_DONE, new EfIsimDomainLoaded()));
         mRecordsToLoad++;
 
+        mFh.loadEFTransparent(EF_SMSS, obtainMessage(
+                IccRecords.EVENT_GET_ICC_RECORD_DONE, new EfIsimSmsStatusLoaded()));
+        mRecordsToLoad++;
+
+        mFh.loadEFTransparent(EF_PCSCF, obtainMessage(
+                IccRecords.EVENT_GET_ICC_RECORD_DONE, new EfIsimPCSCFLoaded()));
+        mRecordsToLoad++;
+
         log("fetchIsimRecords " + mRecordsToLoad);
     }
 
@@ -168,6 +178,34 @@ public final class IsimUiccRecords extends IccRecords implements IsimRecords {
             byte[] data = (byte[]) ar.result;
             mIsimDomain = isimTlvToString(data);
             if (DUMP_RECORDS) log("EF_DOMAIN=" + mIsimDomain);
+        }
+    }
+
+    private class EfIsimPCSCFLoaded implements IccRecords.IccRecordLoaded {
+        public String getEfName() {
+            return "EF_PCSCF";
+        }
+        public void onRecordLoaded(AsyncResult ar) {
+            ArrayList<byte[]> pcscfList = (ArrayList<byte[]>) ar.result;
+            if (DBG) log("EF_PCSCF record count: " + pcscfList.size());
+            mIsimPcscf = new String[pcscfList.size()];
+            int i = 0;
+            for (byte[] pcscf : pcscfList) {
+                String str = isimTlvToString(pcscf);
+                if (DUMP_RECORDS) log("EF_PCSCF[" + i + "]=" + str);
+                mIsimPcscf[i++] = str;
+            }
+        }
+    }
+
+    private class EfIsimSmsStatusLoaded implements IccRecords.IccRecordLoaded {
+        public String getEfName() {
+            return "EF_SMSS";
+        }
+        public void onRecordLoaded(AsyncResult ar) {
+            byte[] data = (byte[]) ar.result;
+            mIsimSmss = isimTlvToString(data);
+            if (DUMP_RECORDS) log("EF_SMSS=" + mIsimSmss);
         }
     }
 
@@ -237,6 +275,11 @@ public final class IsimUiccRecords extends IccRecords implements IsimRecords {
     @Override
     public String[] getIsimImpu() {
         return (mIsimImpu != null) ? mIsimImpu.clone() : null;
+    }
+
+    @Override
+    public String[] getPcscf() {
+        return (mIsimPcscf != null) ? mIsimPcscf.clone() : null;
     }
 
     @Override

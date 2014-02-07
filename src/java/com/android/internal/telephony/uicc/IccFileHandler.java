@@ -517,6 +517,7 @@ public abstract class IccFileHandler extends Handler implements IccConstants {
         case EF_EXT1:
         case EF_EXT2:
         case EF_EXT3:
+        case EF_PSISMSC:
             return MF_SIM + DF_TELECOM;
 
         case EF_ICCID:
