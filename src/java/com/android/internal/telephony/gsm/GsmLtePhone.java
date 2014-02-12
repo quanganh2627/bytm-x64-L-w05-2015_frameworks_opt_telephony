@@ -17,6 +17,7 @@
 package com.android.internal.telephony.gsm;
 
 import android.content.Context;
+import android.os.Message;
 import android.util.Log;
 
 import com.android.internal.telephony.CommandsInterface;
@@ -40,6 +41,11 @@ public class GsmLtePhone extends GSMPhone {
     @Override
     protected void initSst() {
         mSST = new GsmLteServiceStateTracker(this);
+    }
+
+    @Override
+    public void requestIsimAuthentication(String nonce, Message result) {
+        mCi.requestIsimAuthentication(nonce, result);
     }
 
     @Override

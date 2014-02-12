@@ -56,9 +56,6 @@ public final class GsmSMSDispatcher extends SMSDispatcher {
             new AtomicReference<UiccCardApplication>();
     private GsmInboundSmsHandler mGsmInboundSmsHandler;
 
-    /** Status report received */
-    private static final int EVENT_NEW_SMS_STATUS_REPORT = 100;
-
     public GsmSMSDispatcher(PhoneBase phone, SmsUsageMonitor usageMonitor,
             ImsSMSDispatcher imsSMSDispatcher,
             GsmInboundSmsHandler gsmInboundSmsHandler) {

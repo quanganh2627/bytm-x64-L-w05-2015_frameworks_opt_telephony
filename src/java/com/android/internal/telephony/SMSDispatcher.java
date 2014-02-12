@@ -124,6 +124,9 @@ public abstract class SMSDispatcher extends Handler {
     protected static final int EVENT_NEW_ICC_SMS = 14;
     protected static final int EVENT_ICC_CHANGED = 15;
 
+    /** Status report received */
+    protected static final int EVENT_NEW_SMS_STATUS_REPORT = 100;
+
     protected PhoneBase mPhone;
     protected final Context mContext;
     protected final ContentResolver mResolver;
@@ -217,6 +220,7 @@ public abstract class SMSDispatcher extends Handler {
         mUsageMonitor = phone.mSmsUsageMonitor;
         Rlog.d(TAG, "Active phone changed to " + mPhone.getPhoneName() );
         mCi = phone.mCi;
+        mCi.setOnSmsStatus(this, EVENT_NEW_SMS_STATUS_REPORT, null);
     }
 
     /** Unregister for incoming SMS events. */
