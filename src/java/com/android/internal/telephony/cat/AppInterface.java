@@ -41,6 +41,16 @@ public interface AppInterface {
             "android.intent.action.stk.user_activity_available";
 
     /*
+     * Returns the current command or null
+     */
+    CatCmdMessage getCurrentCmd();
+
+    /*
+     * Sets that app is ready to process proactive commands.
+     */
+    void setAppReady();
+
+    /*
      * Callback function from app to telephony to pass a result code and user's
      * input back to the ICC.
      */
