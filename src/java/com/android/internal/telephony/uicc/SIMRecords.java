@@ -37,6 +37,7 @@ import com.android.internal.telephony.GsmAlphabet;
 import com.android.internal.telephony.MccTable;
 import com.android.internal.telephony.SmsConstants;
 import com.android.internal.telephony.gsm.SimTlv;
+import com.android.internal.telephony.uicc.IccCardApplicationStatus.AppState;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -612,7 +613,11 @@ public class SIMRecords extends IccRecords {
                 // resetRecords essentially for setting mRecordsRequested to false. This
                 // will prevent sending the recordsloaded event. Records will be requested
                 // again on app ready.
-                resetRecords();
+                AppState currAppState = mParentApp.getState();
+                AppState previousAppState = mParentApp.getPreviousState();
+                if (previousAppState.isAppReady() && currAppState.isPukRequired()) {
+                    resetRecords();
+                }
                 break;
 
             /* IO events */
