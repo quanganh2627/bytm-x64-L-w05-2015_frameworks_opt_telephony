@@ -357,11 +357,28 @@ class OpenChannelResponseData extends ResponseData {
             tag = ComprehensionTlvTag.BEARER_DESC.value();
             buf.write(tag);
             int len = 1;
-            if (bearer.parameters != null) {
-                len += bearer.parameters.length;
-                buf.write(len);
-                buf.write(bearer.type.value() & 0xff);
-                buf.write(bearer.parameters, 0, bearer.parameters.length);
+            if (bearer.parameters != null && bearer.parameters.length >= 2) {
+                /* 3GPP TS 31.111 (rel.9+) 8.52.5: "In case of a non-GBR QCI, the QoS octets in
+                 * the "EPS quality of service" information element are ignored by the UE, as
+                 * specified in TS 24.301 [46]. In this case, the UE shall use X=2, passing only
+                 * the QCI value."
+                 *
+                 * Non-GBR QCI values are defined in 3GPP 23.203 Table 6.1.7: 5-9
+                 */
+                if (bearer.parameters[0] >= 5 && bearer.parameters[0] <= 9) {
+                    len += 2;
+                    buf.write(len);
+                    buf.write(bearer.type.value() & 0xff);
+                    // Add the QCI (first byte of the bearer)
+                    buf.write(bearer.parameters, 0, 1);
+                    // Add the PDN type (last byte of the bearer)
+                    buf.write(bearer.parameters, bearer.parameters.length - 1, 1);
+                } else {
+                    len += bearer.parameters.length;
+                    buf.write(len);
+                    buf.write(bearer.type.value() & 0xff);
+                    buf.write(bearer.parameters, 0, bearer.parameters.length);
+                }
             } else {
                 buf.write(len);
                 buf.write(bearer.type.value() & 0xff);
