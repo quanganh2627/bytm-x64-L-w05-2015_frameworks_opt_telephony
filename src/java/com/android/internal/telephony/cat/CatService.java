@@ -44,6 +44,7 @@ import com.android.internal.telephony.PhoneBase;
 import com.android.internal.telephony.PhoneConstants;
 import com.android.internal.telephony.PhoneFactory;
 import com.android.internal.telephony.PhoneProxy;
+import com.android.internal.telephony.uicc.IccCardApplicationStatus.AppState;
 import com.android.internal.telephony.uicc.IccFileHandler;
 import com.android.internal.telephony.uicc.IccRecords;
 import com.android.internal.telephony.uicc.IccUtils;
@@ -972,6 +973,20 @@ public class CatService extends Handler implements AppInterface, ImsStkInterface
             break;
         default:
             throw new AssertionError("Unrecognized CAT command: " + msg.what);
+        }
+    }
+
+    @Override
+    public CatCmdMessage getCurrentCmd() {
+        return mCurrntCmd;
+    }
+
+    @Override
+    public void setAppReady() {
+        if (mUiccApplication != null
+                && mUiccApplication.getState() == AppState.APPSTATE_READY) {
+            CatLog.d(this, "SIM ready. Reporting STK service running now...");
+            mCmdIf.reportStkServiceIsRunning(null);
         }
     }
 
