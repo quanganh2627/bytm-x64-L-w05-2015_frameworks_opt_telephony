@@ -741,38 +741,65 @@ public class PhoneProxy extends Handler implements Phone {
     @Override
     public void getCallForwardingOption(int commandInterfaceCFReason,
             Message onComplete) {
-        mActivePhone.getCallForwardingOption(commandInterfaceCFReason,
-                onComplete);
+        if (isDefaultPhoneImsPhone()) {
+            mImsPhone.getCallForwardingOption(commandInterfaceCFReason,
+                    onComplete);
+        } else {
+            mActivePhone.getCallForwardingOption(commandInterfaceCFReason,
+                    onComplete);
+        }
     }
 
     @Override
     public void setCallForwardingOption(int commandInterfaceCFReason,
             int commandInterfaceCFAction, String dialingNumber,
             int timerSeconds, Message onComplete) {
-        mActivePhone.setCallForwardingOption(commandInterfaceCFReason,
-            commandInterfaceCFAction, dialingNumber, timerSeconds, onComplete);
+        if (isDefaultPhoneImsPhone()) {
+            mImsPhone.setCallForwardingOption(commandInterfaceCFReason,
+                    commandInterfaceCFAction, dialingNumber, timerSeconds, onComplete);
+        } else {
+            mActivePhone.setCallForwardingOption(commandInterfaceCFReason,
+                    commandInterfaceCFAction, dialingNumber, timerSeconds, onComplete);
+        }
     }
 
     @Override
     public void getOutgoingCallerIdDisplay(Message onComplete) {
-        mActivePhone.getOutgoingCallerIdDisplay(onComplete);
+        if (isDefaultPhoneImsPhone()) {
+            mImsPhone.getOutgoingCallerIdDisplay(onComplete);
+        } else {
+            mActivePhone.getOutgoingCallerIdDisplay(onComplete);
+        }
     }
 
     @Override
     public void setOutgoingCallerIdDisplay(int commandInterfaceCLIRMode,
             Message onComplete) {
-        mActivePhone.setOutgoingCallerIdDisplay(commandInterfaceCLIRMode,
-                onComplete);
+        if (isDefaultPhoneImsPhone()) {
+            mImsPhone.setOutgoingCallerIdDisplay(commandInterfaceCLIRMode,
+                    onComplete);
+        } else {
+            mActivePhone.setOutgoingCallerIdDisplay(commandInterfaceCLIRMode,
+                    onComplete);
+        }
     }
 
     @Override
     public void getCallWaiting(Message onComplete) {
-        mActivePhone.getCallWaiting(onComplete);
+        if (isDefaultPhoneImsPhone()) {
+            mImsPhone.getCallWaiting(onComplete);
+        } else {
+            mActivePhone.getCallWaiting(onComplete);
+        }
     }
 
     @Override
     public void setCallWaiting(boolean enable, Message onComplete) {
-        mActivePhone.setCallWaiting(enable, onComplete);
+        if (isDefaultPhoneImsPhone()) {
+            mImsPhone.setCallWaiting(enable, onComplete);
+        } else {
+            mActivePhone.setCallWaiting(enable, onComplete);
+        }
     }
 
     @Override
@@ -1185,20 +1212,33 @@ public class PhoneProxy extends Handler implements Phone {
     @Override
     public void getCallBarring(String facility, Message onComplete,
             int serviceClass) {
-        mActivePhone.getCallBarring(facility, onComplete, serviceClass);
+        if (isDefaultPhoneImsPhone()) {
+            mImsPhone.getCallBarring(facility, onComplete, serviceClass);
+        } else {
+            mActivePhone.getCallBarring(facility, onComplete, serviceClass);
+        }
     }
 
     @Override
     public void setCallBarring(String facility, boolean lockState,
             String password, Message onComplete, int serviceClass) {
-        mActivePhone.setCallBarring(facility, lockState, password, onComplete,
-                serviceClass);
+        if (isDefaultPhoneImsPhone()) {
+            mImsPhone.setCallBarring(facility, lockState, password, onComplete,
+                    serviceClass);
+        } else {
+            mActivePhone.setCallBarring(facility, lockState, password, onComplete,
+                    serviceClass);
+        }
     }
 
     @Override
     public void changeBarringPassword(String facility, String oldpwd,
             String newpwd, Message result) {
-        mActivePhone.changeBarringPassword(facility, oldpwd, newpwd, result);
+        if (isDefaultPhoneImsPhone()) {
+            mImsPhone.changeBarringPassword(facility, oldpwd, newpwd, result);
+        } else {
+            mActivePhone.changeBarringPassword(facility, oldpwd, newpwd, result);
+        }
     }
 
     @Override
@@ -1220,5 +1260,14 @@ public class PhoneProxy extends Handler implements Phone {
 
     public IccSmsInterfaceManager getIccSmsInterfaceManager() {
         return mIccSmsInterfaceManager;
+    }
+
+    public boolean isDefaultPhoneImsPhone() {
+        Phone phone = CallManager.getInstance().getDefaultPhone();
+        if (phone != null) {
+            return phone.getPhoneType() == PhoneConstants.PHONE_TYPE_IMS;
+        } else {
+            return false;
+        }
     }
 }
