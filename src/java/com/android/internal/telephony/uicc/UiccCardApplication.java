@@ -51,6 +51,7 @@ public class UiccCardApplication {
 
     private final Object  mLock = new Object();
     private UiccCard      mUiccCard; //parent
+    private AppState      mPreviousAppState;
     private AppState      mAppState;
     private AppType       mAppType;
     private PersoSubState mPersoSubState;
@@ -124,6 +125,7 @@ public class UiccCardApplication {
             mPin1Replaced = (as.pin1_replaced != 0);
             mPin1State = as.pin1;
             mPin2State = as.pin2;
+            mPreviousAppState = oldAppState;
 
             if (mAppType != oldAppType) {
                 if (mIccFh != null) { mIccFh.dispose();}
@@ -564,6 +566,12 @@ public class UiccCardApplication {
                 if (DBG) log("Notifying 1 registrant: NETWORK_LOCED");
                 r.notifyRegistrant(new AsyncResult(null, null, null));
             }
+        }
+    }
+
+    public AppState getPreviousState() {
+        synchronized (mLock) {
+            return mPreviousAppState;
         }
     }
 
