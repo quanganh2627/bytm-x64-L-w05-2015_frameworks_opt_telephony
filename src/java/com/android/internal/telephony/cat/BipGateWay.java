@@ -486,6 +486,7 @@ public class BipGateWay {
 
         private void cleanupBipChannel(int channel) {
             mBipChannels[channel - 1] = null;
+            mDataConnectionTracker.setApnRequestedForBip(null);
             if (allChannelsClosed())
                 mDefaultBearerStateReceiver.stopListening();
             /* All channels are closed.  Stop the broadcast receiver. */
@@ -646,6 +647,9 @@ public class BipGateWay {
 
             mApnStateBeforeEnabling = mDataConnectionTracker.getState(mToBeUsedApnType);
             CatLog.d(this, "apn State before enabling" + mApnStateBeforeEnabling);
+
+            mDataConnectionTracker.setApnRequestedForBip(
+                    cmdMsg.getChannelSettings().networkAccessName);
 
             int enableStatus = mDataConnectionTracker.enableApnType(mToBeUsedApnType);
 
@@ -886,7 +890,6 @@ public class BipGateWay {
                   mCatService.sendTerminalResponse(cmdMsg.mCmdDet,
                             ResultCode.BEYOND_TERMINAL_CAPABILITY, false, 0, null);
                 }
-
             } catch (ConnectionSetupFailedException csfe) {
                 CatLog.d(this, "setupDataConnection Failed: " + csfe.getMessage());
                 // Free resources since channel could not be opened
@@ -935,6 +938,7 @@ public class BipGateWay {
                 if (name != null && name.equals(networkAccessName)) {
                     if (mDataConnectionTracker.isApnTypeEnabled(type)) {
                         // TODO: Disconnect apn only if all the channels are in closed state.
+                        mDataConnectionTracker.setApnRequestedForBip(null);
                         mDataConnectionTracker.disableApnType(type);
                         mDefaultBearerStateReceiver.setOngoingSetupMessage(resultMsg);
                         ret = true;
@@ -1055,6 +1059,7 @@ public class BipGateWay {
                 mBipChannels[channel - 1].close(null);
                 if (bd.type != BearerType.DEFAULT_BEARER) {
                     // Disable the bip apn if it is not the default apn
+                    mDataConnectionTracker.setApnRequestedForBip(null);
                     int status = mDataConnectionTracker.disableApnType(mToBeUsedApnType);
                     CatLog.d(this, "APN=" + mToBeUsedApnType + " Disable state= " + status);
                 }
