@@ -267,6 +267,9 @@ public abstract class DcTrackerBase extends Handler {
                 }
             } );
 
+    /* APN requested for BIP connection */
+    protected String m_ApnRequestedForBip = null;
+
     /* Currently active APN */
     protected ApnSetting mActiveApn;
 
@@ -701,6 +704,10 @@ public abstract class DcTrackerBase extends Handler {
     public abstract boolean isDataPossible(String apnType);
     protected abstract void onUpdateIcc();
     protected abstract void completeConnection(ApnContext apnContext);
+
+    public void setApnRequestedForBip(String apn) {
+        m_ApnRequestedForBip = apn;
+    }
 
     @Override
     public void handleMessage(Message msg) {

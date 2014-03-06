@@ -2183,8 +2183,21 @@ public final class DcTracker extends DcTrackerBase {
                 if (DBG) log("buildWaitingApns: apn=" + apn);
                 if (apn.canHandleType(requestedApnType)) {
                     if (apn.bearer == 0 || apn.bearer == radioTech) {
-                        if (DBG) log("buildWaitingApns: adding apn=" + apn.toString());
-                        apnList.add(apn);
+                        boolean bAddApn = true;
+                        if (requestedApnType.equalsIgnoreCase(PhoneConstants.APN_TYPE_CBS)) {
+                            if (m_ApnRequestedForBip != null
+                                    && !m_ApnRequestedForBip.equals(apn)) {
+                                bAddApn = false;
+                            } else {
+                                if (DBG) log("buildWaitingApns: adding apn=" + apn.toString());
+                                bAddApn = true;
+                            }
+                        }
+
+                        if (bAddApn) {
+                            if (DBG) log("buildWaitingApns: adding apn=" + apn.toString());
+                            apnList.add(apn);
+                        }
                     } else {
                         if (DBG) {
                             log("buildWaitingApns: bearer:" + apn.bearer + " != "
