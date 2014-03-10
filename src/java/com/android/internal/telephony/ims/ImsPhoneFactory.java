@@ -47,7 +47,7 @@ public class ImsPhoneFactory {
         ImsPhoneCreator creator = null;
 
         if (parentPhone != null) {
-            Log.e(LOG_TAG, "Loading IMS phone");
+            Log.d(LOG_TAG, "Loading IMS phone");
             try {
                 String jarPath = context.getResources().getString(
                         R.string.ims_creator_jar_file_property);
