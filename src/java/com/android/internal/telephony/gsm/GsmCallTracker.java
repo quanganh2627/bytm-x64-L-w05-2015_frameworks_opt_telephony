@@ -1002,11 +1002,19 @@ public final class GsmCallTracker extends CallTracker {
             GsmConnection conn = null;
             // we look for connection in all current calls
             for (GsmConnection cnx : mConnections) {
-                if (cnx.mIndex == call.index) {
-                    conn = cnx;
-                    break;
+                if (cnx != null) {
+                    // mIndex ranges from 0 to 6
+                    // call.index ranges from 1 to 7
+                    if ((cnx.mIndex + 1) == call.index) {
+                        conn = cnx;
+                        break;
+                    } else {
+                        log("Unmatched cnx.mIndex = " + cnx.mIndex);
+                    }
                 }
             }
+
+            // Now we can update the information for this call index
             if (conn != null) {
                 log("Updating call duration for connection " + call.index);
                 Long[] timings = callTimings.get(i);
@@ -1016,6 +1024,10 @@ public final class GsmCallTracker extends CallTracker {
                 conn.mConnectTimeReal = timings[3];
                 conn.mDuration = timings[4];
                 conn.mHoldingStartTime = timings[5];
+                log("New CreateTime = " + conn.mCreateTime
+                        + ", ConnectTime = " + conn.mConnectTime
+                        + ", ConnectTimeReal = " + conn.mConnectTimeReal
+                        + ", Duration = " + conn.mDuration);
             } else {
                 log("No connection found for call index " + call.index);
             }
