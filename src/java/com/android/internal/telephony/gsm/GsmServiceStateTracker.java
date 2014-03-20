@@ -591,6 +591,14 @@ public class GsmServiceStateTracker extends ServiceStateTracker {
                 && ((rule & SIMRecords.SPN_RULE_SHOW_SPN)
                         == SIMRecords.SPN_RULE_SHOW_SPN);
 
+        if (mSS.getVoiceRegState() == ServiceState.STATE_OUT_OF_SERVICE
+                || (mSS.getVoiceRegState() == ServiceState.STATE_EMERGENCY_ONLY
+                && !mVoiceCapable)) {
+             // override spn if out of service or emergency only but not voice capable
+            showSpn = false;
+            spn = "";
+        }
+
         // Update SPN_STRINGS_UPDATED_ACTION IFF any value changes
         if (showPlmn != mCurShowPlmn
                 || showSpn != mCurShowSpn
