@@ -85,6 +85,7 @@ public class UiccCardApplication {
         if (DBG) log("Creating UiccApp: " + as);
         mUiccCard = uiccCard;
         mAppState = as.app_state;
+        mPreviousAppState = as.app_state;
         mAppType = as.app_type;
         mPersoSubState = as.perso_substate;
         mAid = as.aid;
