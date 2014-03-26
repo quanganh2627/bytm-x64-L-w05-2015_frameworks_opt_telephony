@@ -1037,6 +1037,8 @@ public class GsmServiceStateTracker extends ServiceStateTracker {
                 setSignalStrengthDefaultValues();
                 mGotCountryCode = false;
                 mNitzUpdatedTime = false;
+                mGsmRoaming = false;
+                mDataRoaming = false;
                 pollStateDone();
                 updateSpnDisplay();
             break;
@@ -1047,6 +1049,8 @@ public class GsmServiceStateTracker extends ServiceStateTracker {
                 setSignalStrengthDefaultValues();
                 mGotCountryCode = false;
                 mNitzUpdatedTime = false;
+                mGsmRoaming = false;
+                mDataRoaming = false;
                 pollStateDone();
                 updateSpnDisplay();
             break;
