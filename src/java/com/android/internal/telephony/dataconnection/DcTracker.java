@@ -1466,6 +1466,26 @@ public final class DcTracker extends DcTrackerBase {
                                 break;
                         }
                     }
+                } else if (PhoneConstants.APN_TYPE_CBS.equals(apnType)
+                        && m_ApnRequestedForBip != null) {
+                    if (m_ApnRequestedForBip.equals(apnSetting.apn)) {
+                        switch (curApnCtx.getState()) {
+                            case CONNECTED:
+                                if (DBG) {
+                                    log("checkForCompatibleConnectedApnContext:"
+                                            + " found canHandle conn=" + curDcac
+                                            + " curApnCtx=" + curApnCtx);
+                                }
+                                return curDcac;
+                            case RETRYING:
+                            case CONNECTING:
+                                potentialDcac = curDcac;
+                                potentialApnCtx = curApnCtx;
+                            default:
+                                // Not connected, potential unchanged
+                                break;
+                        }
+                    }
                 } else if (apnSetting != null && apnSetting.canHandleType(apnType)) {
                     switch (curApnCtx.getState()) {
                         case CONNECTED:
@@ -2119,7 +2139,9 @@ public final class DcTracker extends DcTrackerBase {
         }
 
         if (usePreferred && mCanSetPreferApn && mPreferredApn != null &&
-                mPreferredApn.canHandleType(requestedApnType)) {
+                mPreferredApn.canHandleType(requestedApnType)
+                && (m_ApnRequestedForBip == null || (m_ApnRequestedForBip != null
+                && m_ApnRequestedForBip.equals(mPreferredApn.apn)))) {
             if (DBG) {
                 log("buildWaitingApns: Preferred APN:" + operator + ":"
                         + mPreferredApn.numeric + ":" + mPreferredApn);
@@ -2146,8 +2168,21 @@ public final class DcTracker extends DcTrackerBase {
                 if (DBG) log("buildWaitingApns: apn=" + apn);
                 if (apn.canHandleType(requestedApnType)) {
                     if (apn.bearer == 0 || apn.bearer == radioTech) {
-                        if (DBG) log("buildWaitingApns: adding apn=" + apn.toString());
-                        apnList.add(apn);
+                        boolean bAddApn = true;
+                        if (requestedApnType.equalsIgnoreCase(PhoneConstants.APN_TYPE_CBS)) {
+                            if (m_ApnRequestedForBip != null
+                                    && !m_ApnRequestedForBip.equals(apn.apn)) {
+                                bAddApn = false;
+                            } else {
+                                if (DBG) log("buildWaitingApns: adding apn=" + apn.toString());
+                                bAddApn = true;
+                            }
+                        }
+
+                        if (bAddApn) {
+                            if (DBG) log("buildWaitingApns: adding apn=" + apn.toString());
+                            apnList.add(apn);
+                        }
                     } else {
                         if (DBG) {
                             log("buildWaitingApns: bearer:" + apn.bearer + " != "
