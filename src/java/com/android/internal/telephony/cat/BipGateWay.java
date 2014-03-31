@@ -1253,6 +1253,9 @@ public class BipGateWay {
                 }
             } else {
                 // channel already closed
+                if (cmdMsg != null) {
+                    mCatService.sendTerminalResponse(cmdMsg.mCmdDet, ResultCode.OK, false, 0, null);
+                }
                 return;
             }
 
