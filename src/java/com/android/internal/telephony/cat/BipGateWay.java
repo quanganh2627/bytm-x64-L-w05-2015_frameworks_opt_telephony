@@ -68,7 +68,7 @@ import javax.net.ssl.SSLSocket;
 import javax.net.ssl.TrustManager;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
-
+import java.util.Arrays;
 
 public class BipGateWay {
     // reserve 16k as Tx/Rx per Buffer for TCP
@@ -386,6 +386,8 @@ public class BipGateWay {
                     AsyncResult.forMessage(msg, null, null);
                     msg.sendToTarget();
                 } else {
+                    // Disable APN type on failure to avoid retry
+                    mDataConnectionTracker.disableApnType(PhoneConstants.APN_TYPE_CBS);
                     ConnectionSetupFailedException csfe =
                             new ConnectionSetupFailedException("Default bearer failed to connect");
                     AsyncResult.forMessage(msg, null, csfe);
@@ -433,7 +435,6 @@ public class BipGateWay {
 
                 if (!noConnection) {
                     if (netInfo != null) {
-                        CatLog.d(this, "In onConnected case : Connected to correct Bip_gprsX");
                         String connectedApn =
                                 MobileDataStateTracker.networkTypeToApnType(netInfo.getType());
                         if ((TextUtils.equals(connectedApn, mToBeUsedApnType))
@@ -907,7 +908,7 @@ public class BipGateWay {
                     CatService.DEV_ID_TERMINAL,
                     CatService.DEV_ID_UICC,
                     additionalInfo,
-                    true));
+                    false));
         }
 
         void sendDataAvailableEvent(int channelStatus, int dataAvailable) {
@@ -919,7 +920,7 @@ public class BipGateWay {
                     CatService.DEV_ID_TERMINAL,
                     CatService.DEV_ID_UICC,
                     additionalInfo,
-                    true));
+                    false));
         }
 
         /*
@@ -1162,6 +1163,7 @@ public class BipGateWay {
         int mTxLen = 0;
         CatCmdMessage recvCmd;
         ResultCode result = ResultCode.OK;
+        private Object mLock = new Object();
 
 
         class TcpOpenThread extends Thread {
@@ -1238,6 +1240,10 @@ public class BipGateWay {
 
         @Override
         public void close(CatCmdMessage cmdMsg) {
+            synchronized (mLock) {
+                mLock.notify();
+            }
+
             if (mSocket != null)  {
                 if (!mSocket.isClosed()) {
                     try {
@@ -1368,6 +1374,12 @@ public class BipGateWay {
 
             resp = new ReceiveDataResponseData(data, available);
             mCatService.sendTerminalResponse(cmdMsg.mCmdDet, result, false, 0, resp);
+
+            if (mRxLen == 0) {
+                synchronized (mLock) {
+                    mLock.notify();
+                }
+            }
         }
 
         @Override
@@ -1391,7 +1403,9 @@ public class BipGateWay {
             @Override
             public void run() {
                 CatLog.d(this, "Client thread start on channel no: " + mChannelSettings.channel);
-                if (mSocket != null) {
+                // mSocket is set to null on CLOSE CHANNEL proactive command or on
+                // exception encountered during reading from socket.
+                while (mSocket != null) {
                     // client connected, wait until some data is ready
                     try {
                         mRxLen = mSocket.getInputStream().read(mRxBuf);
@@ -1400,17 +1414,17 @@ public class BipGateWay {
                                 + ", IOException " + e.getMessage());
                         mSocket = null; // throw client socket away.
                         // Invalidate data
-                        mRxBuf = new byte[mChannelSettings.bufSize];
-                        mTxBuf = new byte[mChannelSettings.bufSize];
+                        Arrays.fill(mRxBuf, (byte) 0);
+                        Arrays.fill(mTxBuf, (byte) 0);
                         mRxPos = 0;
                         mRxLen = 0;
                         mTxPos = 0;
                         mTxLen = 0;
                     }
 
-                    // sanity check
                     if (mRxLen <= 0) {
                         CatLog.d(this, "No data read.");
+                        break;
                     } else {
                         mRxPos = 0;
                         int available = 0xff;
@@ -1422,7 +1436,16 @@ public class BipGateWay {
                         mBipTransport.sendDataAvailableEvent(mChannelStatus,
                                 (byte) (available & 0xff));
                     }
+
+                    synchronized (mLock) {
+                        try {
+                            mLock.wait();
+                        } catch (InterruptedException e) {
+                            CatLog.d(this, "Exception in waiting for data read notification");
+                        }
+                    }
                 }
+
                 CatLog.d(this, "Client thread end on channel no: " + mChannelSettings.channel);
             }
         }
@@ -1448,6 +1471,7 @@ public class BipGateWay {
         int mTxLen = 0;
         CatCmdMessage recvCmd;
         ResultCode result = ResultCode.OK;
+        private Object mLock = new Object();
 
 
         class UdpOpenThread extends Thread {
@@ -1523,6 +1547,9 @@ public class BipGateWay {
 
         @Override
         public void close(CatCmdMessage cmdMsg) {
+            synchronized (mLock) {
+                mLock.notify();
+            }
 
             if (mDatagramSocket != null) {
                 if (!mDatagramSocket.isClosed()) {
@@ -1656,6 +1683,12 @@ public class BipGateWay {
 
             resp = new ReceiveDataResponseData(data, available);
             mCatService.sendTerminalResponse(cmdMsg.mCmdDet, result, false, 0, resp);
+
+            if (mRxLen == 0) {
+                synchronized (mLock) {
+                    mLock.notify();
+                }
+            }
         }
 
         @Override
@@ -1681,7 +1714,9 @@ public class BipGateWay {
                 CatLog.d(this, "UDP Client thread start on channel no: " +
                         mChannelSettings.channel);
 
-                if (mDatagramSocket != null) {
+                // mDatagramSocket is set to null on CLOSE CHANNEL proactive command or on
+                // exception encountered during reading from socket.
+                while (mDatagramSocket != null) {
                     // client connected, wait until some data is ready
                     DatagramPacket packet = null;
                     boolean success = false;
@@ -1704,17 +1739,17 @@ public class BipGateWay {
                     } else {
                         mDatagramSocket = null; // throw client socket away.
                         //Invalidate data
-                        mRxBuf = new byte[mChannelSettings.bufSize];
-                        mTxBuf = new byte[mChannelSettings.bufSize];
+                        Arrays.fill(mRxBuf, (byte) 0);
+                        Arrays.fill(mTxBuf, (byte) 0);
                         mRxPos = 0;
                         mRxLen = 0;
                         mTxPos = 0;
                         mTxLen = 0;
                     }
 
-                    // sanity check
                     if (mRxLen <= 0) {
                         CatLog.d(this, "No data read.");
+                        break;
                     } else {
                         CatLog.d(this, mRxLen + " data read.");
                         mRxPos = 0;
@@ -1727,11 +1762,18 @@ public class BipGateWay {
                         mBipTransport.sendDataAvailableEvent(mChannelStatus,
                                 (byte) (available & 0xff));
                     }
+
+                    synchronized (mLock) {
+                        try {
+                            mLock.wait();
+                        } catch (InterruptedException e) {
+                            CatLog.d(this, "Exception in waiting for data read notification");
+                        }
+                    }
                 }
 
                 CatLog.d(this, "UDP Client thread end on channel no: " + mChannelSettings.channel);
             }
         }
-
     }
 }
