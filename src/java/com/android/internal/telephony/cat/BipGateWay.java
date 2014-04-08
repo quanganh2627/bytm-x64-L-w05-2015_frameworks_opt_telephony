@@ -743,9 +743,12 @@ public class BipGateWay {
                  }
             } catch (SQLException e) {
                 CatLog.d(this, e.getMessage());
+            } catch (IllegalArgumentException e) {
+                CatLog.d(this, e.getMessage());
+            } finally {
+                if (c != null) c.close();
             }
-            if (c != null)
-                c.close();
+
             return id;
         }
 
