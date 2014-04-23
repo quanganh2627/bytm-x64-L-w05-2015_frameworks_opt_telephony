@@ -158,6 +158,7 @@ public abstract class IccRecords extends Handler implements IccConstants {
         mParentApp = null;
         mFh = null;
         mCi = null;
+        mSpn = null;
         mContext = null;
     }
 
