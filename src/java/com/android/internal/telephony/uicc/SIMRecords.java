@@ -249,7 +249,6 @@ public class SIMRecords extends IccRecords {
         mIccId = null;
         // -1 means no EF_SPN found; treat accordingly.
         mSpnDisplayCondition = -1;
-        mSpn = null;
         mEFpl = null;
         mEFli = null;
         mEfMWIS = null;
