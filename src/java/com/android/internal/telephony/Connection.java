@@ -26,7 +26,7 @@ public abstract class Connection {
 
     //Caller Name Display
     protected String mCnapName;
-    protected int mCnapNamePresentation  = PhoneConstants.PRESENTATION_ALLOWED;
+    protected int mCnapNamePresentation  = PhoneConstants.NAME_PRESENTATION_ALLOWED;
 
     private static String LOG_TAG = "Connection";
 

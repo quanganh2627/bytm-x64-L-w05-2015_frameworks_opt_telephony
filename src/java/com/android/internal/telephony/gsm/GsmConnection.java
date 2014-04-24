@@ -159,7 +159,7 @@ public class GsmConnection extends Connection {
 
         mIsIncoming = false;
         mCnapName = null;
-        mCnapNamePresentation = PhoneConstants.PRESENTATION_ALLOWED;
+        mCnapNamePresentation = PhoneConstants.NAME_PRESENTATION_ALLOWED;
         mNumberPresentation = PhoneConstants.PRESENTATION_ALLOWED;
         mCreateTime = System.currentTimeMillis();
 
