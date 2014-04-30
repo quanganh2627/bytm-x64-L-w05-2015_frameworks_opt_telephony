@@ -120,7 +120,7 @@ public abstract class PhoneBase extends Handler implements Phone {
     protected static final int EVENT_EXIT_EMERGENCY_CALLBACK_RESPONSE = 26;
     protected static final int EVENT_CDMA_SUBSCRIPTION_SOURCE_CHANGED = 27;
     // other
-    protected static final int EVENT_SET_NETWORK_AUTOMATIC          = 28;
+    protected static final int EVENT_SET_NETWORK_SELECTION_MODE     = 28;
     protected static final int EVENT_ICC_RECORD_EVENTS              = 29;
     protected static final int EVENT_ICC_CHANGED                    = 30;
 
