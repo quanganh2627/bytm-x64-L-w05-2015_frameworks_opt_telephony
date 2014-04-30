@@ -80,6 +80,7 @@ public class SIMRecords extends IccRecords {
      */
     private byte[] mCphsInfo = null;
     boolean mCspPlmnEnabled = true;
+    boolean mEfCspRead = false;
 
     byte[] mEfMWIS = null;
     byte[] mEfCPHS_MWI =null;
@@ -260,6 +261,7 @@ public class SIMRecords extends IccRecords {
         mSpdiNetworks = null;
         mPnnHomeName = null;
         mGid1 = null;
+        mEfCspRead = false;
 
         mAdnCache.reset();
 
@@ -1183,13 +1185,18 @@ public class SIMRecords extends IccRecords {
 
                 if (ar.exception != null) {
                     loge("Exception in fetching EF_CSP data " + ar.exception);
-                    break;
+                } else {
+                    data = (byte[])ar.result;
+
+                    log("EF_CSP: " + IccUtils.bytesToHexString(data));
+                    handleEfCspData(data);
                 }
 
-                data = (byte[])ar.result;
+                mEfCspRead = true;
 
-                log("EF_CSP: " + IccUtils.bytesToHexString(data));
-                handleEfCspData(data);
+                // Restore network selection mode
+                log("[CSP] Restore Network Selection mode");
+                mNetworkSelectionModeRegistrants.notifyRegistrants();
                 break;
 
             case EVENT_GET_GID1_DONE:
@@ -1857,6 +1864,14 @@ public class SIMRecords extends IccRecords {
     }
 
     /**
+     * Returns true if EFcsp file is read, returns false otherwise.
+     */
+    @Override
+    public boolean isEfCspRead() {
+        return mEfCspRead;
+    }
+
+    /**
      * Parse EF_CSP data and check if
      * "Restriction of menu options for manual PLMN selection" is
      * Enabled/Disabled
@@ -1884,11 +1899,8 @@ public class SIMRecords extends IccRecords {
                      // Operator Selection menu should be enabled.
                      mCspPlmnEnabled = true;
                  } else {
-                     mCspPlmnEnabled = false;
                      // Operator Selection menu should be disabled.
-                     // Operator Selection Mode should be set to Automatic.
-                     log("[CSP] Set Automatic Network Selection");
-                     mNetworkSelectionModeAutomaticRegistrants.notifyRegistrants();
+                     mCspPlmnEnabled = false;
                  }
                  return;
              }
