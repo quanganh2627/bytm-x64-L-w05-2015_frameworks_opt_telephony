@@ -47,7 +47,7 @@ public abstract class IccRecords extends Handler implements IccConstants {
     protected RegistrantList mImsiReadyRegistrants = new RegistrantList();
     protected RegistrantList mRecordsEventsRegistrants = new RegistrantList();
     protected RegistrantList mNewSmsRegistrants = new RegistrantList();
-    protected RegistrantList mNetworkSelectionModeRegistrants = new RegistrantList();
+    protected RegistrantList mNetworkSelectionModeAutomaticRegistrants = new RegistrantList();
 
     protected int mRecordsToLoad;  // number of pending load requests
 
@@ -105,8 +105,8 @@ public abstract class IccRecords extends Handler implements IccConstants {
                 + " mImsiReadyRegistrants=" + mImsiReadyRegistrants
                 + " mRecordsEventsRegistrants=" + mRecordsEventsRegistrants
                 + " mNewSmsRegistrants=" + mNewSmsRegistrants
-                + " mNetworkSelectionModeRegistrants="
-                        + mNetworkSelectionModeRegistrants
+                + " mNetworkSelectionModeAutomaticRegistrants="
+                        + mNetworkSelectionModeAutomaticRegistrants
                 + " recordsToLoad=" + mRecordsToLoad
                 + " adnCache=" + mAdnCache
                 + " recordsRequested=" + mRecordsRequested
@@ -221,13 +221,13 @@ public abstract class IccRecords extends Handler implements IccConstants {
         mNewSmsRegistrants.remove(h);
     }
 
-    public void registerForNetworkSelectionMode(
+    public void registerForNetworkSelectionModeAutomatic(
             Handler h, int what, Object obj) {
         Registrant r = new Registrant (h, what, obj);
-        mNetworkSelectionModeRegistrants.add(r);
+        mNetworkSelectionModeAutomaticRegistrants.add(r);
     }
-    public void unregisterForNetworkSelectionMode(Handler h) {
-        mNetworkSelectionModeRegistrants.remove(h);
+    public void unregisterForNetworkSelectionModeAutomatic(Handler h) {
+        mNetworkSelectionModeAutomaticRegistrants.remove(h);
     }
 
     /**
@@ -442,13 +442,6 @@ public abstract class IccRecords extends Handler implements IccConstants {
     }
 
     /**
-     * Returns true if EFcsp file is read, returns false otherwise.
-     */
-    public boolean isEfCspRead() {
-        return false;
-    }
-
-    /**
      * Returns the 5 or 6 digit MCC/MNC of the operator that
      * provided the SIM card. Returns null of SIM is not yet ready
      * or is not valid for the type of IccCard. Generally used for
@@ -543,11 +536,11 @@ public abstract class IccRecords extends Handler implements IccConstants {
             pw.println("  mNewSmsRegistrants[" + i + "]="
                     + ((Registrant)mNewSmsRegistrants.get(i)).getHandler());
         }
-        pw.println(" mNetworkSelectionModeRegistrants: size="
-                + mNetworkSelectionModeRegistrants.size());
-        for (int i = 0; i < mNetworkSelectionModeRegistrants.size(); i++) {
-            pw.println("  mNetworkSelectionModeRegistrants[" + i + "]="
-                    + ((Registrant)mNetworkSelectionModeRegistrants.get(i)).getHandler());
+        pw.println(" mNetworkSelectionModeAutomaticRegistrants: size="
+                + mNetworkSelectionModeAutomaticRegistrants.size());
+        for (int i = 0; i < mNetworkSelectionModeAutomaticRegistrants.size(); i++) {
+            pw.println("  mNetworkSelectionModeAutomaticRegistrants[" + i + "]="
+                    + ((Registrant)mNetworkSelectionModeAutomaticRegistrants.get(i)).getHandler());
         }
         pw.println(" mRecordsRequested=" + mRecordsRequested);
         pw.println(" mRecordsToLoad=" + mRecordsToLoad);

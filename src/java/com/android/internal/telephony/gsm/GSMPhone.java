@@ -1403,28 +1403,9 @@ public class GSMPhone extends PhoneBase implements SupplementaryServiceSupport {
                 }
                 break;
 
-            case EVENT_SET_NETWORK_SELECTION_MODE:
-                IccRecords iccRecords = mIccRecords.get();
-                if (iccRecords != null) {
-                    if (!iccRecords.isCspPlmnEnabled()) {
-                        mIsAutomaticNetworkSelection = true;
-
-                        SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(
-                                getContext());
-                        SharedPreferences.Editor editor = sp.edit();
-                        editor.putString(NETWORK_SELECTION_KEY, "");
-                        editor.putString(NETWORK_SELECTION_NAME_KEY, "");
-                        editor.putBoolean(NETWORK_SELECTION_MODE, mIsAutomaticNetworkSelection);
-
-                        // commit and log the result.
-                        if (!editor.commit()) {
-                            Rlog.e(LOG_TAG, "failed to commit network selection mode preference");
-                        }
-                    }
-                }
-
+            case EVENT_SET_NETWORK_AUTOMATIC:
                 ar = (AsyncResult)msg.obj;
-                restoreSavedNetworkSelection((Message)ar.result);
+                setNetworkSelectionModeAutomatic((Message)ar.result);
                 break;
 
             case EVENT_ICC_RECORD_EVENTS:
@@ -1707,8 +1688,8 @@ public class GSMPhone extends PhoneBase implements SupplementaryServiceSupport {
         if (r == null) {
             return;
         }
-        r.registerForNetworkSelectionMode(
-                this, EVENT_SET_NETWORK_SELECTION_MODE, null);
+        r.registerForNetworkSelectionModeAutomatic(
+                this, EVENT_SET_NETWORK_AUTOMATIC, null);
         r.registerForRecordsEvents(this, EVENT_ICC_RECORD_EVENTS, null);
         r.registerForRecordsLoaded(this, EVENT_SIM_RECORDS_LOADED, null);
     }
@@ -1718,7 +1699,7 @@ public class GSMPhone extends PhoneBase implements SupplementaryServiceSupport {
         if (r == null) {
             return;
         }
-        r.unregisterForNetworkSelectionMode(this);
+        r.unregisterForNetworkSelectionModeAutomatic(this);
         r.unregisterForRecordsEvents(this);
         r.unregisterForRecordsLoaded(this);
     }
