@@ -2433,16 +2433,19 @@ public final class DcTracker extends DcTrackerBase {
                 removeMessages(DctConstants.EVENT_DELAYED_TEARDOWN_TIMER);
                 ImsPhoneBase imsPhoneBase = ImsPhoneFactory.getImsPhone();
                 AsyncResult ar = (AsyncResult) msg.obj;
-                ApnContext apn = (ApnContext) ar.userObj;
-                if ((ar != null) && (apn != null) && (imsPhoneBase != null)) {
-                    apn.setReason(Phone.REASON_RADIO_TURNED_OFF);
-                    cleanUpConnection(true, apn);
-                    imsPhoneBase.unregisterForImsRegStatusChanges(this);
+                if (ar != null) {
+                    ApnContext apn = (ApnContext) ar.userObj;
+                    if ((apn != null) && (imsPhoneBase != null)) {
+                        apn.setReason(Phone.REASON_RADIO_TURNED_OFF);
+                        cleanUpConnection(true, apn);
+                        imsPhoneBase.unregisterForImsRegStatusChanges(this);
+                    } else {
+                        if (imsPhoneBase == null) loge("imsPhone is null");
+                        if (apn == null) loge("Can not retrieve ApnContext from msg");
+                        loge("Unable to deactivate IMS APN");
+                    }
                 } else {
-                    if (imsPhoneBase == null) loge("imsPhone is null");
-                    if (ar == null) loge("Can not retrieve async msg");
-                    if (apn == null) loge("Can not retrieve ApnContext from msg");
-                    loge("Unable to deactivate IMS APN");
+                    loge("Can not retrieve async msg");
                 }
                 }
                 break;
