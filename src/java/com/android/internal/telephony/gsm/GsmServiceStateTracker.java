@@ -818,18 +818,21 @@ public class GsmServiceStateTracker extends ServiceStateTracker {
         operatorNumeric = mSS.getOperatorNumeric();
         mPhone.setSystemProperty(TelephonyProperties.PROPERTY_OPERATOR_NUMERIC, operatorNumeric);
 
-        if (operatorNumeric == null || operatorNumeric.length() < 3) {
-            if (DBG) log("onServiceStateChanged: operatorNumeric is Invalid");
+        if (operatorNumeric == null) {
+            if (DBG) log("onServiceStateChanged: operatorNumeric is null");
             mPhone.setSystemProperty(TelephonyProperties.PROPERTY_OPERATOR_ISO_COUNTRY, "");
             mGotCountryCode = false;
             mNitzUpdatedTime = false;
         } else {
             String iso = "";
-            String mcc = operatorNumeric.substring(0, 3);
+            String mcc = "";
             try {
+                mcc = operatorNumeric.substring(0, 3);
                 iso = MccTable.countryCodeForMcc(Integer.parseInt(mcc));
             } catch (NumberFormatException ex) {
-                loge("onServiceStateChanged: Mcc Invalid(not a number)" + ex);
+                loge("pollStateDone: countryCodeForMcc error" + ex);
+            } catch ( StringIndexOutOfBoundsException ex) {
+                loge("pollStateDone: countryCodeForMcc error" + ex);
             }
 
             mPhone.setSystemProperty(TelephonyProperties.PROPERTY_OPERATOR_ISO_COUNTRY, iso);
