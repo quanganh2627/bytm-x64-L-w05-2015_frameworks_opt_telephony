@@ -71,10 +71,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 
 public class BipGateWay {
-    // reserve 16k as Tx/Rx per Buffer for TCP
-    public static final int TCP_CHANNEL_BUFFER_SIZE = 16384;
-    // Restrict UDP packet size to 1500 bytes due to MTU restriction
-    public static final int UDP_CHANNEL_BUFFER_SIZE = 1500;
+
+    /*
+     * As per PICS 51.010-4 A.2/5 and 31.124 A.2/29 following
+     * defines the preferred buffer size for Tx/Rx packet to
+     * be used in whatever transport protocol type.
+     */
+    public static final int PREFERRED_BUFFER_SIZE = 1500;
 
     public static final Uri PREFERRED_APN_URI = Uri.
             parse("content://telephony/carriers/preferapn");
@@ -137,12 +140,12 @@ public class BipGateWay {
     }
 
     public class BipTransport extends Handler {
-        final int MAX_CHANNEL_NUM                       = 7; // Must match Terminal Profile
-        static final int MSG_ID_SETUP_DATA_CALL         = 10;
-        static final int MSG_ID_TEARDOWN_DATA_CALL      = 11;
-        static final int MSG_ID_DISCONNECTED_DATA_CALL  = 12;
-        static final int MSG_ID_APN_CREATION            = 13;
-        final int DISCONNECT_REASON                     = 0;
+        final int MAX_CHANNEL_NUM                        = 7; // Must match Terminal Profile
+        static final int MSG_ID_SETUP_DATA_CALL          = 10;
+        static final int MSG_ID_TEARDOWN_DATA_CALL       = 11;
+        static final int MSG_ID_DISCONNECTED_DATA_CALL   = 12;
+        static final int MSG_ID_APN_CREATION             = 13;
+        final int DISCONNECT_REASON                      = 0;
 
         private CommandsInterface mCmdIf;
         private DcTrackerBase mDataConnectionTracker;
@@ -492,7 +495,6 @@ public class BipGateWay {
                 mDefaultBearerStateReceiver.stopListening();
             /* All channels are closed.  Stop the broadcast receiver. */
         }
-
 
         private class ConnectionSetupFailedException extends IOException {
             public ConnectionSetupFailedException(String message) {
@@ -1108,12 +1110,12 @@ public class BipGateWay {
 
         @Override
         public boolean open(CatCmdMessage cmdMsg) {
-            return (mSCWSGateway.startProxy(cmdMsg));
+            return mSCWSGateway.openChannel(cmdMsg);
         }
 
         @Override
         public void close(CatCmdMessage cmdMsg) {
-            mSCWSGateway.closeClientConnection(cmdMsg);
+            mSCWSGateway.closeChannel(cmdMsg);
         }
 
         @Override
@@ -1128,15 +1130,12 @@ public class BipGateWay {
 
         @Override
         public int getStatus() {
-            if (mChannelSettings.channel == 0) {
-                mChannelStatus = mChannelSettings.channel << 8; // Closed
-            }
-            return mChannelStatus;
+            return mSCWSGateway.getStatus();
         }
 
         @Override
         public void onSessionEnd() {
-            mSCWSGateway.stopProxy();
+            /* empty */
         }
     }
 
@@ -1157,11 +1156,11 @@ public class BipGateWay {
 
         Socket mSocket;
 
-        byte[] mRxBuf = new byte[TCP_CHANNEL_BUFFER_SIZE];
+        byte[] mRxBuf = new byte[PREFERRED_BUFFER_SIZE];
         int mRxPos = 0;
         int mRxLen = 0;
 
-        byte[] mTxBuf = new byte[TCP_CHANNEL_BUFFER_SIZE];
+        byte[] mTxBuf = new byte[PREFERRED_BUFFER_SIZE];
         int mTxPos = 0;
         int mTxLen = 0;
         CatCmdMessage recvCmd;
@@ -1229,9 +1228,9 @@ public class BipGateWay {
             mChannelSettings = cmdMsg.getChannelSettings();
             mChannelStatus = mChannelSettings.channel << 8; // Closed state
 
-            if (mChannelSettings.bufSize > TCP_CHANNEL_BUFFER_SIZE) {
+            if (mChannelSettings.bufSize > PREFERRED_BUFFER_SIZE) {
                 result = ResultCode.PRFRMD_WITH_MODIFICATION;
-                mChannelSettings.bufSize = TCP_CHANNEL_BUFFER_SIZE;
+                mChannelSettings.bufSize = PREFERRED_BUFFER_SIZE;
             } else {
                 mRxBuf = new byte[mChannelSettings.bufSize];
                 mTxBuf = new byte[mChannelSettings.bufSize];
@@ -1468,11 +1467,11 @@ public class BipGateWay {
         UdpOpenThread mOpenThread = null;
         DatagramSocket mDatagramSocket;
 
-        byte[] mRxBuf = new byte[UDP_CHANNEL_BUFFER_SIZE];
+        byte[] mRxBuf = new byte[PREFERRED_BUFFER_SIZE];
         int mRxPos = 0;
         int mRxLen = 0;
 
-        byte[] mTxBuf = new byte[UDP_CHANNEL_BUFFER_SIZE];
+        byte[] mTxBuf = new byte[PREFERRED_BUFFER_SIZE];
         int mTxPos = 0;
         int mTxLen = 0;
         CatCmdMessage recvCmd;
@@ -1536,14 +1535,14 @@ public class BipGateWay {
             mChannelSettings = cmdMsg.getChannelSettings();
             mChannelStatus = mChannelSettings.channel << 8; // Closed state
 
-            if (mChannelSettings.bufSize > UDP_CHANNEL_BUFFER_SIZE) {
+            if (mChannelSettings.bufSize > PREFERRED_BUFFER_SIZE) {
                 result = ResultCode.PRFRMD_WITH_MODIFICATION;
-                mChannelSettings.bufSize = UDP_CHANNEL_BUFFER_SIZE;
+                mChannelSettings.bufSize = PREFERRED_BUFFER_SIZE;
             } else if (mChannelSettings.bufSize > 0) {
                 mRxBuf = new byte[mChannelSettings.bufSize];
                 mTxBuf = new byte[mChannelSettings.bufSize];
             } else {
-                mChannelSettings.bufSize = UDP_CHANNEL_BUFFER_SIZE;
+                mChannelSettings.bufSize = PREFERRED_BUFFER_SIZE;
             }
 
             mOpenThread = new UdpOpenThread();
