@@ -450,6 +450,14 @@ public final class DataConnection extends StateMachine {
             protocol = mApnSetting.protocol;
         }
 
+        // In case the APN specifically handles IMS, inform RIL that this APN
+        // is for IMS. That will request PCSCF addresses to the network.
+        for (String type : mApnSetting.types) {
+            if (PhoneConstants.APN_TYPE_IMS.equals(type)) {
+                cp.mProfileId = RILConstants.DATA_PROFILE_IMS;
+            }
+        }
+
         mPhone.mCi.setupDataCall(
                 Integer.toString(cp.mRilRat + 2),
                 Integer.toString(cp.mProfileId),
