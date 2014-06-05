@@ -1581,8 +1581,13 @@ public class GsmServiceStateTracker extends ServiceStateTracker {
      */
     @Override
     public boolean isConcurrentVoiceAndDataAllowed() {
+        boolean isConcurrSupported =
+                ((mSS.getRilVoiceRadioTechnology() == ServiceState.RIL_RADIO_TECHNOLOGY_GSM)
+                ? false :
+                (mSS.getRilVoiceRadioTechnology() >= ServiceState.RIL_RADIO_TECHNOLOGY_UMTS));
+
         // when tech is UMTS return true always
-        if (mSS.getRilVoiceRadioTechnology() >= ServiceState.RIL_RADIO_TECHNOLOGY_UMTS) {
+        if (isConcurrSupported) {
             return true;
         }
         // If tech is not UMTS, check the MS Class info based property
