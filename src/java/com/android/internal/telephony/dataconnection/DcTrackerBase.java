@@ -56,6 +56,7 @@ import com.android.internal.telephony.EventLogTags;
 import com.android.internal.telephony.Phone;
 import com.android.internal.telephony.PhoneBase;
 import com.android.internal.telephony.PhoneConstants;
+import com.android.internal.telephony.TelephonyProperties;
 import com.android.internal.telephony.uicc.IccRecords;
 import com.android.internal.telephony.uicc.UiccController;
 import com.android.internal.util.AsyncChannel;
@@ -1750,9 +1751,16 @@ public abstract class DcTrackerBase extends Handler {
             mPhone.mCi.setInitialAttachApn(null, null, -1, null, null, null);
         } else {
             if (DBG) log("setInitialAttachApn: X selected Apn=" + initialAttachApnSetting);
+            String protocol;
+
+            if (mPhone.getServiceState().getRoaming()) {
+                protocol = initialAttachApnSetting.roamingProtocol;
+            } else {
+                protocol = initialAttachApnSetting.protocol;
+            }
 
             mPhone.mCi.setInitialAttachApn(initialAttachApnSetting.apn,
-                    initialAttachApnSetting.protocol, initialAttachApnSetting.authType,
+                    protocol, initialAttachApnSetting.authType,
                     initialAttachApnSetting.user, initialAttachApnSetting.password, null);
         }
     }
