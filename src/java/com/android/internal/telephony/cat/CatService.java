@@ -396,9 +396,9 @@ public class CatService extends Handler implements AppInterface, ImsStkInterface
                 sendTerminalResponse(cmdParams.mCmdDet, ResultCode.OK, false, 0, null);
                 break;
             case ACTIVATE:
-                 sendTerminalResponse(cmdParams.mCmdDet,
-                         ResultCode.BEYOND_TERMINAL_CAPABILITY, false, 0, null);
-                 return;
+		sendTerminalResponse(cmdParams.mCmdDet,
+			ResultCode.BEYOND_TERMINAL_CAPABILITY, false, 0, null);
+                return;
             case OPEN_CHANNEL:
                 ChannelSettings newChannel = cmdMsg.getChannelSettings();
                 if (newChannel == null) {

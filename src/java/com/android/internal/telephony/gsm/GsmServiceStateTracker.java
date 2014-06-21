@@ -1528,12 +1528,14 @@ public class GsmServiceStateTracker extends ServiceStateTracker {
         String[] numericArray = mPhone.getContext().getResources().getStringArray(
                     com.android.internal.R.array.config_operatorConsideredNonRoaming);
 
-        if (numericArray.length == 0 || operatorNumeric == null)
+        if (numericArray.length == 0 || operatorNumeric == null) {
             return false;
+        }
 
         for (String numeric : numericArray) {
-            if (operatorNumeric.startsWith(numeric))
+            if (operatorNumeric.startsWith(numeric)) {
                 return true;
+            }
         }
         return false;
     }
@@ -1543,14 +1545,14 @@ public class GsmServiceStateTracker extends ServiceStateTracker {
         String[] numericArray = mPhone.getContext().getResources().getStringArray(
                     com.android.internal.R.array.config_sameNamedOperatorConsideredRoaming);
 
-        if (numericArray.length == 0 || operatorNumeric == null)
+        if (numericArray.length == 0 || operatorNumeric == null) {
             return false;
+        }
 
         for (String numeric : numericArray) {
-            if (operatorNumeric.startsWith(numeric))
+            if (operatorNumeric.startsWith(numeric)) {
                 return true;
-            else
-                return false;
+            }
         }
         return false;
     }
