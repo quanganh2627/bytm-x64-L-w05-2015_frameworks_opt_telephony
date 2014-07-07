@@ -172,6 +172,9 @@ public abstract class DcTrackerBase extends Handler {
     protected static final String INTENT_RECONNECT_ALARM_EXTRA_TYPE = "reconnect_alarm_extra_type";
     protected static final String INTENT_RECONNECT_ALARM_EXTRA_REASON =
             "reconnect_alarm_extra_reason";
+    //for DSDS
+    protected static final String INTENT_RECONNECT_ALARM_EXTRA_ISPRIMARY =
+            "is_primary";
 
     protected static final String INTENT_RESTART_TRYSETUP_ALARM =
             "com.android.internal.telephony.data-restart-trysetup";
@@ -280,6 +283,10 @@ public abstract class DcTrackerBase extends Handler {
 
     /* Once disposed dont handle any messages */
     protected boolean mIsDisposed = false;
+
+    //for DSDS
+    protected boolean mIsPrimary = true;
+    protected boolean mSimDataEnabled = true;
 
     protected ContentResolver mResolver;
 
@@ -533,7 +540,7 @@ public abstract class DcTrackerBase extends Handler {
         if (DBG) log("DCT.constructor");
         mPhone = phone;
         mResolver = mPhone.getContext().getContentResolver();
-        mUiccController = UiccController.getInstance();
+        mUiccController = phone.getUiccController();
         mUiccController.registerForIccChanged(this, DctConstants.EVENT_ICC_CHANGED, null);
         mAlarmManager =
                 (AlarmManager) mPhone.getContext().getSystemService(Context.ALARM_SERVICE);
@@ -590,7 +597,11 @@ public abstract class DcTrackerBase extends Handler {
         mDcc.dispose();
         mDcTesterFailBringUpAll.dispose();
     }
-
+    
+    protected boolean isPrimary() {
+        return mPhone.isPrimaryPhone();
+    }
+	
     public DctConstants.Activity getActivity() {
         return mActivity;
     }

@@ -536,5 +536,7 @@ public abstract class IccFileHandler extends Handler implements IccConstants {
     protected abstract void logd(String s);
 
     protected abstract void loge(String s);
-
+    UiccCardApplication getIccApplication() {
+        return mParentApp;
+    }
 }

@@ -15,14 +15,14 @@
  */
 
 package com.android.internal.telephony.cat;
-
+import android.os.Handler;
+import android.os.Message;
 import com.android.internal.telephony.uicc.IccFileHandler;
 import com.android.internal.telephony.uicc.IccUtils;
 
-import android.os.Handler;
 import com.android.internal.util.State;
 import com.android.internal.util.StateMachine;
-import android.os.Message;
+
 
 /**
  * Class used for queuing raw ril messages, decoding them into CommanParams
@@ -36,6 +36,7 @@ class RilMessageDecoder extends StateMachine {
 
     // members
     private static RilMessageDecoder sInstance = null;
+    private static RilMessageDecoder sInstance2 = null;
     private CommandParamsFactory mCmdParamsFactory = null;
     private RilMessage mCurrentRilMessage = null;
     private Handler mCaller = null;
@@ -57,6 +58,20 @@ class RilMessageDecoder extends StateMachine {
             sInstance.start();
         }
         return sInstance;
+    }
+    /**
+     * Get the singleton instance, constructing if necessary for the secondary SIM.
+     *
+     * @param caller
+     * @param fh
+     * @return RilMesssageDecoder
+     */
+    public static synchronized RilMessageDecoder getInstance2(Handler caller, IccFileHandler fh) {
+        if (sInstance2 == null) {
+            sInstance2 = new RilMessageDecoder(caller, fh);
+            sInstance2.start();
+        }
+        return sInstance2;
     }
 
     /**

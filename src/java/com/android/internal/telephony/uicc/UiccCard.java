@@ -29,6 +29,7 @@ import android.os.Message;
 import android.os.PowerManager;
 import android.os.Registrant;
 import android.os.RegistrantList;
+import android.os.UserHandle;
 import android.telephony.Rlog;
 import android.view.WindowManager;
 
@@ -44,7 +45,12 @@ import com.android.internal.telephony.cat.CatService;
 import com.android.internal.telephony.cdma.CDMALTEPhone;
 import com.android.internal.telephony.cdma.CDMAPhone;
 import com.android.internal.telephony.cdma.CdmaSubscriptionSourceManager;
-
+import com.android.internal.telephony.TelephonyProperties;
+import com.android.internal.telephony.uicc.IccCardApplicationStatus.AppState;
+import com.android.internal.telephony.PhoneProxy;
+import com.android.internal.telephony.PhoneFactory;
+import com.android.internal.telephony.TelephonyConstants;
+import com.android.internal.telephony.PhoneConstants;
 import android.os.SystemProperties;
 
 import com.android.internal.R;
@@ -70,18 +76,35 @@ public class UiccCard {
     private Context mContext;
     private CommandsInterface mCi;
     private CatService mCatService;
+    private boolean mIsPrimary;
     private boolean mDestroyed = false; //set to true once this card is commanded to be disposed of.
     private RadioState mLastRadioState =  RadioState.RADIO_UNAVAILABLE;
 
     private RegistrantList mAbsentRegistrants = new RegistrantList();
+    private RegistrantList mHotSwapRegistrants = new RegistrantList();
+
+    private boolean mHotSwapSupported;
+    private PhoneBase mPhone;
+    protected boolean mIsSimOff = false;
 
     private static final int EVENT_CARD_REMOVED = 13;
     private static final int EVENT_CARD_ADDED = 14;
 
-    public UiccCard(Context c, CommandsInterface ci, IccCardStatus ics) {
+    public UiccCard(Context c, CommandsInterface ci, IccCardStatus ics, boolean isPrimary) {
         if (DBG) log("Creating");
+        mIsPrimary = isPrimary;
+        mPhone = (PhoneBase) ((PhoneProxy)PhoneFactory.getDefaultPhoneById(isPrimary ? 0 : 1)).getActivePhone();
+
         mCardState = ics.mCardState;
+        // This persistant property is read only during UiccCard Creation.
+        mHotSwapSupported = SystemProperties.getBoolean(
+                TelephonyProperties.PROPERTY_HOT_SWAP_SUPPORT, false);
+
         update(c, ci, ics);
+        mIsSimOff = isSimOff();
+    }
+    public boolean isPrimary() {
+        return mIsPrimary;
     }
 
     public void dispose() {
@@ -133,9 +156,10 @@ public class UiccCard {
 
             if (mUiccApplications.length > 0 && mUiccApplications[0] != null) {
                 // Initialize or Reinitialize CatService
-                mCatService = CatService.getInstance(mCi,
-                                                     mContext,
-                                                     this);
+                mCatService = mIsPrimary ?
+                    CatService.getInstance(mCi, mContext, this) :
+                    CatService.getInstance2(mCi, mContext, this);
+
             } else {
                 if (mCatService != null) {
                     mCatService.dispose();
@@ -149,20 +173,53 @@ public class UiccCard {
             if (DBG) log("update: radioState=" + radioState + " mLastRadioState="
                     + mLastRadioState);
             // No notifications while radio is off or we just powering up
-            if (radioState == RadioState.RADIO_ON && mLastRadioState == RadioState.RADIO_ON) {
-                if (oldState != CardState.CARDSTATE_ABSENT &&
-                        mCardState == CardState.CARDSTATE_ABSENT) {
+            // For DSDS:
+			// 1) SIM state is independent of radio state
+            // 2) SIM ABSENT shall be broadcast upon SIM ON
+            boolean isReallyAbsent = false;
+            if (TelephonyConstants.IS_DSDS) {
+                boolean simOff = isSimOff();
+                if (!simOff && (mIsSimOff != simOff)) {
+                    if (DBG) log("Got the real SIM state:" + mCardState);
+                    isReallyAbsent = (mCardState == CardState.CARDSTATE_ABSENT);
+                }
+                mIsSimOff = simOff;
+            }
+            if (radioState == RadioState.RADIO_ON && mLastRadioState == RadioState.RADIO_ON
+                || (TelephonyConstants.IS_DSDS && mHotSwapSupported )) {
+                if ((oldState != CardState.CARDSTATE_ABSENT &&
+                        mCardState == CardState.CARDSTATE_ABSENT)|| isReallyAbsent) {
                     if (DBG) log("update: notify card removed");
                     mAbsentRegistrants.notifyRegistrants();
                     mHandler.sendMessage(mHandler.obtainMessage(EVENT_CARD_REMOVED, null));
                 } else if (oldState == CardState.CARDSTATE_ABSENT &&
                         mCardState != CardState.CARDSTATE_ABSENT) {
                     if (DBG) log("update: notify card added");
+                    if (TelephonyConstants.IS_DSDS) {
+                        if (isPinLocked() && !mIsSimOff && (radioState == RadioState.RADIO_ON)) {
+                            if (DBG) log("to enable PIN lock keyguard for HOT_SWAP.");
+                            mPhone.setUserPin();
+                        }
+                    }
                     mHandler.sendMessage(mHandler.obtainMessage(EVENT_CARD_ADDED, null));
                 }
             }
             mLastRadioState = radioState;
         }
+    }
+
+
+    public boolean isPinLocked() {
+        if (mUniversalPinState.isPinRequired()
+                || mUniversalPinState.isPukRequired()) {
+            return true;
+        }
+        UiccCardApplication app = getApplication(UiccController.APP_FAM_3GPP);
+        if (app != null ) {
+            return (app.getState() == AppState.APPSTATE_PIN
+                    || app.getState() == AppState.APPSTATE_PUK);
+        }
+        return false;
     }
 
     @Override
@@ -283,10 +340,18 @@ public class UiccCard {
 
             switch (msg.what) {
                 case EVENT_CARD_REMOVED:
-                    onIccSwap(false);
+                    if (!mHotSwapSupported) {
+                        onIccSwap(false);
+                    } else {
+                        onIccHotSwap(false);
+                    }
                     break;
                 case EVENT_CARD_ADDED:
-                    onIccSwap(true);
+                    if (!mHotSwapSupported) {
+                        onIccSwap(true);
+                    } else {
+                        onIccHotSwap(true);
+                    }
                     break;
                 default:
                     loge("Unknown Event " + msg.what);
@@ -345,6 +410,31 @@ public class UiccCard {
             }
             return null;
         }
+    }
+
+
+    private void broadcastIccHotSwap(boolean isAdded) {
+        //Do not trigger "HotSwap" upon "SIM OFF"
+        if (isSimOff()) {
+            log("Do not trigger HotSwap during SIM OFF");
+            return;
+        }
+        Intent intent = new Intent(TelephonyConstants.ACTION_ICC_HOT_SWAP);
+        intent.addFlags(Intent.FLAG_RECEIVER_REPLACE_PENDING);
+        intent.putExtra(PhoneConstants.PHONE_NAME_KEY, mPhone.getPhoneName());
+        intent.putExtra(TelephonyConstants.EXTRA_SWAP_IN, isAdded);
+        intent.putExtra(TelephonyConstants.EXTRA_SLOT, mPhone.getSlot());
+        if (DBG) log("Broadcasting intent ACTION_ICC_HOT_SWAP " +  isAdded);
+        ActivityManagerNative.broadcastStickyIntent(intent, READ_PHONE_STATE, UserHandle.USER_ALL);
+    }
+
+    public boolean isSimOff() {
+        return mPhone.isSimOff();
+    }
+
+    private void onIccHotSwap(boolean isAdded) {
+        if (DBG) log("onSwap() " + isAdded);
+        broadcastIccHotSwap(isAdded);
     }
 
     private void log(String msg) {

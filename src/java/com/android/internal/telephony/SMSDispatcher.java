@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2006 The Android Open Source Project
+ * Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -374,6 +375,11 @@ public abstract class SMSDispatcher extends Handler {
             if (DBG) Rlog.d(TAG, "SMS send failed");
 
             int ss = mPhone.getServiceState().getState();
+            if (TelephonyConstants.IS_DSDS && ss == ServiceState.STATE_OUT_OF_SERVICE) {
+                if (TelephonyManager.getDefault().isToosOnPhone(mPhone.getPhoneName())) {
+                    ss = ServiceState.STATE_IN_SERVICE;
+                }
+            }
 
             if ( tracker.mImsRetry > 0 && ss != ServiceState.STATE_IN_SERVICE) {
                 // This is retry after failure over IMS but voice is not available.
@@ -703,6 +709,11 @@ public abstract class SMSDispatcher extends Handler {
             }
 
             int ss = mPhone.getServiceState().getState();
+            if (TelephonyConstants.IS_DSDS && ss == ServiceState.STATE_OUT_OF_SERVICE) {
+                if (TelephonyManager.getDefault().isToosOnPhone(mPhone.getPhoneName())) {
+                    ss = ServiceState.STATE_IN_SERVICE;
+                }
+            }
 
             // if sms over IMS is not supported on data and voice is not available...
             if (!isIms() && ss != ServiceState.STATE_IN_SERVICE) {

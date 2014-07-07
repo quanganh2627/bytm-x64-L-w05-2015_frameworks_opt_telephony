@@ -24,19 +24,22 @@ import android.content.Intent;
 import android.os.Message;
 import android.provider.Telephony;
 import android.telephony.SmsCbMessage;
+import com.android.internal.telephony.PhoneBase;
 
 /**
  * Dispatch new Cell Broadcasts to receivers. Acquires a private wakelock until the broadcast
  * completes and our result receiver is called.
  */
 public class CellBroadcastHandler extends WakeLockStateMachine {
+    protected final PhoneBase mPhone;
 
-    private CellBroadcastHandler(Context context) {
-        this("CellBroadcastHandler", context, null);
+    private CellBroadcastHandler(Context context, PhoneBase phone) {
+        this("CellBroadcastHandler", context, phone);
     }
 
     protected CellBroadcastHandler(String debugTag, Context context, PhoneBase phone) {
         super(debugTag, context, phone);
+        mPhone = phone;
     }
 
     /**
@@ -44,8 +47,8 @@ public class CellBroadcastHandler extends WakeLockStateMachine {
      * @param context the context to use for dispatching Intents
      * @return the new handler
      */
-    public static CellBroadcastHandler makeCellBroadcastHandler(Context context) {
-        CellBroadcastHandler handler = new CellBroadcastHandler(context);
+    public static CellBroadcastHandler makeCellBroadcastHandler(Context context, PhoneBase phone) {
+        CellBroadcastHandler handler = new CellBroadcastHandler(context, phone);
         handler.start();
         return handler;
     }
@@ -88,6 +91,7 @@ public class CellBroadcastHandler extends WakeLockStateMachine {
             appOp = AppOpsManager.OP_RECEIVE_SMS;
         }
         intent.putExtra("message", message);
+        intent.putExtra("from", mPhone.getPhoneName());
         mContext.sendOrderedBroadcast(intent, receiverPermission, appOp, mReceiver,
                 getHandler(), Activity.RESULT_OK, null, null);
     }

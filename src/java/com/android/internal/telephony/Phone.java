@@ -75,7 +75,7 @@ public interface Phone {
     static final String FEATURE_ENABLE_FOTA = "enableFOTA";
     static final String FEATURE_ENABLE_IMS = "enableIMS";
     static final String FEATURE_ENABLE_CBS = "enableCBS";
-
+    static final String FEATURE_ENABLE_MMS2 = "enableMMS2";
     /**
      * Optional reasons for disconnect and connect
      */
@@ -104,7 +104,10 @@ public interface Phone {
     static final String REASON_LOST_DATA_CONNECTION = "lostDataConnection";
     static final String REASON_CONNECTED = "connected";
     static final String REASON_SINGLE_PDN_ARBITRATION = "SinglePdnArbitration";
-
+    static final String REASON_DATA_SIM_ENABLED = "dataSimEnabled";
+    static final String REASON_DATA_SIM_DISABLED = "dataSimDisabled";
+    static final String REASON_DATA_SIM_CHANGED = "dataSimChanged";
+	
     // Used for band mode selection methods
     static final int BM_UNSPECIFIED = 0; // selected by baseband automatically
     static final int BM_EURO_BAND   = 1; // GSM-900 / DCS-1800 / WCDMA-IMT-2000

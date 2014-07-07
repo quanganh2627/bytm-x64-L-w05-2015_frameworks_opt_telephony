@@ -21,7 +21,9 @@ import android.os.Handler;
 import android.os.Message;
 import android.util.SparseArray;
 
+import android.os.SystemProperties;
 import com.android.internal.telephony.gsm.UsimPhoneBookManager;
+import com.android.internal.telephony.uicc.IccCardApplicationStatus.AppType;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -46,10 +48,15 @@ public final class AdnRecordCache extends Handler implements IccConstants {
     // People waiting for adn record to be updated
     SparseArray<Message> mUserWriteResponse = new SparseArray<Message>();
 
+    private int freeAdn = 0;
+    private int mMaxAdnNameLength = -1;
+    private AdnRecordLoader mAdnRecordLoader;
     //***** Event Constants
 
     static final int EVENT_LOAD_ALL_ADN_LIKE_DONE = 1;
     static final int EVENT_UPDATE_ADN_DONE = 2;
+    static final int EVENT_ADD_ADN_DONE = 3;
+    static final int EVENT_DELETE_ADN_DONE = 4;
 
     //***** Constructor
 
@@ -58,6 +65,10 @@ public final class AdnRecordCache extends Handler implements IccConstants {
     AdnRecordCache(IccFileHandler fh) {
         mFh = fh;
         mUsimPhoneBookManager = new UsimPhoneBookManager(mFh, this);
+    }
+
+    boolean isPrimaryPhone() {
+        return mFh.getIccApplication().isPrimary();
     }
 
     //***** Called from SIMRecords
@@ -71,6 +82,15 @@ public final class AdnRecordCache extends Handler implements IccConstants {
 
         clearWaiters();
         clearUserWriters();
+        freeAdn = 0;
+        //to reset sim ADN information as UNKNOWN
+        String propFreeAdn = isPrimaryPhone() ? "gsm.sim.freeAdn" : "gsm.sim2.freeAdn" ;
+        String propAdnCapacity = isPrimaryPhone() ? "gsm.sim.adnCapacity" : "gsm.sim2.adnCapacity";
+        SystemProperties.set(propFreeAdn,Integer.toString(-1));
+        SystemProperties.set(propAdnCapacity,Integer.toString(-1));
+        //20 digits in EF_ADN since the baseline doesnt' support long number yet
+        String propNumberLimit = isPrimaryPhone() ? "gsm.sim.maxNumberLength" : "gsm.sim2.maxNumberLength";
+        SystemProperties.set(propNumberLimit, Integer.toString(20));
 
     }
 
@@ -187,7 +207,7 @@ public final class AdnRecordCache extends Handler implements IccConstants {
         ArrayList<AdnRecord>  oldAdnList;
 
         if (efid == EF_PBR) {
-            oldAdnList = mUsimPhoneBookManager.loadEfFilesFromUsim();
+            oldAdnList = loadUsimContacts();
         } else {
             oldAdnList = getRecordsIfLoaded(efid);
         }
@@ -207,11 +227,25 @@ public final class AdnRecordCache extends Handler implements IccConstants {
             count++;
         }
 
+        String propFreeAdn = isPrimaryPhone() ? "gsm.sim.freeAdn" : "gsm.sim2.freeAdn" ;
         if (index == -1) {
+            if ((oldAdn.isEmpty() && !newAdn.isEmpty() )) {
+                if (efid == IccConstants.EF_ADN) {
+                    freeAdn = 0;
+                    SystemProperties.set(propFreeAdn,Integer.toString(freeAdn));
+                }
+                log("SIM full,please delete some ADN before adding contact");
+            }
             sendErrorResponse(response, "Adn record don't exist for " + oldAdn);
             return;
         }
 
+        int event = EVENT_UPDATE_ADN_DONE;
+        if (newAdn.isEmpty()) {
+            event = EVENT_DELETE_ADN_DONE;
+        } else if (oldAdn.isEmpty()) {
+            event = EVENT_ADD_ADN_DONE;
+        }
         if (efid == EF_PBR) {
             AdnRecord foundAdn = oldAdnList.get(index-1);
             efid = foundAdn.mEfid;
@@ -221,6 +255,7 @@ public final class AdnRecordCache extends Handler implements IccConstants {
             newAdn.mEfid = efid;
             newAdn.mExtRecord = extensionEF;
             newAdn.mRecordNumber = index;
+            log("update usim for ef:" + efid);
         }
 
         Message pendingResponse = mUserWriteResponse.get(efid);
@@ -234,9 +269,69 @@ public final class AdnRecordCache extends Handler implements IccConstants {
 
         new AdnRecordLoader(mFh).updateEF(newAdn, efid, extensionEF,
                 index, pin2,
-                obtainMessage(EVENT_UPDATE_ADN_DONE, efid, index, newAdn));
+                obtainMessage(event, efid, index, newAdn));
     }
 
+    boolean isUsim() {
+        return (mFh.getIccApplication().getType() == AppType.APPTYPE_USIM);
+        //return (phone.getCurrentUiccAppType() == AppType.APPTYPE_USIM);
+    }
+    private void updateAdnFree(int event, int efid) {
+        //only set property for EF_ADN or usim ADN
+        switch (efid) {
+            case EF_SDN:
+            case EF_FDN:
+            case EF_MSISDN:
+                return;
+            default:
+                break;
+        }
+        if (isUsim()) efid = IccConstants.EF_ADN;
+        String propFreeAdn = isPrimaryPhone() ? "gsm.sim.freeAdn" : "gsm.sim2.freeAdn" ;
+        if (event == EVENT_DELETE_ADN_DONE) {
+            log("delete succcessly on file:" + Integer.toString(efid,16));
+            if (efid == IccConstants.EF_ADN ) {
+                freeAdn++;
+                log("freeAdn:" + freeAdn);
+                SystemProperties.set(propFreeAdn,Integer.toString(freeAdn));
+            }
+        } else if (event == EVENT_ADD_ADN_DONE) {
+            log("add succcessly on file:" + Integer.toString(efid,16));
+            event = EVENT_ADD_ADN_DONE;
+            if (efid == IccConstants.EF_ADN ) {
+                freeAdn--;
+                log("freeAdn:" + freeAdn);
+                SystemProperties.set(propFreeAdn,Integer.toString(freeAdn));
+            }
+        }
+    }
+    private ArrayList<AdnRecord> loadUsimContacts() {
+        ArrayList<AdnRecord> result;
+        result = mUsimPhoneBookManager.loadEfFilesFromUsim();
+        fillSimInfo(result);
+        return result;
+    }
+    private void fillSimInfo(ArrayList<AdnRecord> adnList) {
+        if (adnList == null) {
+            log("No ADN records!");
+            return;
+        }
+        freeAdn = 0;
+        String propFreeAdn = isPrimaryPhone() ? "gsm.sim.freeAdn" : "gsm.sim2.freeAdn" ;
+        String propAdnCapacity = isPrimaryPhone() ? "gsm.sim.adnCapacity" : "gsm.sim2.adnCapacity";
+        String propNameLimit = isPrimaryPhone() ? "gsm.sim.maxNameLength" : "gsm.sim2.maxNameLength" ;
+        for (int i=0;i<adnList.size(); i++) {
+            if (adnList.get(i).isEmpty()) freeAdn++;
+        }
+        log("free ADN:" + freeAdn);
+        SystemProperties.set(propFreeAdn, Integer.toString(freeAdn));
+        SystemProperties.set(propAdnCapacity, Integer.toString(adnList.size()));
+        if (mMaxAdnNameLength < 0) {
+            mMaxAdnNameLength = mAdnRecordLoader.recordLength - AdnRecord.FOOTER_SIZE_BYTES;
+            log("maxNameLength:" + mMaxAdnNameLength);
+            SystemProperties.set(propNameLimit, Integer.toString(mMaxAdnNameLength));
+        }
+    }
 
     /**
      * Responds with exception (in response) if efid is not a known ADN-like
@@ -248,7 +343,7 @@ public final class AdnRecordCache extends Handler implements IccConstants {
         ArrayList<AdnRecord> result;
 
         if (efid == EF_PBR) {
-            result = mUsimPhoneBookManager.loadEfFilesFromUsim();
+            result = loadUsimContacts();
         } else {
             result = getRecordsIfLoaded(efid);
         }
@@ -295,7 +390,8 @@ public final class AdnRecordCache extends Handler implements IccConstants {
             return;
         }
 
-        new AdnRecordLoader(mFh).loadAllFromEF(efid, extensionEf,
+        mAdnRecordLoader = new AdnRecordLoader(mFh);
+        mAdnRecordLoader.loadAllFromEF(efid, extensionEf,
             obtainMessage(EVENT_LOAD_ALL_ADN_LIKE_DONE, efid, 0));
     }
 
@@ -311,8 +407,10 @@ public final class AdnRecordCache extends Handler implements IccConstants {
         for (int i = 0, s = waiters.size() ; i < s ; i++) {
             Message waiter = waiters.get(i);
 
-            AsyncResult.forMessage(waiter, ar.result, ar.exception);
-            waiter.sendToTarget();
+            if (waiter != null) {
+                AsyncResult.forMessage(waiter, ar.result, ar.exception);
+                waiter.sendToTarget();
+            }
         }
     }
 
@@ -333,12 +431,20 @@ public final class AdnRecordCache extends Handler implements IccConstants {
 
                 waiters = mAdnLikeWaiters.get(efid);
                 mAdnLikeWaiters.delete(efid);
+                log("EVENT_LOAD_ALL_ADN_LIKE_DONE:" + efid);
 
                 if (ar.exception == null) {
                     mAdnLikeFiles.put(efid, (ArrayList<AdnRecord>) ar.result);
+                    if (efid == IccConstants.EF_ADN) {
+                        fillSimInfo((ArrayList<AdnRecord>) (ar.result));
+                    }
+                } else {
+                    log("OOPS,load EF exception:" + ar.exception);
                 }
                 notifyWaiters(waiters, ar);
                 break;
+            case EVENT_ADD_ADN_DONE:
+            case EVENT_DELETE_ADN_DONE:
             case EVENT_UPDATE_ADN_DONE:
                 ar = (AsyncResult)msg.obj;
                 efid = msg.arg1;
@@ -346,8 +452,12 @@ public final class AdnRecordCache extends Handler implements IccConstants {
                 AdnRecord adn = (AdnRecord) (ar.userObj);
 
                 if (ar.exception == null) {
+                    log("update successuflly, now update adn free space");
                     mAdnLikeFiles.get(efid).set(index - 1, adn);
                     mUsimPhoneBookManager.invalidateCache();
+                    updateAdnFree(msg.what, efid);
+                } else {
+                    log("EVENT_UPDATE_ADN_DONE,exception:" + ar.exception);
                 }
 
                 Message response = mUserWriteResponse.get(efid);
@@ -359,6 +469,11 @@ public final class AdnRecordCache extends Handler implements IccConstants {
         }
 
     }
-
+    private int getPhoneId() {
+        return mFh.getIccApplication().getPhoneId();
+    }
+    private void log(String msg) {
+        android.util.Log.d("AdnRecordCache", "[" + getPhoneId() + "]" + msg);
+    }
 
 }

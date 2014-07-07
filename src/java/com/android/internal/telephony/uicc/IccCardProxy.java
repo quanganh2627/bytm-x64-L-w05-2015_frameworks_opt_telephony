@@ -37,6 +37,7 @@ import com.android.internal.telephony.IccCardConstants;
 import com.android.internal.telephony.PhoneConstants;
 import com.android.internal.telephony.RILConstants;
 import com.android.internal.telephony.TelephonyIntents;
+import com.android.internal.telephony.TelephonyIntents2;
 import com.android.internal.telephony.IccCardConstants.State;
 import com.android.internal.telephony.cdma.CdmaSubscriptionSourceManager;
 import com.android.internal.telephony.Phone;
@@ -45,10 +46,13 @@ import com.android.internal.telephony.uicc.IccCardApplicationStatus.PersoSubStat
 import com.android.internal.telephony.uicc.IccCardStatus.CardState;
 import com.android.internal.telephony.uicc.IccCardStatus.PinState;
 import com.android.internal.telephony.uicc.UiccController;
-
+import com.android.internal.telephony.TelephonyConstants;
+import com.android.internal.telephony.PhoneBase;
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
-
+import com.android.internal.telephony.CommandException;
+import com.android.internal.telephony.TelephonyProperties;
+import com.android.internal.telephony.TelephonyProperties2;
 import static com.android.internal.telephony.TelephonyProperties.PROPERTY_SIM_STATE;
 
 /**
@@ -83,11 +87,14 @@ public class IccCardProxy extends Handler implements IccCard {
     private static final int EVENT_IMSI_READY = 8;
     private static final int EVENT_NETWORK_LOCKED = 9;
     private static final int EVENT_CDMA_SUBSCRIPTION_SOURCE_CHANGED = 11;
+    private static final int EVENT_PINPUK_DONE = 21;
+
+    private String PROPERTY_SIM_STATE;
 
     private final Object mLock = new Object();
     private Context mContext;
     private CommandsInterface mCi;
-
+    private PhoneBase mPhone;
     private RegistrantList mAbsentRegistrants = new RegistrantList();
     private RegistrantList mPinLockedRegistrants = new RegistrantList();
     private RegistrantList mNetworkLockedRegistrants = new RegistrantList();
@@ -103,18 +110,29 @@ public class IccCardProxy extends Handler implements IccCard {
                                         // ACTION_SIM_STATE_CHANGED intents
     private boolean mInitialized = false;
     private State mExternalState = State.UNKNOWN;
+    protected boolean mIsSimOff = false;  //the last SIM state if SIM is OFF
 
-    public IccCardProxy(Context context, CommandsInterface ci) {
+    public IccCardProxy(PhoneBase phone, CommandsInterface ci) {
+        mPhone = phone;
         log("Creating");
-        mContext = context;
-        mCi = ci;
+        Context context = phone.getContext();
+        PROPERTY_SIM_STATE = isPrimary() ?
+            TelephonyProperties.PROPERTY_SIM_STATE :
+            TelephonyProperties2.PROPERTY_SIM_STATE;
+        this.mContext = context;
+        this.mCi = ci;
         mCdmaSSM = CdmaSubscriptionSourceManager.getInstance(context,
                 ci, this, EVENT_CDMA_SUBSCRIPTION_SOURCE_CHANGED, null);
-        mUiccController = UiccController.getInstance();
+        mUiccController = mPhone.getUiccController();
         mUiccController.registerForIccChanged(this, EVENT_ICC_CHANGED, null);
         ci.registerForOn(this,EVENT_RADIO_ON, null);
         ci.registerForOffOrNotAvailable(this, EVENT_RADIO_OFF_OR_UNAVAILABLE, null);
         setExternalState(State.NOT_READY);
+        mIsSimOff = isSimOff();
+    }
+
+    public boolean isPrimary() {
+        return mPhone.isPrimaryPhone();
     }
 
     public void dispose() {
@@ -200,6 +218,9 @@ public class IccCardProxy extends Handler implements IccCard {
 
     @Override
     public void handleMessage(Message msg) {
+        AsyncResult ar;
+        int pinEvent = msg.arg1;
+        if (DBG) log("handleMessage:" + msg.what);
         switch (msg.what) {
             case EVENT_RADIO_OFF_OR_UNAVAILABLE:
                 mRadioOn = false;
@@ -209,6 +230,11 @@ public class IccCardProxy extends Handler implements IccCard {
                 if (!mInitialized) {
                     updateQuietMode();
                 }
+                //Reset state to trigger SIM ready state change
+                if (TelephonyConstants.IS_DSDS) {
+                    log("reset SIM state to unknown to trigger SIM_READY");
+                    mExternalState = State.UNKNOWN;
+                }
                 break;
             case EVENT_ICC_CHANGED:
                 if (mInitialized) {
@@ -216,6 +242,7 @@ public class IccCardProxy extends Handler implements IccCard {
                 }
                 break;
             case EVENT_ICC_ABSENT:
+                if (DBG) log("EVENT_ICC_ABSENT");
                 mAbsentRegistrants.notifyRegistrants();
                 setExternalState(State.ABSENT);
                 break;
@@ -237,6 +264,14 @@ public class IccCardProxy extends Handler implements IccCard {
                 break;
             case EVENT_CDMA_SUBSCRIPTION_SOURCE_CHANGED:
                 updateQuietMode();
+                break;
+            case EVENT_PINPUK_DONE:
+                ar = (AsyncResult)msg.obj;
+                // TODO should abstract these exceptions
+                AsyncResult.forMessage(((Message)ar.userObj)).exception
+                    = ar.exception;
+                handlePinError(pinEvent, ar);
+                ((Message)ar.userObj).sendToTarget();
                 break;
             default:
                 loge("Unhandled message with number: " + msg.what);
@@ -273,7 +308,8 @@ public class IccCardProxy extends Handler implements IccCard {
 
     private void updateExternalState() {
         if (mUiccCard == null || mUiccCard.getCardState() == CardState.CARDSTATE_ABSENT) {
-            if (mRadioOn) {
+            //for DSDS, SIM state is independent of radio state
+            if (mRadioOn || (TelephonyConstants.IS_DSDS && mUiccCard != null)) {
                 setExternalState(State.ABSENT);
             } else {
                 setExternalState(State.NOT_READY);
@@ -290,7 +326,7 @@ public class IccCardProxy extends Handler implements IccCard {
         switch (mUiccApplication.getState()) {
             case APPSTATE_UNKNOWN:
             case APPSTATE_DETECTED:
-                setExternalState(State.UNKNOWN);
+                setExternalState(State.NOT_READY);
                 break;
             case APPSTATE_PIN:
                 setExternalState(State.PIN_REQUIRED);
@@ -342,13 +378,17 @@ public class IccCardProxy extends Handler implements IccCard {
             }
 
             Intent intent = new Intent(TelephonyIntents.ACTION_SIM_STATE_CHANGED);
+            if (!isPrimary()) {
+                intent = new Intent(TelephonyIntents2.ACTION_SIM_STATE_CHANGED);
+            }
             intent.addFlags(Intent.FLAG_RECEIVER_REPLACE_PENDING);
             intent.putExtra(PhoneConstants.PHONE_NAME_KEY, "Phone");
             intent.putExtra(IccCardConstants.INTENT_KEY_ICC_STATE, value);
             intent.putExtra(IccCardConstants.INTENT_KEY_LOCKED_REASON, reason);
+            intent.putExtra(TelephonyConstants.EXTRA_SLOT, mPhone.getSlot());
 
             if (DBG) log("Broadcasting intent ACTION_SIM_STATE_CHANGED " +  value
-                    + " reason " + reason);
+                    + " reason " + reason + ",slot:" + mPhone.getSlot());
             ActivityManagerNative.broadcastStickyIntent(intent, READ_PHONE_STATE,
                     UserHandle.USER_ALL);
         }
@@ -388,9 +428,22 @@ public class IccCardProxy extends Handler implements IccCard {
     private void setExternalState(State newState, boolean override) {
         synchronized (mLock) {
             if (!override && newState == mExternalState) {
+                //DSDS:SIM ABSENT shall be broadcast upon SIM ON
+                if (TelephonyConstants.IS_DSDS) {
+                    boolean isOnOffTransition = (mIsSimOff != isSimOff());
+                    if (isOnOffTransition) {
+                        log("OnOffTransition, NO SIM!");
+                        broadcastIccStateChangedIntent(getIccStateIntentString(mExternalState),
+                                getIccStateReason(mExternalState));
+                    }
+                    mIsSimOff = isSimOff();
+                }
                 return;
             }
             mExternalState = newState;
+            if (TelephonyConstants.IS_DSDS) {
+                mIsSimOff = isSimOff();
+            }
             SystemProperties.set(PROPERTY_SIM_STATE, mExternalState.toString());
             broadcastIccStateChangedIntent(getIccStateIntentString(mExternalState),
                     getIccStateReason(mExternalState));
@@ -531,11 +584,15 @@ public class IccCardProxy extends Handler implements IccCard {
         }
     }
 
+    private static final  int PIN_PUK_EVENT_PIN1 = 1;
+    private static final  int PIN_PUK_EVENT_PUK1 = 2;
     @Override
     public void supplyPin(String pin, Message onComplete) {
         synchronized (mLock) {
             if (mUiccApplication != null) {
-                mUiccApplication.supplyPin(pin, onComplete);
+                mUiccApplication.supplyPin(pin,
+                        obtainMessage(EVENT_PINPUK_DONE, PIN_PUK_EVENT_PIN1, 0, onComplete));
+
             } else if (onComplete != null) {
                 Exception e = new RuntimeException("ICC card is absent.");
                 AsyncResult.forMessage(onComplete).exception = e;
@@ -549,7 +606,9 @@ public class IccCardProxy extends Handler implements IccCard {
     public void supplyPuk(String puk, String newPin, Message onComplete) {
         synchronized (mLock) {
             if (mUiccApplication != null) {
-                mUiccApplication.supplyPuk(puk, newPin, onComplete);
+                mUiccApplication.supplyPuk(puk, newPin,
+                        obtainMessage(EVENT_PINPUK_DONE, PIN_PUK_EVENT_PUK1, 0, onComplete));
+
             } else if (onComplete != null) {
                 Exception e = new RuntimeException("ICC card is absent.");
                 AsyncResult.forMessage(onComplete).exception = e;
@@ -601,6 +660,58 @@ public class IccCardProxy extends Handler implements IccCard {
         }
     }
 
+    private void handlePinError(int pinEvent, AsyncResult ar) {
+        if (pinEvent != PIN_PUK_EVENT_PIN1
+                && pinEvent != PIN_PUK_EVENT_PUK1) {
+            return;
+        }
+        if (ar.exception == null) {
+            resetPinRetries(pinEvent);
+            return;
+        }
+        int[]   ints = null;
+        if (ar.exception instanceof CommandException) {
+            CommandException.Error err = ((CommandException)(ar.exception)).getCommandError();
+            if (err == CommandException.Error.PASSWORD_INCORRECT) {
+                ints = (int[])ar.result;
+            }
+        }
+        if (ints == null || ints.length == 0) {
+            log("no pin retries returned by RIL");
+            return;
+        }
+        if (DBG) log("remaining times:" + ints[0]);
+        int retryTimesLeft = ints[0];
+        log("handlePinError, we have " + retryTimesLeft +
+                " times left for PIN:" + pinEvent);
+        updatePinPukRetriesProperty(pinEvent, retryTimesLeft);
+    }
+
+    private void reset() {
+        final String PROPERTY_SIM_PIN_RETRY_LEFT = isPrimary() ?
+            TelephonyProperties.PROPERTY_SIM_PIN_RETRY_LEFT:
+            TelephonyProperties2.PROPERTY_SIM_PIN_RETRY_LEFT;
+        if (SystemProperties.getInt(PROPERTY_SIM_PIN_RETRY_LEFT, -1) >= 0) {
+            mPhone.setSystemProperty(PROPERTY_SIM_PIN_RETRY_LEFT, null);
+        }
+    }
+
+    private void resetPinRetries(int pinEvent) {
+        log("resetPinRetries for pinEvent:" + pinEvent);
+        updatePinPukRetriesProperty(pinEvent, -1);
+    }
+    private void updatePinPukRetriesProperty(int pinEvent, int retries) {
+        String prop = null;
+        if (pinEvent == PIN_PUK_EVENT_PIN1 || pinEvent == PIN_PUK_EVENT_PUK1) {
+            prop = isPrimary() ? TelephonyProperties.PROPERTY_SIM_PIN_RETRY_LEFT:
+                TelephonyProperties2.PROPERTY_SIM_PIN_RETRY_LEFT;
+        }
+        if (prop != null) {
+            log("about to set properties " + prop + " to :" + retries);
+            mPhone.setSystemProperty(prop, Integer.toString(retries));
+        }
+    }
+
     @Override
     public boolean getIccLockEnabled() {
         synchronized (mLock) {
@@ -641,7 +752,8 @@ public class IccCardProxy extends Handler implements IccCard {
     public void setIccLockEnabled(boolean enabled, String password, Message onComplete) {
         synchronized (mLock) {
             if (mUiccApplication != null) {
-                mUiccApplication.setIccLockEnabled(enabled, password, onComplete);
+                mUiccApplication.setIccLockEnabled(enabled, password,
+                        obtainMessage(EVENT_PINPUK_DONE, PIN_PUK_EVENT_PIN1, 0, onComplete));
             } else if (onComplete != null) {
                 Exception e = new RuntimeException("ICC card is absent.");
                 AsyncResult.forMessage(onComplete).exception = e;
@@ -669,7 +781,8 @@ public class IccCardProxy extends Handler implements IccCard {
     public void changeIccLockPassword(String oldPassword, String newPassword, Message onComplete) {
         synchronized (mLock) {
             if (mUiccApplication != null) {
-                mUiccApplication.changeIccLockPassword(oldPassword, newPassword, onComplete);
+                mUiccApplication.changeIccLockPassword(oldPassword, newPassword,
+                        obtainMessage(EVENT_PINPUK_DONE, PIN_PUK_EVENT_PIN1, 0, onComplete));
             } else if (onComplete != null) {
                 Exception e = new RuntimeException("ICC card is absent.");
                 AsyncResult.forMessage(onComplete).exception = e;
@@ -719,6 +832,43 @@ public class IccCardProxy extends Handler implements IccCard {
             }
             return false;
         }
+    }
+    public void fakeSimPinStateChanged() {
+        if (mExternalState.isPinLocked()) {
+            if (DBG) log("fakeSimPinStateChanged:" + mExternalState);
+            broadcastIccStateChangedIntent(IccCardConstants.INTENT_VALUE_ICC_LOCKED,
+                    (mExternalState == State.PIN_REQUIRED) ?
+                    IccCardConstants.INTENT_VALUE_LOCKED_ON_PIN
+                    : IccCardConstants.INTENT_VALUE_LOCKED_ON_PUK);
+        }
+
+    }
+
+    private void broadcastIccHotSwap(boolean isAdded) {
+        //Do not trigger "HotSwap" upon "SIM OFF"
+        if (isSimOff()) {
+            log("Do not trigger HotSwap during SIM OFF");
+            return;
+        }
+        Intent intent = new Intent(TelephonyConstants.ACTION_ICC_HOT_SWAP);
+        intent.addFlags(Intent.FLAG_RECEIVER_REPLACE_PENDING);
+        intent.putExtra(PhoneConstants.PHONE_NAME_KEY, mPhone.getPhoneName());
+        intent.putExtra(TelephonyConstants.EXTRA_SWAP_IN, isAdded);
+        intent.putExtra(TelephonyConstants.EXTRA_SLOT, mPhone.getSlot());
+        if (DBG) log("Broadcasting intent ACTION_ICC_HOT_SWAP " +  isAdded);
+        ActivityManagerNative.broadcastStickyIntent(intent, READ_PHONE_STATE, UserHandle.USER_ALL);
+
+    }
+
+    public boolean isSimOff() {
+        if (!TelephonyConstants.IS_DSDS) return false;
+        return mPhone.isSimOff();
+    }
+    public int getSlot() {
+        return mPhone.getSlot();
+    }
+    public PhoneBase getPhone() {
+        return mPhone;
     }
 
     private void log(String s) {

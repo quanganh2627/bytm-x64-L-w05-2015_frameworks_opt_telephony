@@ -868,7 +868,8 @@ public class SipPhone extends SipPhoneBase {
         }
 
         void unhold(AudioGroup audioGroup) throws CallStateException {
-            mSipAudioCall.setAudioGroup(audioGroup);
+            if (mSipAudioCall == null) return;
+			mSipAudioCall.setAudioGroup(audioGroup);
             setState(Call.State.ACTIVE);
             try {
                 mSipAudioCall.continueCall(TIMEOUT_HOLD_CALL);

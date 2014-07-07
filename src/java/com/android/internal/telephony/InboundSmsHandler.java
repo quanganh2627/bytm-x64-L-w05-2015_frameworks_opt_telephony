@@ -172,7 +172,7 @@ public abstract class InboundSmsHandler extends StateMachine {
         mPhone = phone;
         mCellBroadcastHandler = cellBroadcastHandler;
         mResolver = context.getContentResolver();
-        mWapPush = new WapPushOverSms(context);
+        mWapPush = new WapPushOverSms(context, phone);
 
         boolean smsCapable = mContext.getResources().getBoolean(
                 com.android.internal.R.bool.config_sms_capable);
@@ -182,6 +182,7 @@ public abstract class InboundSmsHandler extends StateMachine {
         PowerManager pm = (PowerManager) mContext.getSystemService(Context.POWER_SERVICE);
         mWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, name);
         mWakeLock.acquire();    // wake lock released after we enter idle state
+        mPhone = phone;
 
         addState(mDefaultState);
         addState(mStartupState, mDefaultState);
@@ -507,6 +508,7 @@ public abstract class InboundSmsHandler extends StateMachine {
             // broadcast SMS_REJECTED_ACTION intent
             Intent intent = new Intent(Intents.SMS_REJECTED_ACTION);
             intent.putExtra("result", result);
+            intent.putExtra("from", mPhone.getPhoneName());
             mContext.sendBroadcast(intent, android.Manifest.permission.RECEIVE_SMS);
         }
         acknowledgeLastIncomingSms(success, result, response);
@@ -685,6 +687,7 @@ public abstract class InboundSmsHandler extends StateMachine {
         }
 
         intent.putExtra("pdus", pdus);
+        intent.putExtra("from", mPhone.getPhoneName());
         intent.putExtra("format", tracker.getFormat());
         dispatchIntent(intent, android.Manifest.permission.RECEIVE_SMS,
                 AppOpsManager.OP_RECEIVE_SMS, resultReceiver);

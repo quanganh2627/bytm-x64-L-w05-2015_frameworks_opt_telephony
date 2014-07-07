@@ -23,7 +23,7 @@ import android.os.Parcel;
 import android.os.Parcelable;
 import android.provider.Telephony;
 import android.text.format.DateUtils;
-
+import com.android.internal.telephony.TelephonyConstants;
 /**
  * Application wrapper for {@link SmsCbMessage}. This is Parcelable so that
  * decoded broadcast message objects can be passed between running Services.
@@ -48,23 +48,30 @@ public class CellBroadcastMessage implements Parcelable {
 
     private final long mDeliveryTime;
     private boolean mIsRead;
+    private int mSimId;
 
     public CellBroadcastMessage(SmsCbMessage message) {
+        this(message, 0);
+    }
+    public CellBroadcastMessage(SmsCbMessage message, int simId) {
         mSmsCbMessage = message;
         mDeliveryTime = System.currentTimeMillis();
         mIsRead = false;
+		mSimId = simId;
     }
 
-    private CellBroadcastMessage(SmsCbMessage message, long deliveryTime, boolean isRead) {
+    private CellBroadcastMessage(SmsCbMessage message, long deliveryTime, boolean isRead, int simId) {
         mSmsCbMessage = message;
         mDeliveryTime = deliveryTime;
         mIsRead = isRead;
+		mSimId = simId;
     }
 
     private CellBroadcastMessage(Parcel in) {
         mSmsCbMessage = new SmsCbMessage(in);
         mDeliveryTime = in.readLong();
         mIsRead = (in.readInt() != 0);
+		mSimId = in.readInt();
     }
 
     /** Parcelable: no special flags. */
@@ -78,6 +85,7 @@ public class CellBroadcastMessage implements Parcelable {
         mSmsCbMessage.writeToParcel(out, flags);
         out.writeLong(mDeliveryTime);
         out.writeInt(mIsRead ? 1 : 0);
+        out.writeInt(mSimId);
     }
 
     public static final Parcelable.Creator<CellBroadcastMessage> CREATOR
@@ -215,8 +223,12 @@ public class CellBroadcastMessage implements Parcelable {
                 Telephony.CellBroadcasts.DELIVERY_TIME));
         boolean isRead = (cursor.getInt(cursor.getColumnIndexOrThrow(
                 Telephony.CellBroadcasts.MESSAGE_READ)) != 0);
-
-        return new CellBroadcastMessage(msg, deliveryTime, isRead);
+        int simId = 0;
+        if (TelephonyConstants.IS_DSDS) {
+            simId = cursor.getInt(cursor.getColumnIndexOrThrow(
+                    Telephony.CellBroadcasts.SIM_ID));
+        }
+        return new CellBroadcastMessage(msg, deliveryTime, isRead, simId);
     }
 
     /**
@@ -260,7 +272,9 @@ public class CellBroadcastMessage implements Parcelable {
             cv.put(Telephony.CellBroadcasts.CMAS_URGENCY, cmasInfo.getUrgency());
             cv.put(Telephony.CellBroadcasts.CMAS_CERTAINTY, cmasInfo.getCertainty());
         }
-
+        if (TelephonyConstants.IS_DSDS) {
+            cv.put(Telephony.CellBroadcasts.SIM_ID, mSimId);
+        }
         return cv;
     }
 
@@ -290,6 +304,9 @@ public class CellBroadcastMessage implements Parcelable {
 
     public boolean isRead() {
         return mIsRead;
+    }
+    public int getSimId() {
+        return mSimId;
     }
 
     public int getSerialNumber() {

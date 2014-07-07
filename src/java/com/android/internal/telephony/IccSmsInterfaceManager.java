@@ -801,4 +801,9 @@ public class IccSmsInterfaceManager extends ISms.Stub {
     public String getImsSmsFormat() {
         return mDispatcher.getImsSmsFormat();
     }
+    public void resetSmsCache() {
+        if (mSms != null) {
+            mSms.clear();
+        }
+    }
 }

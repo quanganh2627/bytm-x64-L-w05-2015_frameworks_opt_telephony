@@ -43,6 +43,9 @@ public class AdnRecordLoader extends Handler {
     // for "load all"
     ArrayList<AdnRecord> mAdns; // only valid after EVENT_ADN_LOAD_ALL_DONE
 
+    // record length from EF
+    int recordLength = -1;
+
     // Either an AdnRecord or a reference to adns depending
     // if this is a load one or load all operation
     Object mResult;
@@ -241,7 +244,10 @@ public class AdnRecordLoader extends Handler {
                     mAdns = new ArrayList<AdnRecord>(datas.size());
                     mResult = mAdns;
                     mPendingExtLoads = 0;
-
+                    if (recordLength < 0 && datas.size() > 0) {
+                        recordLength = datas.get(0).length;
+                        Rlog.d(LOG_TAG,"recordLength:" + recordLength);
+                    }
                     for(int i = 0, s = datas.size() ; i < s ; i++) {
                         adn = new AdnRecord(mEf, 1 + i, datas.get(i));
                         mAdns.add(adn);

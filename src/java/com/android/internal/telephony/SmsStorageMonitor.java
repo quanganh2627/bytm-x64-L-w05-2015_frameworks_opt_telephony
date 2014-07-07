@@ -56,7 +56,7 @@ public final class SmsStorageMonitor extends Handler {
 
     final CommandsInterface mCi;                            // accessed from inner class
     boolean mStorageAvailable = true;                       // accessed from inner class
-
+    private PhoneBase mPhone;
     /**
      * Hold the wake lock for 5 seconds, which should be enough time for
      * any receiver(s) to grab its own wake lock.
@@ -70,7 +70,7 @@ public final class SmsStorageMonitor extends Handler {
     public SmsStorageMonitor(PhoneBase phone) {
         mContext = phone.getContext();
         mCi = phone.mCi;
-
+        mPhone = phone;
         createWakelock();
 
         mCi.setOnIccSmsFull(this, EVENT_ICC_FULL, null);
@@ -138,6 +138,7 @@ public final class SmsStorageMonitor extends Handler {
     private void handleIccFull() {
         // broadcast SIM_FULL intent
         Intent intent = new Intent(Intents.SIM_FULL_ACTION);
+		intent.putExtra(TelephonyConstants.EXTRA_SLOT, mPhone.getSlot());
         mWakeLock.acquire(WAKE_LOCK_TIMEOUT);
         mContext.sendBroadcast(intent, android.Manifest.permission.RECEIVE_SMS);
     }

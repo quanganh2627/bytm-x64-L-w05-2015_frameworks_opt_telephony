@@ -52,6 +52,9 @@ public class IccProvider extends ContentProvider {
     private static final int ADN = 1;
     private static final int FDN = 2;
     private static final int SDN = 3;
+    private static final int ADN2 = 11;
+    private static final int FDN2 = 12;
+    private static final int SDN2 = 13;
 
     private static final String STR_TAG = "tag";
     private static final String STR_NUMBER = "number";
@@ -65,6 +68,9 @@ public class IccProvider extends ContentProvider {
         URL_MATCHER.addURI("icc", "adn", ADN);
         URL_MATCHER.addURI("icc", "fdn", FDN);
         URL_MATCHER.addURI("icc", "sdn", SDN);
+        URL_MATCHER.addURI("icc2", "adn", ADN2);
+        URL_MATCHER.addURI("icc2", "fdn", FDN2);
+        URL_MATCHER.addURI("icc2", "sdn", SDN2);
     }
 
 
@@ -76,15 +82,25 @@ public class IccProvider extends ContentProvider {
     @Override
     public Cursor query(Uri url, String[] projection, String selection,
             String[] selectionArgs, String sort) {
+        boolean isPrimaryPhone = true;
         switch (URL_MATCHER.match(url)) {
+            case ADN2:
+                isPrimaryPhone = false;
+                if (DBG) log("to load phone book from slot 2");
             case ADN:
-                return loadFromEf(IccConstants.EF_ADN);
+                return loadFromEf(IccConstants.EF_ADN, isPrimaryPhone);
 
+            case FDN2:
+                isPrimaryPhone = false;
+                if (DBG) log("to load fdn from slot 2");
             case FDN:
-                return loadFromEf(IccConstants.EF_FDN);
+                return loadFromEf(IccConstants.EF_FDN, isPrimaryPhone);
 
+            case SDN2:
+                isPrimaryPhone = false;
+                if (DBG) log("to load sdn from slot 2");
             case SDN:
-                return loadFromEf(IccConstants.EF_SDN);
+                return loadFromEf(IccConstants.EF_SDN, isPrimaryPhone);
 
             default:
                 throw new IllegalArgumentException("Unknown URL " + url);
@@ -97,6 +113,9 @@ public class IccProvider extends ContentProvider {
             case ADN:
             case FDN:
             case SDN:
+            case ADN2:
+            case FDN2:
+            case SDN2:
                 return "vnd.android.cursor.dir/sim-contact";
 
             default:
@@ -111,14 +130,18 @@ public class IccProvider extends ContentProvider {
         String pin2 = null;
 
         if (DBG) log("insert");
-
+        boolean isPrimaryPhone = true;
         int match = URL_MATCHER.match(url);
         switch (match) {
             case ADN:
+            case ADN2:
+                isPrimaryPhone = (match == ADN);
                 efType = IccConstants.EF_ADN;
                 break;
 
             case FDN:
+            case FDN2:
+                isPrimaryPhone = (match == FDN);
                 efType = IccConstants.EF_FDN;
                 pin2 = initialValues.getAsString("pin2");
                 break;
@@ -131,19 +154,21 @@ public class IccProvider extends ContentProvider {
         String tag = initialValues.getAsString("tag");
         String number = initialValues.getAsString("number");
         // TODO(): Read email instead of sending null.
-        boolean success = addIccRecordToEf(efType, tag, number, null, pin2);
+        boolean success = addIccRecordToEf(efType, tag, number, null, pin2, isPrimaryPhone);
 
         if (!success) {
             return null;
         }
 
-        StringBuilder buf = new StringBuilder("content://icc/");
+        StringBuilder buf = isPrimaryPhone ? new StringBuilder("content://icc/") : new StringBuilder("content://icc2/");
         switch (match) {
             case ADN:
+            case ADN2:
                 buf.append("adn/");
                 break;
 
             case FDN:
+            case FDN2:
                 buf.append("fdn/");
                 break;
         }
@@ -180,12 +205,17 @@ public class IccProvider extends ContentProvider {
         if (DBG) log("delete");
 
         int match = URL_MATCHER.match(url);
+        boolean isPrimaryPhone = true;
         switch (match) {
             case ADN:
+            case ADN2:
+                isPrimaryPhone = (match == ADN);
                 efType = IccConstants.EF_ADN;
                 break;
 
             case FDN:
+            case FDN2:
+                isPrimaryPhone = (match == FDN);
                 efType = IccConstants.EF_FDN;
                 break;
 
@@ -207,7 +237,12 @@ public class IccProvider extends ContentProvider {
             String param = tokens[n];
             if (DBG) log("parsing '" + param + "'");
 
-            String[] pair = param.split("=", 2);
+            String[] pair = param.split("=");
+
+            if (pair.length != 2) {
+                Rlog.e(TAG, "resolve: bad whereClause parameter: " + param);
+                continue;
+            }
 
             String key = pair[0].trim();
             String val = pair[1].trim();
@@ -232,7 +267,7 @@ public class IccProvider extends ContentProvider {
             return 0;
         }
 
-        boolean success = deleteIccRecordFromEf(efType, tag, number, emails, pin2);
+        boolean success = deleteIccRecordFromEf(efType, tag, number, emails, pin2, isPrimaryPhone);
         if (!success) {
             return 0;
         }
@@ -246,14 +281,18 @@ public class IccProvider extends ContentProvider {
         String pin2 = null;
 
         if (DBG) log("update");
-
+        boolean isPrimaryPhone = true;
         int match = URL_MATCHER.match(url);
         switch (match) {
             case ADN:
+            case ADN2:
+                isPrimaryPhone = (match == ADN);
                 efType = IccConstants.EF_ADN;
                 break;
 
             case FDN:
+            case FDN2:
+                isPrimaryPhone = (match == FDN);
                 efType = IccConstants.EF_FDN;
                 pin2 = values.getAsString("pin2");
                 break;
@@ -271,7 +310,7 @@ public class IccProvider extends ContentProvider {
         String[] newEmails = null;
         // TODO(): Update for email.
         boolean success = updateIccRecordInEf(efType, tag, number,
-                newTag, newNumber, pin2);
+                newTag, newNumber, pin2, isPrimaryPhone);
 
         if (!success) {
             return 0;
@@ -280,13 +319,15 @@ public class IccProvider extends ContentProvider {
         return 1;
     }
 
-    private MatrixCursor loadFromEf(int efType) {
+    private MatrixCursor loadFromEf(int efType, boolean isPrimaryPhone) {
         if (DBG) log("loadFromEf: efType=" + efType);
 
         List<AdnRecord> adnRecords = null;
+        String service = isPrimaryPhone ? "simphonebook" : "simphonebook2";
+        if (DBG) log("to access service from " + service);
         try {
             IIccPhoneBook iccIpb = IIccPhoneBook.Stub.asInterface(
-                    ServiceManager.getService("simphonebook"));
+                    ServiceManager.getService(service));
             if (iccIpb != null) {
                 adnRecords = iccIpb.getAdnRecordsInEf(efType);
             }
@@ -295,7 +336,7 @@ public class IccProvider extends ContentProvider {
         } catch (SecurityException ex) {
             if (DBG) log(ex.toString());
         }
-
+        if (DBG) log("loadFromEf: return results");
         if (adnRecords != null) {
             // Load the results
             final int N = adnRecords.size();
@@ -313,12 +354,13 @@ public class IccProvider extends ContentProvider {
     }
 
     private boolean
-    addIccRecordToEf(int efType, String name, String number, String[] emails, String pin2) {
+    addIccRecordToEf(int efType, String name, String number, String[] emails, String pin2, boolean isPrimaryPhone) {
         if (DBG) log("addIccRecordToEf: efType=" + efType + ", name=" + name +
                 ", number=" + number + ", emails=" + emails);
 
         boolean success = false;
-
+        String service = isPrimaryPhone ? "simphonebook" : "simphonebook2";
+        if (DBG) log("to access service from " + service);
         // TODO: do we need to call getAdnRecordsInEf() before calling
         // updateAdnRecordsInEfBySearch()? In any case, we will leave
         // the UI level logic to fill that prereq if necessary. But
@@ -326,7 +368,7 @@ public class IccProvider extends ContentProvider {
 
         try {
             IIccPhoneBook iccIpb = IIccPhoneBook.Stub.asInterface(
-                    ServiceManager.getService("simphonebook"));
+                    ServiceManager.getService(service));
             if (iccIpb != null) {
                 success = iccIpb.updateAdnRecordsInEfBySearch(efType, "", "",
                         name, number, pin2);
@@ -342,15 +384,16 @@ public class IccProvider extends ContentProvider {
 
     private boolean
     updateIccRecordInEf(int efType, String oldName, String oldNumber,
-            String newName, String newNumber, String pin2) {
+            String newName, String newNumber, String pin2, boolean isPrimaryPhone) {
         if (DBG) log("updateIccRecordInEf: efType=" + efType +
                 ", oldname=" + oldName + ", oldnumber=" + oldNumber +
                 ", newname=" + newName + ", newnumber=" + newNumber);
         boolean success = false;
-
+        String service = isPrimaryPhone ? "simphonebook" : "simphonebook2";
+        if (DBG) log("to access service from " + service);
         try {
             IIccPhoneBook iccIpb = IIccPhoneBook.Stub.asInterface(
-                    ServiceManager.getService("simphonebook"));
+                    ServiceManager.getService(service));
             if (iccIpb != null) {
                 success = iccIpb.updateAdnRecordsInEfBySearch(efType,
                         oldName, oldNumber, newName, newNumber, pin2);
@@ -366,15 +409,16 @@ public class IccProvider extends ContentProvider {
 
 
     private boolean deleteIccRecordFromEf(int efType, String name, String number, String[] emails,
-            String pin2) {
+            String pin2, boolean isPrimaryPhone) {
         if (DBG) log("deleteIccRecordFromEf: efType=" + efType +
                 ", name=" + name + ", number=" + number + ", emails=" + emails + ", pin2=" + pin2);
 
         boolean success = false;
-
+        String service = isPrimaryPhone ? "simphonebook" : "simphonebook2";
+        if (DBG) log("to access service from " + service);
         try {
             IIccPhoneBook iccIpb = IIccPhoneBook.Stub.asInterface(
-                    ServiceManager.getService("simphonebook"));
+                    ServiceManager.getService(service));
             if (iccIpb != null) {
                 success = iccIpb.updateAdnRecordsInEfBySearch(efType,
                         name, number, "", "", pin2);

@@ -294,4 +294,8 @@ public final class GsmSMSDispatcher extends SMSDispatcher {
             }
         }
     }
+
+    void reset() {
+        mRemainingMessages = -1;
+    }
 }

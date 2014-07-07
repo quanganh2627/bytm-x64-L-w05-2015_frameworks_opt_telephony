@@ -24,11 +24,14 @@ import android.os.ServiceManager;
 
 public class PhoneSubInfoProxy extends IPhoneSubInfo.Stub {
     private PhoneSubInfo mPhoneSubInfo;
-
-    public PhoneSubInfoProxy(PhoneSubInfo phoneSubInfo) {
-        mPhoneSubInfo = phoneSubInfo;
-        if(ServiceManager.getService("iphonesubinfo") == null) {
-            ServiceManager.addService("iphonesubinfo", this);
+    private Phone mPhone;
+    public PhoneSubInfoProxy(Phone phone) {
+        mPhone = phone;
+        mPhoneSubInfo = phone.getPhoneSubInfo();
+        String service = mPhone.getPhoneName().equals("GSM2")
+                                 ? "iphonesubinfo2" : "iphonesubinfo";
+        if (ServiceManager.getService(service) == null) {
+            ServiceManager.addService(service, this);
         }
     }
 

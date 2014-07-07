@@ -23,7 +23,7 @@ import android.text.TextUtils;
 import android.telephony.Rlog;
 
 import com.android.internal.telephony.GsmAlphabet;
-
+import com.android.internal.telephony.TelephonyConstants;
 import java.util.Arrays;
 
 
@@ -178,9 +178,15 @@ public class AdnRecord implements Parcelable {
     }
 
     public boolean isEqual(AdnRecord adn) {
-        return ( stringCompareNullEqualsEmpty(mAlphaTag, adn.mAlphaTag) &&
-                stringCompareNullEqualsEmpty(mNumber, adn.mNumber) &&
-                Arrays.equals(mEmails, adn.mEmails));
+
+        final boolean ret = (stringCompareNullEqualsEmpty(mAlphaTag, adn.mAlphaTag) &&
+                stringCompareNullEqualsEmpty(mNumber, adn.mNumber));
+        // Compare contact on USIM card based on name and number
+        if (TelephonyConstants.IS_DSDS) {
+            return ret;
+        } else {
+            return ret && Arrays.equals(mEmails, adn.mEmails);
+        }
     }
     //***** Parcelable Implementation
 

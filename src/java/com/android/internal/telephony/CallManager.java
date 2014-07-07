@@ -81,7 +81,7 @@ public final class CallManager {
 
     // Singleton instance
     private static final CallManager INSTANCE = new CallManager();
-
+    private static final CallManager INSTANCE2 = new CallManager();
     // list of registered phones, which are PhoneBase objs
     private final ArrayList<Phone> mPhones;
 
@@ -181,7 +181,9 @@ public final class CallManager {
     public static CallManager getInstance() {
         return INSTANCE;
     }
-
+    public static CallManager getInstance2() {
+        return INSTANCE2;
+    }
     /**
      * Get the corresponding PhoneBase obj
      *
@@ -368,19 +370,83 @@ public final class CallManager {
     public Phone getRingingPhone() {
         return getFirstActiveRingingCall().getPhone();
     }
+    public PhoneConstants.State getOverallState() {
+        if (!TelephonyConstants.IS_DSDS) {
+            return getState();
+        }
 
+        CallManager cm = CallManager.getInstance();
+        CallManager cm2 = CallManager.getInstance2();
+
+        PhoneConstants.State state = cm.getState();
+        PhoneConstants.State state2 = cm2.getState();
+
+        if (state != PhoneConstants.State.IDLE) {
+            return state;
+        } else if (state2 != PhoneConstants.State.IDLE) {
+            return state2;
+        } else {
+            return PhoneConstants.State.IDLE;
+        }
+    }
+
+    private CallManager getPrimaryCm() {
+        if (((PhoneBase)CallManager.getInstance2().getDefaultPhone()).isPrimaryPhone()) {
+            return CallManager.getInstance2();
+        }
+        return CallManager.getInstance();
+
+    }
+
+    private CallManager getAcitveCm() {
+        if (!TelephonyConstants.IS_DSDS) {
+            return getInstance();
+        }
+
+        CallManager cm2 = CallManager.getInstance2();
+
+        if (cm2.getActiveFgCallState() == Call.State.ACTIVE) {
+            return cm2;
+        } else {
+            return cm2.getState() == PhoneConstants.State.OFFHOOK ? cm2 : getPrimaryCm();
+        }
+    }
+
+    private CallManager getRingingCm() {
+        if (!TelephonyConstants.IS_DSDS) {
+            return getInstance();
+        }
+        CallManager cm2 = CallManager.getInstance2();
+
+        return cm2.getState() == PhoneConstants.State.RINGING ? cm2 : getPrimaryCm();
+    }
+
+    private Phone getAcitvePhone() {
+        CallManager cm = getAcitveCm();
+        Phone offhookPhone = cm.getFgPhone();
+        if (cm.getActiveFgCallState() == Call.State.IDLE) {
+            // There is no active Fg calls, the OFFHOOK state
+            // is set by the Bg call. So set the phone to bgPhone.
+            offhookPhone = cm.getBgPhone();
+        }
+        return offhookPhone;
+    }
+
+    public boolean hasActiveFgCallOndevice() {
+        return getAcitveCm().hasActiveFgCall();
+    }
     public void setAudioMode() {
         Context context = getContext();
         if (context == null) return;
         AudioManager audioManager = (AudioManager)
                 context.getSystemService(Context.AUDIO_SERVICE);
-
+        CallManager cm = getAcitveCm();
         // change the audio mode and request/abandon audio focus according to phone state,
         // but only on audio mode transitions
-        switch (getState()) {
+        switch (getOverallState()) {
             case RINGING:
                 int curAudioMode = audioManager.getMode();
-                if (curAudioMode != AudioManager.MODE_RINGTONE) {
+                if ((!hasActiveFgCallOndevice()) && (curAudioMode != AudioManager.MODE_RINGTONE)) {
                     // only request audio focus if the ringtone is going to be heard
                     if (audioManager.getStreamVolume(AudioManager.STREAM_RING) > 0) {
                         if (VDBG) Rlog.d(LOG_TAG, "requestAudioFocus on STREAM_RING");
@@ -397,11 +463,12 @@ public final class CallManager {
                 }
                 break;
             case OFFHOOK:
-                Phone offhookPhone = getFgPhone();
-                if (getActiveFgCallState() == Call.State.IDLE) {
+			    Rlog.d(LOG_TAG, "OFFHOOK" );
+                Phone offhookPhone = getAcitvePhone();
+                if (cm.getActiveFgCallState() == Call.State.IDLE) {
                     // There is no active Fg calls, the OFFHOOK state
                     // is set by the Bg call. So set the phone to bgPhone.
-                    offhookPhone = getBgPhone();
+                    offhookPhone = cm.getBgPhone();
                 }
 
                 int newAudioMode = AudioManager.MODE_IN_CALL;
@@ -409,6 +476,7 @@ public final class CallManager {
                     // enable IN_COMMUNICATION audio mode instead for sipPhone
                     newAudioMode = AudioManager.MODE_IN_COMMUNICATION;
                 }
+				Rlog.d(LOG_TAG, "naudio " + newAudioMode);
                 if (audioManager.getMode() != newAudioMode || mSpeedUpAudioForMtCall) {
                     // request audio focus before setting the new mode
                     if (VDBG) Rlog.d(LOG_TAG, "requestAudioFocus on STREAM_VOICE_CALL");
@@ -419,6 +487,7 @@ public final class CallManager {
                 mSpeedUpAudioForMtCall = false;
                 break;
             case IDLE:
+			    Rlog.d(LOG_TAG, "idle " );
                 if (audioManager.getMode() != AudioManager.MODE_NORMAL) {
                     audioManager.setMode(AudioManager.MODE_NORMAL);
                     if (VDBG) Rlog.d(LOG_TAG, "abandonAudioFocus");

@@ -30,11 +30,13 @@ import java.util.List;
 public class IccPhoneBookInterfaceManagerProxy extends IIccPhoneBook.Stub {
     private IccPhoneBookInterfaceManager mIccPhoneBookInterfaceManager;
 
-    public IccPhoneBookInterfaceManagerProxy(IccPhoneBookInterfaceManager
-            iccPhoneBookInterfaceManager) {
-        mIccPhoneBookInterfaceManager = iccPhoneBookInterfaceManager;
-        if(ServiceManager.getService("simphonebook") == null) {
-            ServiceManager.addService("simphonebook", this);
+    public IccPhoneBookInterfaceManagerProxy(Phone phone) {
+        mIccPhoneBookInterfaceManager = phone.getIccPhoneBookInterfaceManager();
+        String service = phone.getPhoneName().equals("GSM2") ? "simphonebook2" : "simphonebook";
+        android.telephony.Rlog.d("GSM", "to add service:" + service);
+
+        if (ServiceManager.getService(service) == null) {
+            ServiceManager.addService(service, this);
         }
     }
 

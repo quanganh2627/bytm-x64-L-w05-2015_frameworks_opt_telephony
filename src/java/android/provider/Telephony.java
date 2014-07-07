@@ -30,6 +30,7 @@ import android.telephony.SmsMessage;
 import android.text.TextUtils;
 import android.telephony.Rlog;
 import android.util.Patterns;
+import com.android.internal.telephony.TelephonyConstants;
 
 import com.android.internal.telephony.SmsApplication;
 
@@ -242,6 +243,12 @@ public final class Telephony {
          * <P>Type: INTEGER</P>
          */
         public static final String ERROR_CODE = "error_code";
+        /**
+         * IMSI of the SIM used in sending/receiving of SMS
+         * <P>Type: STRING</P>
+         * @hide
+         */
+        public static final String IMSI = "imsi";
     }
 
     /**
@@ -315,7 +322,19 @@ public final class Telephony {
                 Uri uri, String address, String body, String subject,
                 Long date, boolean read, boolean deliveryReport) {
             return addMessageToUri(resolver, uri, address, body, subject,
-                    date, read, deliveryReport, -1L);
+                    date, read, deliveryReport, -1L, null);
+        }
+
+        /**
+        * Add an SMS to the Given URI with IMSI.
+        * This is enhancement for DSDS which will be valid for single SIM
+        * @hide
+        */
+        public static Uri addMessageToUri(ContentResolver resolver,
+                Uri uri, String address, String body, String subject,
+                Long date, boolean read, boolean deliveryReport, String imsi) {
+            return addMessageToUri(resolver, uri, address, body, subject,
+                    date, read, deliveryReport, -1L, imsi);
         }
 
         /**
@@ -336,6 +355,18 @@ public final class Telephony {
         public static Uri addMessageToUri(ContentResolver resolver,
                 Uri uri, String address, String body, String subject,
                 Long date, boolean read, boolean deliveryReport, long threadId) {
+            return addMessageToUri(resolver, uri, address, body, subject,
+                    date, read, deliveryReport, threadId, null);
+        }
+        /**
+        * Add an SMS to the Given URI with IMSI.
+        * This is enhancement for DSDS which will be valid for single SIM
+        * @hide
+        */
+        public static Uri addMessageToUri(ContentResolver resolver,
+                Uri uri, String address, String body, String subject,
+                Long date, boolean read, boolean deliveryReport, long threadId,
+                String imsi) {
             ContentValues values = new ContentValues(7);
 
             values.put(ADDRESS, address);
@@ -350,6 +381,11 @@ public final class Telephony {
             }
             if (threadId != -1L) {
                 values.put(THREAD_ID, threadId);
+            }
+            if (TelephonyConstants.IS_DSDS) {
+                if (!TextUtils.isEmpty(imsi)) {
+                    values.put(IMSI, imsi);
+                }
             }
             return resolver.insert(uri, values);
         }
@@ -453,6 +489,15 @@ public final class Telephony {
                 return addMessageToUri(resolver, CONTENT_URI, address, body,
                         subject, date, read, false);
             }
+            /**
+             * @hide
+             */
+            public static Uri addMessage(ContentResolver resolver,
+                    String address, String body, String subject, Long date,
+                    boolean read, String imsi) {
+                return addMessageToUri(resolver, CONTENT_URI, address, body,
+                        subject, date, read, false, imsi);
+            }
         }
 
         /**
@@ -492,6 +537,16 @@ public final class Telephony {
                     String address, String body, String subject, Long date) {
                 return addMessageToUri(resolver, CONTENT_URI, address, body,
                         subject, date, true, false);
+            }
+
+            /**
+             * @hide
+             */
+            public static Uri addMessage(ContentResolver resolver,
+                    String address, String body, String subject, Long date,
+                    String imsi) {
+                return addMessageToUri(resolver, CONTENT_URI, address, body,
+                        subject, date, true, false, imsi);
             }
         }
 
@@ -557,6 +612,16 @@ public final class Telephony {
                     boolean deliveryReport, long threadId) {
                 return addMessageToUri(resolver, CONTENT_URI, address, body,
                         subject, date, true, deliveryReport, threadId);
+            }
+            /**
+             * Not instantiable.
+             * @hide
+             */
+            public static Uri addMessage(ContentResolver resolver,
+                    String address, String body, String subject, Long date,
+                    boolean deliveryReport, long threadId, String imsi) {
+                return addMessageToUri(resolver, CONTENT_URI, address, body,
+                        subject, date, true, deliveryReport, threadId, imsi);
             }
         }
 
@@ -1452,6 +1517,12 @@ public final class Telephony {
          * <P>Type: INTEGER (boolean)</P>
          */
         public static final String LOCKED = "locked";
+        /**
+         * IMSI of the SIM used in sending/receiving of SMS
+         * <P>Type: STRING</P>
+         * @hide
+         */
+        public static final String IMSI = "imsi";
     }
 
     /**
@@ -2236,7 +2307,10 @@ public final class Telephony {
          * The {@code content://} style URL for this table.
          */
         public static final Uri CONTENT_URI = Uri.parse("content://telephony/carriers");
-
+        /**
+         * @hide
+         */
+        public static final Uri CONTENT_URI2 = Uri.parse("content://telephony/carriers2");
         /**
          * The default sort order for this table.
          */
@@ -2535,6 +2609,13 @@ public final class Telephony {
          */
         public static final String CMAS_CERTAINTY = "cmas_certainty";
 
+
+        /**
+         * SIM Index.
+         * <P>Type: INTEGER</P>
+         */
+        public static final String SIM_ID = "sim_id";
+
         /** The default sort order for this table. */
         public static final String DEFAULT_SORT_ORDER = DELIVERY_TIME + " DESC";
 
@@ -2561,7 +2642,8 @@ public final class Telephony {
                 CMAS_RESPONSE_TYPE,
                 CMAS_SEVERITY,
                 CMAS_URGENCY,
-                CMAS_CERTAINTY
+                CMAS_CERTAINTY,
+                SIM_ID
         };
     }
 }

@@ -48,6 +48,9 @@ public final class SmsManager {
     /** Singleton object constructed during class initialization. */
     private static final SmsManager sInstance = new SmsManager();
 
+    /** for SMS on SIM 2. */
+    private static final SmsManager sInstance2 = new SmsManager();
+
     /**
      * Send a text based SMS.
      *
@@ -96,7 +99,7 @@ public final class SmsManager {
         }
 
         try {
-            ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService("isms"));
+            ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService(getServiceName()));
             if (iccISms != null) {
                 iccISms.sendText(ActivityThread.currentPackageName(), destinationAddress,
                         scAddress, text, sentIntent, deliveryIntent);
@@ -176,7 +179,7 @@ public final class SmsManager {
 
         if (parts.size() > 1) {
             try {
-                ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService("isms"));
+                ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService(getServiceName()));
                 if (iccISms != null) {
                     iccISms.sendMultipartText(ActivityThread.currentPackageName(),
                             destinationAddress, scAddress, parts,
@@ -241,7 +244,7 @@ public final class SmsManager {
         }
 
         try {
-            ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService("isms"));
+            ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService(getServiceName()));
             if (iccISms != null) {
                 iccISms.sendData(ActivityThread.currentPackageName(),
                         destinationAddress, scAddress, destinationPort & 0xFFFF,
@@ -260,7 +263,16 @@ public final class SmsManager {
     public static SmsManager getDefault() {
         return sInstance;
     }
-
+    /**
+     * Get the second instance of the SmsManager
+     *
+     * @return the instance of the SmsManager for the second SIM
+     *
+     * {@hide}
+     */
+    public static SmsManager get2ndSmsManager() {
+        return sInstance2;
+    }
     private SmsManager() {
         //nothing
     }
@@ -286,7 +298,7 @@ public final class SmsManager {
             throw new IllegalArgumentException("pdu is NULL");
         }
         try {
-            ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService("isms"));
+            ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService(getServiceName()));
             if (iccISms != null) {
                 success = iccISms.copyMessageToIccEf(ActivityThread.currentPackageName(),
                         status, pdu, smsc);
@@ -315,7 +327,7 @@ public final class SmsManager {
         Arrays.fill(pdu, (byte)0xff);
 
         try {
-            ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService("isms"));
+            ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService(getServiceName()));
             if (iccISms != null) {
                 success = iccISms.updateMessageOnIccEf(ActivityThread.currentPackageName(),
                         messageIndex, STATUS_ON_ICC_FREE, pdu);
@@ -345,7 +357,7 @@ public final class SmsManager {
         boolean success = false;
 
         try {
-            ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService("isms"));
+            ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService(getServiceName()));
             if (iccISms != null) {
                 success = iccISms.updateMessageOnIccEf(ActivityThread.currentPackageName(),
                         messageIndex, newStatus, pdu);
@@ -382,6 +394,30 @@ public final class SmsManager {
     }
 
     /**
+     * Retrieves all messages currently stored on the second ICC.
+     * ICC (Integrated Circuit Card) is the card of the device.
+     * For example, this can be the SIM or USIM for GSM.
+     *
+     * @return <code>ArrayList</code> of <code>SmsMessage</code> objects
+     *
+     * {@hide}
+     */
+    public static ArrayList<SmsMessage> getAllMessagesFromIcc2() {
+        List<SmsRawData> records = null;
+
+        try {
+            ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService("isms2"));
+            if (iccISms != null) {
+                records = iccISms.getAllMessagesFromIccEf(ActivityThread.currentPackageName());
+            }
+        } catch (RemoteException ex) {
+            // ignore it
+        }
+
+        return createMessageListFromRawRecords(records);
+    }
+
+    /**
      * Enable reception of cell broadcast (SMS-CB) messages with the given
      * message identifier. Note that if two different clients enable the same
      * message identifier, they must both disable it for the device to stop
@@ -401,7 +437,7 @@ public final class SmsManager {
         boolean success = false;
 
         try {
-            ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService("isms"));
+            ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService(getServiceName()));
             if (iccISms != null) {
                 success = iccISms.enableCellBroadcast(messageIdentifier);
             }
@@ -432,7 +468,7 @@ public final class SmsManager {
         boolean success = false;
 
         try {
-            ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService("isms"));
+            ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService(getServiceName()));
             if (iccISms != null) {
                 success = iccISms.disableCellBroadcast(messageIdentifier);
             }
@@ -469,7 +505,7 @@ public final class SmsManager {
             throw new IllegalArgumentException("endMessageId < startMessageId");
         }
         try {
-            ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService("isms"));
+            ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService(getServiceName()));
             if (iccISms != null) {
                 success = iccISms.enableCellBroadcastRange(startMessageId, endMessageId);
             }
@@ -506,7 +542,7 @@ public final class SmsManager {
             throw new IllegalArgumentException("endMessageId < startMessageId");
         }
         try {
-            ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService("isms"));
+            ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService(getServiceName()));
             if (iccISms != null) {
                 success = iccISms.disableCellBroadcastRange(startMessageId, endMessageId);
             }
@@ -556,7 +592,7 @@ public final class SmsManager {
     boolean isImsSmsSupported() {
         boolean boSupported = false;
         try {
-            ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService("isms"));
+            ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService(getServiceName()));
             if (iccISms != null) {
                 boSupported = iccISms.isImsSmsSupported();
             }
@@ -581,7 +617,7 @@ public final class SmsManager {
     String getImsSmsFormat() {
         String format = com.android.internal.telephony.SmsConstants.FORMAT_UNKNOWN;
         try {
-            ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService("isms"));
+            ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService(getServiceName()));
             if (iccISms != null) {
                 format = iccISms.getImsSmsFormat();
             }
@@ -589,6 +625,10 @@ public final class SmsManager {
             // ignore it
         }
         return format;
+    }
+
+    private String getServiceName() {
+        return (this == sInstance2) ? "isms2" : "isms";
     }
 
     // see SmsMessage.getStatusOnIcc

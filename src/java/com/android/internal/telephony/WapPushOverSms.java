@@ -40,6 +40,7 @@ public class WapPushOverSms implements ServiceConnection {
     private static final boolean DBG = true;
 
     private final Context mContext;
+    private Phone mPhone;
 
     /** Assigned from ServiceConnection callback on main threaad. */
     private volatile IWapPushManager mWapPushManager;
@@ -56,8 +57,9 @@ public class WapPushOverSms implements ServiceConnection {
         if (DBG) Rlog.v(TAG, "wappush manager disconnected.");
     }
 
-    public WapPushOverSms(Context context) {
+    public WapPushOverSms(Context context, Phone phone) {
         mContext = context;
+        mPhone = phone;
         Intent intent = new Intent(IWapPushManager.class.getName());
         ComponentName comp = intent.resolveSystemService(context.getPackageManager(), 0);
         intent.setComponent(comp);
@@ -241,6 +243,7 @@ public class WapPushOverSms implements ServiceConnection {
             intent.putExtra("header", header);
             intent.putExtra("data", intentData);
             intent.putExtra("contentTypeParameters", pduDecoder.getContentParameters());
+        intent.putExtra("from", mPhone.getPhoneName());
 
             // Direct the intent to only the default MMS app. If we can't find a default MMS app
             // then sent it to all broadcast receivers.

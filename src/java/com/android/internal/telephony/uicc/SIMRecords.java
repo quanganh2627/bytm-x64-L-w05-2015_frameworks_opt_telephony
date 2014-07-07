@@ -15,11 +15,13 @@
  */
 
 package com.android.internal.telephony.uicc;
-
+import static com.android.internal.telephony.TelephonyProperties.PROPERTY_HOT_SWAP_SUPPORT;
 import static com.android.internal.telephony.TelephonyProperties.PROPERTY_ICC_OPERATOR_ALPHA;
 import static com.android.internal.telephony.TelephonyProperties.PROPERTY_ICC_OPERATOR_ISO_COUNTRY;
 import static com.android.internal.telephony.TelephonyProperties.PROPERTY_ICC_OPERATOR_NUMERIC;
+import static com.android.internal.telephony.TelephonyProperties.PROPERTY_DATA_SIM_ICC_OPERATOR_NUMERIC;
 import android.content.Context;
+import android.net.ConnectivityManager;
 import android.os.AsyncResult;
 import android.os.Message;
 import android.os.SystemProperties;
@@ -32,7 +34,10 @@ import com.android.internal.telephony.CommandsInterface;
 import com.android.internal.telephony.MccTable;
 import com.android.internal.telephony.SmsConstants;
 import com.android.internal.telephony.gsm.SimTlv;
-
+import com.android.internal.telephony.TelephonyProperties;
+import com.android.internal.telephony.TelephonyProperties2;
+import com.android.internal.telephony.TelephonyConstants;
+import com.android.internal.telephony.gsm.GSMPhone;
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
 import java.util.ArrayList;
@@ -131,6 +136,7 @@ public class SIMRecords extends IccRecords {
     private static final int CFIS_ADN_EXTENSION_ID_OFFSET = 15;
 
     // ***** Event Constants
+    private static final int EVENT_RADIO_OFF_OR_NOT_AVAILABLE = 2;
     private static final int EVENT_GET_IMSI_DONE = 3;
     private static final int EVENT_GET_ICCID_DONE = 4;
     private static final int EVENT_GET_MBI_DONE = 5;
@@ -158,7 +164,7 @@ public class SIMRecords extends IccRecords {
     private static final int EVENT_GET_CFIS_DONE = 32;
     private static final int EVENT_GET_CSP_CPHS_DONE = 33;
     private static final int EVENT_GET_GID1_DONE = 34;
-
+    private static final int EVENT_SIM_UNAVAILABLE = 35;
     // Lookup table for carriers known to produce SIMs which incorrectly indicate MNC length.
 
     private static final String[] MCCMNC_CODES_HAVING_3DIGITS_MNC = {
@@ -180,12 +186,26 @@ public class SIMRecords extends IccRecords {
         "405923", "405924", "405925", "405926", "405927", "405928", "405929", "405930",
         "405931", "405932", "502142", "502143", "502145", "502146", "502147", "502148"
     };
-
+    private final String PROPERTY_ICC_OPERATOR_ALPHA;
+    private final String PROPERTY_ICC_OPERATOR_ISO_COUNTRY;
+    private final String PROPERTY_ICC_OPERATOR_NUMERIC;
+    // Indicate Primary SIM for DSDS, default is true for SIM on slot 1.
+    // It can be false, for SIM on slot 2.
+    private boolean mIsPrimary = true;
     // ***** Constructor
 
     public SIMRecords(UiccCardApplication app, Context c, CommandsInterface ci) {
         super(app, c, ci);
-
+        if (app.isPrimary()) {
+            PROPERTY_ICC_OPERATOR_ALPHA = TelephonyProperties.PROPERTY_ICC_OPERATOR_ALPHA;
+            PROPERTY_ICC_OPERATOR_ISO_COUNTRY = TelephonyProperties.PROPERTY_ICC_OPERATOR_ISO_COUNTRY;
+            PROPERTY_ICC_OPERATOR_NUMERIC = TelephonyProperties.PROPERTY_ICC_OPERATOR_NUMERIC;
+        } else {
+            PROPERTY_ICC_OPERATOR_ALPHA = TelephonyProperties2.PROPERTY_ICC_OPERATOR_ALPHA;
+            PROPERTY_ICC_OPERATOR_ISO_COUNTRY = TelephonyProperties2.PROPERTY_ICC_OPERATOR_ISO_COUNTRY;
+            PROPERTY_ICC_OPERATOR_NUMERIC = TelephonyProperties2.PROPERTY_ICC_OPERATOR_NUMERIC;
+            mIsPrimary = false;
+        }
         mAdnCache = new AdnRecordCache(mFh);
 
         mVmConfig = new VoiceMailConstants();
@@ -195,7 +215,8 @@ public class SIMRecords extends IccRecords {
 
         // recordsToLoad is set to 0 because no requests are made yet
         mRecordsToLoad = 0;
-
+        mCi.registerForOffOrNotAvailable(
+                        this, EVENT_RADIO_OFF_OR_NOT_AVAILABLE, null);
         mCi.setOnSmsOnSim(this, EVENT_SMS_ON_SIM, null);
         mCi.registerForIccRefresh(this, EVENT_SIM_REFRESH, null);
 
@@ -209,6 +230,7 @@ public class SIMRecords extends IccRecords {
     public void dispose() {
         if (DBG) log("Disposing SIMRecords this=" + this);
         //Unregister for all events
+        mCi.unregisterForOffOrNotAvailable( this);
         mCi.unregisterForIccRefresh(this);
         mCi.unSetOnSmsOnSim(this);
         mParentApp.unregisterForReady(this);
@@ -221,7 +243,7 @@ public class SIMRecords extends IccRecords {
         if(DBG) log("finalized");
     }
 
-    protected void resetRecords() {
+     public void resetRecords() {
         mImsi = null;
         mMsisdn = null;
         mVoiceMailNum = null;
@@ -242,7 +264,11 @@ public class SIMRecords extends IccRecords {
         SystemProperties.set(PROPERTY_ICC_OPERATOR_NUMERIC, null);
         SystemProperties.set(PROPERTY_ICC_OPERATOR_ALPHA, null);
         SystemProperties.set(PROPERTY_ICC_OPERATOR_ISO_COUNTRY, null);
-
+        if (TelephonyConstants.IS_DSDS && isOnDataSim()) {
+            log("SIMRecords: onRadioOffOrNotAvailable " +
+                    "set 'gsm.data_sim.operator.numeric' to operator=null");
+            SystemProperties.set(PROPERTY_DATA_SIM_ICC_OPERATOR_NUMERIC, null);
+        }
         // recordsRequested is set to false indicating that the SIM
         // read requests made so far are not valid. This is set to
         // true only when fresh set of read requests are made.
@@ -577,7 +603,13 @@ public class SIMRecords extends IccRecords {
             case EVENT_APP_READY:
                 onReady();
                 break;
-
+            case EVENT_RADIO_OFF_OR_NOT_AVAILABLE:
+                //onRadioOffOrNotAvailable();
+                break;
+            case EVENT_SIM_UNAVAILABLE:
+                if (TelephonyConstants.IS_DSDS) {
+                    resetRecords();
+                }
             /* IO events */
             case EVENT_GET_IMSI_DONE:
                 isRecordLoadResponse = true;
@@ -1338,7 +1370,11 @@ public class SIMRecords extends IccRecords {
         } else {
             log("onAllRecordsLoaded empty 'gsm.sim.operator.numeric' skipping");
         }
-
+        if (TelephonyConstants.IS_DSDS && isOnDataSim()) {
+            log("SIMRecords: set 'gsm.data_sim.operator.numeric' for data sim to operator='" +
+                    operator + "'");
+            SystemProperties.set(PROPERTY_DATA_SIM_ICC_OPERATOR_NUMERIC, operator);
+        }
         if (!TextUtils.isEmpty(mImsi)) {
             log("onAllRecordsLoaded set mcc imsi=" + mImsi);
             SystemProperties.set(PROPERTY_ICC_OPERATOR_ISO_COUNTRY,
@@ -1669,6 +1705,10 @@ public class SIMRecords extends IccRecords {
         }
     }
 
+    String getPhoneTag() {
+        return mParentApp == null ? "[NULL]" :
+            (mParentApp.isPrimary() ? "[GSM]" : "[GSM2]");
+    }
     /**
      * check to see if Mailbox Number is allocated and activated in CPHS SST
      */
@@ -1679,20 +1719,20 @@ public class SIMRecords extends IccRecords {
 
     @Override
     protected void log(String s) {
-        Rlog.d(LOG_TAG, "[SIMRecords] " + s);
+        Rlog.d(LOG_TAG, "[SIMRecords] "+ getPhoneTag() + " "  + s);
     }
 
     @Override
     protected void loge(String s) {
-        Rlog.e(LOG_TAG, "[SIMRecords] " + s);
+        Rlog.e(LOG_TAG, "[SIMRecords] " + getPhoneTag() + " " + s);
     }
 
     protected void logw(String s, Throwable tr) {
-        Rlog.w(LOG_TAG, "[SIMRecords] " + s, tr);
+        Rlog.w(LOG_TAG, "[SIMRecords] " + getPhoneTag() + " "  + s, tr);
     }
 
     protected void logv(String s) {
-        Rlog.v(LOG_TAG, "[SIMRecords] " + s);
+        Rlog.v(LOG_TAG, "[SIMRecords] " + getPhoneTag() + " "  + s);
     }
 
     /**
@@ -1745,6 +1785,21 @@ public class SIMRecords extends IccRecords {
         log("[CSP] Value Added Service Group (0xC0), not found!");
     }
 
+    /**
+     * Return true if current SIMRecords point to data sim
+     * return false otherwise.
+     */
+    private boolean isOnDataSim() {
+        ConnectivityManager cm = (ConnectivityManager)mContext.getSystemService(
+                Context.CONNECTIVITY_SERVICE);
+        int dataSimId =  cm.getDataSim();
+        if ((mIsPrimary && dataSimId == TelephonyConstants.DSDS_SLOT_1_ID) ||
+                (!mIsPrimary && dataSimId == TelephonyConstants.DSDS_SLOT_2_ID)) {
+            return true;
+        }
+
+        return false;
+    }
     @Override
     public void dump(FileDescriptor fd, PrintWriter pw, String[] args) {
         pw.println("SIMRecords: " + this);

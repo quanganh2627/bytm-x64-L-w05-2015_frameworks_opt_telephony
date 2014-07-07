@@ -159,7 +159,7 @@ public abstract class ServiceStateTracker extends Handler {
     protected static final int EVENT_ICC_CHANGED                       = 42;
     protected static final int EVENT_GET_CELL_INFO_LIST                = 43;
     protected static final int EVENT_UNSOL_CELL_INFO_LIST              = 44;
-
+    protected static final int EVENT_RIL_RECONNECTED                   = 51;
     protected static final String TIMEZONE_PROPERTY = "persist.sys.timezone";
 
     /**
@@ -206,7 +206,7 @@ public abstract class ServiceStateTracker extends Handler {
         mCi = ci;
         mVoiceCapable = mPhoneBase.getContext().getResources().getBoolean(
                 com.android.internal.R.bool.config_voice_capable);
-        mUiccController = UiccController.getInstance();
+        mUiccController = mPhoneBase.getUiccController();
         mUiccController.registerForIccChanged(this, EVENT_ICC_CHANGED, null);
         mCi.setOnSignalStrengthUpdate(this, EVENT_SIGNAL_STRENGTH_UPDATE, null);
         mCi.registerForCellInfoList(this, EVENT_UNSOL_CELL_INFO_LIST, null);

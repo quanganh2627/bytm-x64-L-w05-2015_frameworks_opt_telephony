@@ -29,7 +29,8 @@ import com.android.internal.telephony.uicc.IccCardApplicationStatus.AppState;
 import com.android.internal.telephony.uicc.IccCardApplicationStatus.AppType;
 import com.android.internal.telephony.uicc.IccCardApplicationStatus.PersoSubState;
 import com.android.internal.telephony.uicc.IccCardStatus.PinState;
-
+import com.android.internal.telephony.CommandsInterface.RadioState;
+import com.android.internal.telephony.TelephonyConstants;
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
 
@@ -48,7 +49,7 @@ public class UiccCardApplication {
     private static final int EVENT_QUERY_FACILITY_LOCK_DONE = 6;
     private static final int EVENT_CHANGE_FACILITY_LOCK_DONE = 7;
     private static final int EVENT_PIN2_PUK2_DONE = 8;
-
+    private static final int EVENT_RADIO_OFF_NOT_AVAILABLE = 9;
     private final Object  mLock = new Object();
     private UiccCard      mUiccCard; //parent
     private AppState      mAppState;
@@ -64,6 +65,8 @@ public class UiccCardApplication {
     private boolean       mIccLockEnabled;
     private boolean       mDesiredPinLocked;
     private boolean       mIccFdnAvailable = true; // Default is enabled.
+    private RadioState    mLastRadioState = RadioState.RADIO_UNAVAILABLE;
+
 
     private CommandsInterface mCi;
     private Context mContext;
@@ -100,6 +103,15 @@ public class UiccCardApplication {
             queryFdn();
             queryPin1State();
         }
+        mCi.registerForOffOrNotAvailable(mHandler, EVENT_RADIO_OFF_NOT_AVAILABLE, null);
+    }
+
+    public boolean isPrimary() {
+        return mUiccCard.isPrimary();
+    }
+
+    public int getPhoneId() {
+        return isPrimary() ? 0 : 1;
     }
 
     void update (IccCardApplicationStatus as, Context c, CommandsInterface ci) {
@@ -146,6 +158,14 @@ public class UiccCardApplication {
                 }
                 notifyPinLockedRegistrantsIfNeeded(null);
                 notifyReadyRegistrantsIfNeeded(null);
+            }
+            if (TelephonyConstants.IS_DSDS && mLastRadioState != mCi.getRadioState()) {
+                mLastRadioState = mCi.getRadioState();
+                if (DBG) log("radio State changing to " + mLastRadioState);
+                if (mLastRadioState == RadioState.RADIO_ON) {
+                    if (DBG) log("notifySimReadyFor DSDS " + mLastRadioState);
+                    notifyReadyRegistrantsIfNeeded(null);
+                }
             }
         }
     }
@@ -392,6 +412,10 @@ public class UiccCardApplication {
                 case EVENT_CHANGE_FACILITY_LOCK_DONE:
                     ar = (AsyncResult)msg.obj;
                     onChangeFacilityLock(ar);
+                    break;
+                case EVENT_RADIO_OFF_NOT_AVAILABLE:
+                    log("EVENT_RADIO_OFF_NOT_AVAILABLE");
+                    mLastRadioState = mCi.getRadioState();
                     break;
                 default:
                     loge("Unknown Event " + msg.what);

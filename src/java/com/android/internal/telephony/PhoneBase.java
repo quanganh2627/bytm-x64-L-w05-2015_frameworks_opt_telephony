@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2007 The Android Open Source Project
+ * Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -48,7 +49,7 @@ import com.android.internal.telephony.uicc.IsimRecords;
 import com.android.internal.telephony.uicc.UiccCardApplication;
 import com.android.internal.telephony.uicc.UiccController;
 import com.android.internal.telephony.uicc.UsimServiceTable;
-
+import com.android.internal.telephony.gsm.OemHookHandler;
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
 import java.util.ArrayList;
@@ -76,6 +77,18 @@ public abstract class PhoneBase extends Handler implements Phone {
     // Key used to read and write the saved network selection operator name
     public static final String NETWORK_SELECTION_NAME_KEY = "network_selection_name_key";
 
+    /*
+     * Key used to read/write the network selection mode
+     *          true - Automatic network selection mode
+     *          false - Manual network selection mode
+     */
+    public static final String NETWORK_SELECTION_MODE = "network_selection_mode";
+    public static final String NETWORK_SELECTION_MODE2 = "network_selection_mode2";
+
+    // Key used to read and write the saved network selection numeric value
+    public static final String NETWORK_SELECTION_KEY2 = "network_selection_key2";
+    // Key used to read and write the saved network selection operator name
+    public static final String NETWORK_SELECTION_NAME_KEY2 = "network_selection_name_key2";
 
     // Key used to read/write "disable data connection on boot" pref (used for testing)
     public static final String DATA_DISABLED_ON_BOOT_KEY = "disabled_on_boot_key";
@@ -117,10 +130,11 @@ public abstract class PhoneBase extends Handler implements Phone {
     protected static final int EVENT_SET_NETWORK_AUTOMATIC          = 28;
     protected static final int EVENT_ICC_RECORD_EVENTS              = 29;
     protected static final int EVENT_ICC_CHANGED                    = 30;
-
+    protected static final int EVENT_RADIO_NOT_AVAILABLE            = 41;
+    protected static final int EVENT_SIM_UNAVAILABLE                = 42;
     // Key used to read/write current CLIR setting
     public static final String CLIR_KEY = "clir_key";
-
+    public static final String CLIR2_KEY = "clir2_key";
     // Key used to read/write "disable DNS server check" pref (used for testing)
     public static final String DNS_SERVER_CHECK_DISABLED_KEY = "dns_server_check_disabled_key";
 
@@ -144,7 +158,8 @@ public abstract class PhoneBase extends Handler implements Phone {
     private final String mName;
     private final String mActionDetached;
     private final String mActionAttached;
-
+    public boolean mIsAutomaticNetworkSelection = true;
+	
     @Override
     public String getPhoneName() {
         return mName;
@@ -268,6 +283,9 @@ public abstract class PhoneBase extends Handler implements Phone {
         SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(context);
         mDnsCheckDisabled = sp.getBoolean(DNS_SERVER_CHECK_DISABLED_KEY, false);
         mCi.setOnCallRing(this, EVENT_CALL_RING, null);
+        String networkMode = PhoneFactory.isSim1Phone(this)
+                             ? NETWORK_SELECTION_MODE : NETWORK_SELECTION_MODE2;
+        mIsAutomaticNetworkSelection = sp.getBoolean(networkMode, true);
 
         /* "Voice capable" means that this device supports circuit-switched
         * (i.e. voice) phone calls over the telephony network, and is allowed
@@ -299,8 +317,11 @@ public abstract class PhoneBase extends Handler implements Phone {
         // Initialize device storage and outgoing SMS usage monitors for SMSDispatchers.
         mSmsStorageMonitor = new SmsStorageMonitor(this);
         mSmsUsageMonitor = new SmsUsageMonitor(context);
-        mUiccController = UiccController.getInstance();
-        mUiccController.registerForIccChanged(this, EVENT_ICC_CHANGED, null);
+
+        if (!TelephonyConstants.IS_DSDS) {
+            mUiccController = UiccController.getInstance();
+            mUiccController.registerForIccChanged(this, EVENT_ICC_CHANGED, null);
+        }
     }
 
     @Override
@@ -566,7 +587,8 @@ public abstract class PhoneBase extends Handler implements Phone {
     private String getSavedNetworkSelection() {
         // open the shared preferences and search with our key.
         SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(getContext());
-        return sp.getString(NETWORK_SELECTION_KEY, "");
+        String netKey = PhoneFactory.isSim1Phone(this) ? NETWORK_SELECTION_KEY : NETWORK_SELECTION_KEY2;
+        return sp.getString(netKey, "");
     }
 
     /**
@@ -578,8 +600,8 @@ public abstract class PhoneBase extends Handler implements Phone {
         // retrieve the operator id
         String networkSelection = getSavedNetworkSelection();
 
-        // set to auto if the id is empty, otherwise select the network.
-        if (TextUtils.isEmpty(networkSelection)) {
+        // by default, network selection mode is automatic.
+        if (mIsAutomaticNetworkSelection || TextUtils.isEmpty(networkSelection)) {
             mCi.setNetworkSelectionModeAutomatic(response);
         } else {
             mCi.setNetworkSelectionModeManual(networkSelection, response);
@@ -768,7 +790,13 @@ public abstract class PhoneBase extends Handler implements Phone {
     public CallTracker getCallTracker() {
         return null;
     }
-
+    /**
+    * Get Oem Hook handler
+    */
+    public OemHookHandler getOemHookHandler() {
+        return null;
+    }
+	
     public AppType getCurrentUiccAppType() {
         UiccCardApplication currentApp = mUiccApplication.get();
         if (currentApp != null) {
@@ -1014,6 +1042,30 @@ public abstract class PhoneBase extends Handler implements Phone {
      */
     public boolean isInEcm() {
         return false;
+    }
+
+    public boolean isPrimaryPhone() {
+        /* In case there is phone which has no name. */
+        return !getPhoneName().equals("GSM2");
+    }
+    public int getPhoneId() {
+        return isPrimaryPhone() ? 0 : 1;
+    }
+
+    public boolean isSimOff() {
+        if (!TelephonyConstants.IS_DSDS) {
+            return false;
+        }
+        final int slot = getSlot();
+        String prop = (slot == 0 ?
+                TelephonyConstants.PROP_ON_OFF_SIM1 : TelephonyConstants.PROP_ON_OFF_SIM2);
+        final boolean ret = SystemProperties.getBoolean(prop, false);
+        return ret;
+    }
+
+    //this is overidden by GSMPhone
+    public int getSlot() {
+        return 0;
     }
 
     @Override
@@ -1443,5 +1495,28 @@ public abstract class PhoneBase extends Handler implements Phone {
         pw.println(" getActiveApnTypes()=" + getActiveApnTypes());
         pw.println(" isDataConnectivityPossible()=" + isDataConnectivityPossible());
         pw.println(" needsOtaServiceProvisioning=" + needsOtaServiceProvisioning());
+    }
+    private boolean isUserPinActive(int userPin, int slot) {
+        return slot == 0 ? ((userPin & 1) != 0) : ((userPin & 2) != 0);
+    }
+
+    public void clearUserPin() {
+        final int slot = getSlot();
+        int userPin = SystemProperties.getInt(TelephonyConstants.PROPERTY_USER_PIN_ACTIVITY, 0);
+        if (isUserPinActive(userPin, slot) ) {
+            Rlog.d(LOG_TAG,"clear user simpin activity on slot " + slot);
+            userPin &=  (slot == 0 ? ~1 : ~2);
+            SystemProperties.set(TelephonyConstants.PROPERTY_USER_PIN_ACTIVITY, Integer.toString(userPin));
+        }
+    }
+
+    public void setUserPin() {
+        final int slot = getSlot();
+        int userPin = SystemProperties.getInt(TelephonyConstants.PROPERTY_USER_PIN_ACTIVITY, 0);
+        userPin |=  slot == 0 ? 1 : 2;
+        SystemProperties.set(TelephonyConstants.PROPERTY_USER_PIN_ACTIVITY, Integer.toString(userPin));
+    }
+    public UiccController getUiccController() {
+        return isPrimaryPhone() ? UiccController.getInstance() : UiccController.getInstance2();
     }
 }

@@ -33,12 +33,16 @@ import android.telephony.CellLocation;
 import android.telephony.ServiceState;
 import android.telephony.SignalStrength;
 import android.telephony.Rlog;
-
+import com.android.internal.telephony.dataconnection.DcTracker;
 import com.android.internal.telephony.test.SimulatedRadioControl;
 import com.android.internal.telephony.uicc.IccCardProxy;
 import com.android.internal.telephony.uicc.IsimRecords;
 import com.android.internal.telephony.uicc.UsimServiceTable;
 import com.android.internal.telephony.CallManager;
+import com.android.internal.telephony.gsm.GSMPhone;
+import com.android.internal.telephony.dataconnection.DcTracker;
+import com.android.internal.telephony.dataconnection.DcTrackerBase;
+
 
 import java.util.List;
 
@@ -71,22 +75,29 @@ public class PhoneProxy extends Handler implements Phone {
                 TelephonyProperties.PROPERTY_RESET_ON_RADIO_TECH_CHANGE, false);
         mIccSmsInterfaceManager =
                 new IccSmsInterfaceManager((PhoneBase) this.mActivePhone);
-        mIccPhoneBookInterfaceManagerProxy = new IccPhoneBookInterfaceManagerProxy(
-                phone.getIccPhoneBookInterfaceManager());
-        mPhoneSubInfoProxy = new PhoneSubInfoProxy(phone.getPhoneSubInfo());
+		
+//        mIccSmsInterfaceManagerProxy = new IccSmsInterfaceManagerProxy(phone);
+        mIccPhoneBookInterfaceManagerProxy = new IccPhoneBookInterfaceManagerProxy(phone);
+        mPhoneSubInfoProxy = new PhoneSubInfoProxy(phone);
+
         mCommandsInterface = ((PhoneBase)mActivePhone).mCi;
 
         mCommandsInterface.registerForRilConnected(this, EVENT_RIL_CONNECTED, null);
         mCommandsInterface.registerForOn(this, EVENT_RADIO_ON, null);
         mCommandsInterface.registerForVoiceRadioTechChanged(
                              this, EVENT_VOICE_RADIO_TECH_CHANGED, null);
-        mIccCardProxy = new IccCardProxy(phone.getContext(), mCommandsInterface);
+        mIccCardProxy = new IccCardProxy(phone, mCommandsInterface);
         if (phone.getPhoneType() == PhoneConstants.PHONE_TYPE_GSM) {
             // For the purpose of IccCardProxy we only care about the technology family
             mIccCardProxy.setVoiceRadioTech(ServiceState.RIL_RADIO_TECHNOLOGY_UMTS);
         } else if (phone.getPhoneType() == PhoneConstants.PHONE_TYPE_CDMA) {
             mIccCardProxy.setVoiceRadioTech(ServiceState.RIL_RADIO_TECHNOLOGY_1xRTT);
         }
+    }
+    public void bridgeTheOtherPhone(PhoneProxy pproxy) {
+        Phone p = pproxy.getActivePhone();
+        DcTrackerBase dct = ((GSMPhone)mActivePhone).mDcTracker;
+        ((DcTracker)dct).bridgeTheOtherPhone((GSMPhone)p);
     }
 
     @Override
@@ -1158,6 +1169,17 @@ public class PhoneProxy extends Handler implements Phone {
     }
 
     /**
+    *    For dual sim only. This will swap the config of the protocol stacks.
+    *    flags : SWAP_PS_SWAP_ENABLE, SWAP_PS_RESET_RADIO_STATE (RILConstants.java)
+    */
+    public void requestProtocolStackSwap(Message response, int flags) {
+        logd("request protocol stack swapping");
+        if (mActivePhone instanceof GSMPhone) {
+            ((GSMPhone)mActivePhone).requestProtocolStackSwap(response, flags);
+        }
+    }
+
+    /**
      * {@inheritDoc}
      */
     @Override
@@ -1186,5 +1208,25 @@ public class PhoneProxy extends Handler implements Phone {
     public void removeReferences() {
         mActivePhone = null;
         mCommandsInterface = null;
+    }
+    /**
+     * enable SIM
+     */
+    public void enableSim(boolean turnOn) {
+        ((GSMPhone)mActivePhone).enableSim(turnOn);
+    }
+
+    /**
+     * set radio power for flight-mode
+     */
+    public void setRadioForFlightMode(boolean turnOn) {
+        ((GSMPhone)mActivePhone).setRadioForFlightMode(turnOn);
+    }
+
+    /**
+     * restore radio power according to the latest user preference
+     */
+    public void restoreRadioPower() {
+        ((GSMPhone)mActivePhone).restoreRadioPower();
     }
 }

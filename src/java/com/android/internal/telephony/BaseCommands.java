@@ -23,11 +23,12 @@ import android.os.Registrant;
 import android.os.Handler;
 import android.os.AsyncResult;
 import android.telephony.TelephonyManager;
-
+import android.util.Log;
 /**
  * {@hide}
  */
 public abstract class BaseCommands implements CommandsInterface {
+    protected final String LOG_TAG = "BaseCommands";
     //***** Instance Variables
     protected Context mContext;
     protected RadioState mState = RadioState.RADIO_UNAVAILABLE;
@@ -35,6 +36,7 @@ public abstract class BaseCommands implements CommandsInterface {
 
     protected RegistrantList mRadioStateChangedRegistrants = new RegistrantList();
     protected RegistrantList mOnRegistrants = new RegistrantList();
+    protected RegistrantList mOffRegistrants = new RegistrantList();
     protected RegistrantList mAvailRegistrants = new RegistrantList();
     protected RegistrantList mOffOrNotAvailRegistrants = new RegistrantList();
     protected RegistrantList mNotAvailRegistrants = new RegistrantList();
@@ -150,7 +152,23 @@ public abstract class BaseCommands implements CommandsInterface {
         }
     }
 
+    public void registerForOff(Handler h, int what, Object obj) {
+        Registrant r = new Registrant (h, what, obj);
 
+        synchronized (mStateMonitor) {
+            mOffRegistrants.add(r);
+
+            if (!mState.isOn() && mState.isAvailable()) {
+                r.notifyRegistrant(new AsyncResult(null, null, null));
+            }
+        }
+    }
+    public void unregisterForOff(Handler h) {
+        synchronized (mStateMonitor) {
+            mOffRegistrants.remove(h);
+        }
+    }
+	
     @Override
     public void registerForAvailable(Handler h, int what, Object obj) {
         Registrant r = new Registrant (h, what, obj);
@@ -698,12 +716,21 @@ public abstract class BaseCommands implements CommandsInterface {
                 mOnRegistrants.notifyRegistrants();
             }
 
+            if (isRadioOff(mState) && !isRadioOff(oldState)) {
+                Log.d(LOG_TAG,"Notifying: Radio Off");
+                mOffRegistrants.notifyRegistrants();
+            }
+
             if ((!mState.isOn() || !mState.isAvailable())
                 && !((!oldState.isOn() || !oldState.isAvailable()))
             ) {
                 mOffOrNotAvailRegistrants.notifyRegistrants();
             }
         }
+    }
+
+    private boolean isRadioOff(RadioState state) {
+        return (!state.isOn() && mState.isAvailable());
     }
 
     protected void onRadioAvailable() {

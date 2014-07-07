@@ -128,7 +128,14 @@ public abstract class IccPhoneBookInterfaceManager extends IIccPhoneBook.Stub {
 
     protected void publish() {
         //NOTE service "simphonebook" added by IccSmsInterfaceManagerProxy
-        ServiceManager.addService("simphonebook", this);
+
+        if (mPhone.getPhoneName().equals("GSM2")) {
+            if (DBG) logd("publish simphonebook2 service");
+            ServiceManager.addService("simphonebook2", this);
+        } else {
+            if (DBG) logd("publish simphonebook service");
+            ServiceManager.addService("simphonebook", this);
+        }
     }
 
     protected abstract void logd(String msg);

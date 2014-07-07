@@ -62,16 +62,22 @@ import com.android.internal.telephony.OperatorInfo;
 import com.android.internal.telephony.Phone;
 import com.android.internal.telephony.PhoneBase;
 import com.android.internal.telephony.PhoneConstants;
+import com.android.internal.telephony.PhoneFactory;
 import com.android.internal.telephony.PhoneNotifier;
 import com.android.internal.telephony.PhoneProxy;
 import com.android.internal.telephony.PhoneSubInfo;
+import com.android.internal.telephony.OemHookConstants;
+import com.android.internal.telephony.TelephonyConstants;
+import com.android.internal.telephony.TelephonyIntents;
 import com.android.internal.telephony.TelephonyProperties;
+import com.android.internal.telephony.TelephonyProperties2;
 import com.android.internal.telephony.UUSInfo;
 import com.android.internal.telephony.test.SimulatedRadioControl;
 import com.android.internal.telephony.uicc.IccRecords;
 import com.android.internal.telephony.uicc.IccVmNotSupportedException;
 import com.android.internal.telephony.uicc.UiccCardApplication;
 import com.android.internal.telephony.uicc.UiccController;
+import com.android.internal.telephony.uicc.SIMRecords;
 import com.android.internal.telephony.ServiceStateTracker;
 
 import java.io.FileDescriptor;
@@ -101,14 +107,16 @@ public class GSMPhone extends PhoneBase {
     public static final String VM_NUMBER = "vm_number_key";
     // Key used to read/write the SIM IMSI used for storing the voice mail
     public static final String VM_SIM_IMSI = "vm_sim_imsi_key";
-
+    //Add for DSDS
+    public static final String VM2_NUMBER = "vm2_number_key";
+    public static final String VM2_SIM_IMSI = "vm2_sim_imsi_key";
     // Instance Variables
     GsmCallTracker mCT;
     GsmServiceStateTracker mSST;
     ArrayList <GsmMmiCode> mPendingMMIs = new ArrayList<GsmMmiCode>();
     SimPhoneBookInterfaceManager mSimPhoneBookIntManager;
     PhoneSubInfo mSubInfo;
-
+    OemHookHandler mOemHookHandler;
 
     Registrant mPostDialHandler;
 
@@ -121,7 +129,9 @@ public class GSMPhone extends PhoneBase {
     private String mImei;
     private String mImeiSv;
     private String mVmNumber;
-
+    private boolean mIsEmergencyCallOngoing;
+    //Add for DSDS
+    private boolean mIsPrimaryPhone;
     // Create Cfu (Call forward unconditional) so that dialling number &
     // mOnComplete (Message object passed by client) can be packed &
     // given as a single Cfu object as user data to RIL.
@@ -141,11 +151,29 @@ public class GSMPhone extends PhoneBase {
     GSMPhone (Context context, CommandsInterface ci, PhoneNotifier notifier) {
         this(context,ci,notifier, false);
     }
+    public
+    GSMPhone (Context context, CommandsInterface ci, PhoneNotifier notifier,String name) {
+        this(context,ci,notifier, false, name);
+    }
 
     public
     GSMPhone (Context context, CommandsInterface ci, PhoneNotifier notifier, boolean unitTestMode) {
+        this(context,ci,notifier, false, "");
+    }
+
+    public
+    GSMPhone (Context context, CommandsInterface ci, PhoneNotifier notifier, boolean unitTestMode, String name) {
         super("GSM", notifier, context, ci, unitTestMode);
 
+
+        if (name != null && name.length() > 0) {
+            mIsPrimaryPhone = false;
+            if (LOCAL_DEBUG) log("to create the secondary GSMPhone instance");
+        } else {
+            mIsPrimaryPhone = true;
+            if (LOCAL_DEBUG) log("to create the primary GSMPhone instance");
+        }
+	
         if (ci instanceof SimulatedRadioControl) {
             mSimulatedRadioControl = (SimulatedRadioControl) ci;
         }
@@ -153,7 +181,7 @@ public class GSMPhone extends PhoneBase {
         mCi.setPhoneType(PhoneConstants.PHONE_TYPE_GSM);
         mCT = new GsmCallTracker(this);
         mSST = new GsmServiceStateTracker (this);
-
+        mOemHookHandler = new OemHookHandler(this);
         mDcTracker = new DcTracker(this);
         if (!unitTestMode) {
             mSimPhoneBookIntManager = new SimPhoneBookInterfaceManager(this);
@@ -166,7 +194,12 @@ public class GSMPhone extends PhoneBase {
         mCi.setOnUSSD(this, EVENT_USSD, null);
         mCi.setOnSuppServiceNotification(this, EVENT_SSN, null);
         mSST.registerForNetworkAttached(this, EVENT_REGISTERED_TO_NETWORK, null);
-
+        if (TelephonyConstants.IS_DSDS) {
+            mCi.registerForNotAvailable(this, EVENT_RADIO_NOT_AVAILABLE, null);
+            mUiccController = mIsPrimaryPhone ?
+                UiccController.getInstance() : UiccController.getInstance2();
+            mUiccController.registerForIccChanged(this, EVENT_ICC_CHANGED, null);
+        }
         if (DBG_PORT) {
             try {
                 //debugSocket = new LocalServerSocket("com.android.internal.telephony.debug");
@@ -203,8 +236,13 @@ public class GSMPhone extends PhoneBase {
         }
 
         //Change the system property
-        SystemProperties.set(TelephonyProperties.CURRENT_ACTIVE_PHONE,
-                new Integer(PhoneConstants.PHONE_TYPE_GSM).toString());
+        if (mIsPrimaryPhone) {
+            SystemProperties.set(TelephonyProperties.CURRENT_ACTIVE_PHONE,
+                    new Integer(PhoneConstants.PHONE_TYPE_GSM).toString());
+        } else {
+            SystemProperties.set(TelephonyProperties2.CURRENT_ACTIVE_PHONE,
+                    new Integer(PhoneConstants.PHONE_TYPE_GSM).toString());
+        }
     }
 
     @Override
@@ -220,7 +258,9 @@ public class GSMPhone extends PhoneBase {
             mSST.unregisterForNetworkAttached(this); //EVENT_REGISTERED_TO_NETWORK
             mCi.unSetOnUSSD(this);
             mCi.unSetOnSuppServiceNotification(this);
-
+            if (TelephonyConstants.IS_DSDS) {
+                mCi.unregisterForNotAvailable(this);
+            }
             mPendingMMIs.clear();
 
             //Force all referenced classes to unregister their former registered events
@@ -229,6 +269,7 @@ public class GSMPhone extends PhoneBase {
             mSST.dispose();
             mSimPhoneBookIntManager.dispose();
             mSubInfo.dispose();
+			mOemHookHandler.dispose();
         }
     }
 
@@ -240,6 +281,7 @@ public class GSMPhone extends PhoneBase {
         mSubInfo = null;
         mCT = null;
         mSST = null;
+		mOemHookHandler = null;
         super.removeReferences();
     }
 
@@ -269,7 +311,9 @@ public class GSMPhone extends PhoneBase {
     public PhoneConstants.State getState() {
         return mCT.mState;
     }
-
+    public String getPhoneName() {
+        return mIsPrimaryPhone ? "GSM" : "GSM2";
+    }
     @Override
     public int getPhoneType() {
         return PhoneConstants.PHONE_TYPE_GSM;
@@ -283,6 +327,9 @@ public class GSMPhone extends PhoneBase {
     @Override
     public CallTracker getCallTracker() {
         return mCT;
+    }
+    public OemHookHandler getOemHookHandler() {
+        return mOemHookHandler;
     }
 
     @Override
@@ -817,7 +864,10 @@ public class GSMPhone extends PhoneBase {
     private void storeVoiceMailNumber(String number) {
         SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(getContext());
         SharedPreferences.Editor editor = sp.edit();
-        editor.putString(VM_NUMBER, number);
+        String key = PhoneFactory.isPrimaryOnSim1()
+                ? mIsPrimaryPhone ? VM_NUMBER : VM2_NUMBER
+                : mIsPrimaryPhone ? VM2_NUMBER : VM_NUMBER;
+        editor.putString(key, number);
         editor.apply();
         setVmSimImsi(getSubscriberId());
     }
@@ -829,20 +879,29 @@ public class GSMPhone extends PhoneBase {
         String number = (r != null) ? r.getVoiceMailNumber() : "";
         if (TextUtils.isEmpty(number)) {
             SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(getContext());
-            number = sp.getString(VM_NUMBER, null);
+            String key = PhoneFactory.isPrimaryOnSim1()
+                    ? mIsPrimaryPhone ? VM_NUMBER : VM2_NUMBER
+                    : mIsPrimaryPhone ? VM2_NUMBER : VM_NUMBER;
+            number = sp.getString(key, null);
         }
         return number;
     }
 
     private String getVmSimImsi() {
         SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(getContext());
-        return sp.getString(VM_SIM_IMSI, null);
+        String key = PhoneFactory.isPrimaryOnSim1()
+                ? mIsPrimaryPhone ? VM_SIM_IMSI : VM2_SIM_IMSI
+                : mIsPrimaryPhone ? VM2_SIM_IMSI : VM_SIM_IMSI;
+        return sp.getString(key, null);
     }
 
     private void setVmSimImsi(String imsi) {
         SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(getContext());
         SharedPreferences.Editor editor = sp.edit();
-        editor.putString(VM_SIM_IMSI, imsi);
+        String key = PhoneFactory.isPrimaryOnSim1()
+                ? mIsPrimaryPhone ? VM_SIM_IMSI : VM2_SIM_IMSI
+                : mIsPrimaryPhone ? VM2_SIM_IMSI : VM_SIM_IMSI;
+        editor.putString(key, imsi);
         editor.apply();
     }
 
@@ -891,6 +950,7 @@ public class GSMPhone extends PhoneBase {
     @Override
     public String getSubscriberId() {
         IccRecords r = mIccRecords.get();
+		if (r == null) log("getSubscriberId," + " null IccRecords");
         return (r != null) ? r.getIMSI() : null;
     }
 
@@ -1218,7 +1278,9 @@ public class GSMPhone extends PhoneBase {
      */
     protected  void syncClirSetting() {
         SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(getContext());
-        int clirSetting = sp.getInt(CLIR_KEY, -1);
+        int simId = getSimIdByPhone(this);
+        log("syncClirSetting " + simId);
+        int clirSetting = sp.getInt(simId == 0 ? CLIR_KEY : CLIR2_KEY, -1);
         if (clirSetting >= 0) {
             mCi.setCLIR(clirSetting, null);
         }
@@ -1396,13 +1458,30 @@ public class GSMPhone extends PhoneBase {
                 }
                 break;
 
+            case EVENT_RADIO_NOT_AVAILABLE:
+                if (LOCAL_DEBUG) log("EVENT_RADIO_NOT_AVAILABLE,reset cache now");
+                reset();
+                break;
              default:
                  super.handleMessage(msg);
         }
     }
 
+    //to reset all the SIM/
+    private void reset() {
+        mSST.reset();
+        mPendingMMIs.clear();
+        log("to clear SIM records!");
+        IccRecords r = mIccRecords.get();
+        if (r != null) {
+            log("to clear SIM records now!");
+            ((SIMRecords)r).resetRecords();
+        }
+    }
+	
     @Override
     protected void onUpdateIccAvailability() {
+        log("onUpdateIccAvailability");
         if (mUiccController == null ) {
             return;
         }
@@ -1412,6 +1491,7 @@ public class GSMPhone extends PhoneBase {
 
         UiccCardApplication app = mUiccApplication.get();
         if (app != newUiccApplication) {
+		    log("onUpdateIccAvailability,replace old app:" + app);
             if (app != null) {
                 if (LOCAL_DEBUG) log("Removing stale icc objects.");
                 if (mIccRecords.get() != null) {
@@ -1425,9 +1505,31 @@ public class GSMPhone extends PhoneBase {
                 if (LOCAL_DEBUG) log("New Uicc application found");
                 mUiccApplication.set(newUiccApplication);
                 mIccRecords.set(newUiccApplication.getIccRecords());
+				log("onUpdateIccAvailability,new IccRecords:" + newUiccApplication.getIccRecords());
                 registerForSimRecordEvents();
                 mSimPhoneBookIntManager.updateIccRecords(mIccRecords.get());
             }
+        }else if (newUiccApplication != null) {
+            // IccRecords update in the same application
+            if (mIccRecords.get() != newUiccApplication.getIccRecords()) {
+                log("OOO,force to update IccRecords in onUpdateIccAvailability");
+                updateIccRecords(newUiccApplication);
+            }
+        }
+    }
+    void updateIccRecords(UiccCardApplication newUiccApplication) {
+        if (newUiccApplication != null) {
+            if (LOCAL_DEBUG) log("New Uicc Records found");
+            if (mIccRecords.get() != null) {
+                unregisterForSimRecordEvents();
+                mSimPhoneBookIntManager.updateIccRecords(null);
+            }
+            mIccRecords.set(null);
+
+            mIccRecords.set(newUiccApplication.getIccRecords());
+            log("onUpdateIccAvailability,new IccRecords:" + newUiccApplication.getIccRecords());
+            registerForSimRecordEvents();
+            mSimPhoneBookIntManager.updateIccRecords(mIccRecords.get());
         }
     }
 
@@ -1451,7 +1553,9 @@ public class GSMPhone extends PhoneBase {
         IccRecords r = mIccRecords.get();
         if (r != null) {
             try {
-                Uri uri = Uri.withAppendedPath(Telephony.Carriers.CONTENT_URI, "current");
+                final Uri carrierUri = isPrimaryPhone() ? Telephony.Carriers.CONTENT_URI
+                                                        : Telephony.Carriers.CONTENT_URI2;
+                Uri uri = Uri.withAppendedPath(carrierUri, "current");
                 ContentValues map = new ContentValues();
                 map.put(Telephony.Carriers.NUMERIC, r.getOperatorNumeric());
                 mContext.getContentResolver().insert(uri, map);
@@ -1488,8 +1592,12 @@ public class GSMPhone extends PhoneBase {
         // nsm.operatorNumeric is "" if we're in automatic.selection.
         SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(getContext());
         SharedPreferences.Editor editor = sp.edit();
-        editor.putString(NETWORK_SELECTION_KEY, nsm.operatorNumeric);
-        editor.putString(NETWORK_SELECTION_NAME_KEY, nsm.operatorAlphaLong);
+        editor.putString(PhoneFactory.isSim1Phone(this)
+                              ? NETWORK_SELECTION_KEY : NETWORK_SELECTION_KEY2,
+                            nsm.operatorNumeric);
+        editor.putString(PhoneFactory.isSim1Phone(this)
+                              ? NETWORK_SELECTION_NAME_KEY : NETWORK_SELECTION_NAME_KEY2,
+                            nsm.operatorAlphaLong);
 
         // commit and log the result.
         if (! editor.commit()) {
@@ -1506,7 +1614,9 @@ public class GSMPhone extends PhoneBase {
         // open the shared preferences editor, and write the value.
         SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(getContext());
         SharedPreferences.Editor editor = sp.edit();
-        editor.putInt(CLIR_KEY, commandInterfaceCLIRMode);
+        int simId = getSimIdByPhone(this);
+        editor.putInt(simId == 0 ? CLIR_KEY : CLIR2_KEY, commandInterfaceCLIRMode);
+
 
         // commit and log the result.
         if (! editor.commit()) {
@@ -1624,8 +1734,84 @@ public class GSMPhone extends PhoneBase {
         if (VDBG) pw.println(" mImeiSv=" + mImeiSv);
         pw.println(" mVmNumber=" + mVmNumber);
     }
+    /**
+    *    For dual sim only. This will swap the config of the protocol stacks.
+    *    flags : SWAP_PS_SWAP_ENABLE, SWAP_PS_RESET_RADIO_STATE (OemHookConstants.java)
+    */
+    public void requestProtocolStackSwap(Message response, int flags) {
+        log("send OEM_HOOK_STRING_SWAP_PS");
+        String[] oemRequestString = new String[2];
+        oemRequestString[0] = Integer.toString(OemHookConstants.RIL_OEM_HOOK_STRING_SWAP_PS);
+        oemRequestString[1] = Integer.toString(flags);
+
+        mCi.invokeOemRilRequestStrings(oemRequestString, response);
+    }
+
+    public int getSlot() {
+        return getSimIdByPhone(this);
+    }
+
+    public static int getSimIdByPhone(GSMPhone phone) {
+        if (TelephonyConstants.IS_DSDS == false) {
+            return TelephonyConstants.DSDS_SLOT_1_ID;
+        }
+
+        if (phone.isPrimaryPhone()) {
+            return PhoneFactory.isPrimaryOnSim1() ? TelephonyConstants.DSDS_SLOT_1_ID
+                                                  : TelephonyConstants.DSDS_SLOT_2_ID;
+        } else {
+            return PhoneFactory.isPrimaryOnSim1() ? TelephonyConstants.DSDS_SLOT_2_ID
+                                                  : TelephonyConstants.DSDS_SLOT_1_ID;
+        }
+    }
+
+    public boolean isPrimaryPhone() {
+        return mIsPrimaryPhone;
+    }
+
+    /**
+     * enable SIM
+     */
+    public void enableSim(boolean turnOn) {
+        mSST.enableSim(turnOn);
+    }
+
+    /**
+     * set radio power for flight-mode
+     */
+    public void setRadioForFlightMode(boolean turnOn) {
+        mSST.setRadioForFlightMode(turnOn);
+    }
+
+    /**
+     * restore radio power according to the latest user preference
+     */
+    public void restoreRadioPower() {
+        mSST.restoreRadioPower();
+    }
 
     protected void log(String s) {
-        Rlog.d(LOG_TAG, "[GSMPhone] " + s);
+        Rlog.d(LOG_TAG, "[GSMPhone " + getPhoneName() + "] " + s);
     }
+
+    protected void log(String s, Throwable e) {
+        Rlog.d(LOG_TAG, "[GSMPhone " + getPhoneName() + "] " + s, e);
+    }
+
+    protected void loge(String s) {
+        Rlog.e(LOG_TAG, "[GSMPhone " + getPhoneName() + "] " + s);
+    }
+
+    protected void loge(String s, Throwable e) {
+        Rlog.e(LOG_TAG, "[GSMPhone " + getPhoneName() + "] " + s, e);
+    }
+
+    protected void logi(String s) {
+        Rlog.i(LOG_TAG, "[GSMPhone " + getPhoneName() + "] " + s);
+    }
+
+    protected void logw(String s, Throwable e) {
+        Rlog.w(LOG_TAG, "[GSMPhone " + getPhoneName() + "] " + s, e);
+    }
+
 }

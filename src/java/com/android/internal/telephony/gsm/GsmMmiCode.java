@@ -525,7 +525,16 @@ public final class GsmMmiCode extends Handler implements MmiCode {
             return false;
         }
 
-        if (PhoneNumberUtils.isLocalEmergencyNumber(dialString, phone.getContext())) {
+        Context context = phone.getContext();
+        boolean usingSim1 = phone.getSimIdByPhone(phone) == TelephonyConstants.DSDS_SLOT_1_ID;
+
+        boolean isLocalEmergencyNumber = false;
+        if (usingSim1) {
+            isLocalEmergencyNumber = PhoneNumberUtils.isLocalEmergencyNumber(dialString, context);
+        } else {
+            isLocalEmergencyNumber = PhoneNumberUtils.isLocalEmergencyNumber2(dialString, context);
+        }
+        if (isLocalEmergencyNumber) {
             return false;
         } else {
             return isShortCodeUSSD(dialString, phone);
