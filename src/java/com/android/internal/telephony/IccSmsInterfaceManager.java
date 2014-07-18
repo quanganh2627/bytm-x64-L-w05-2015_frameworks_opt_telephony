@@ -120,8 +120,10 @@ public class IccSmsInterfaceManager extends ISms.Stub {
         mAppOps = (AppOpsManager) mContext.getSystemService(Context.APP_OPS_SERVICE);
         mDispatcher = new ImsSMSDispatcher(phone,
                 phone.mSmsStorageMonitor, phone.mSmsUsageMonitor);
-        if (ServiceManager.getService("isms") == null) {
-            ServiceManager.addService("isms", this);
+
+        String service = phone.getPhoneName().equals("GSM2") ? "isms2" : "isms";
+        if (ServiceManager.getService(service) == null) {
+            ServiceManager.addService(service, this);
         }
     }
 
