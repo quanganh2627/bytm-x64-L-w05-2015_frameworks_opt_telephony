@@ -81,7 +81,7 @@ import java.util.Random;
  * {@hide}
  */
 class RILRequest {
-    static final String LOG_TAG = "RilRequest";
+    static final String LOG_TAG = "RILJ";
 
     //***** Class Variables
     static Random sRandom = new Random();
@@ -3833,11 +3833,11 @@ public final class RIL extends BaseCommands implements CommandsInterface {
     }
 
     private void riljLog(String msg) {
-        Rlog.d(RILJ_LOG_TAG, msg);
+        Rlog.d(mLogTag, msg);
     }
 
     private void riljLogv(String msg) {
-        Rlog.v(RILJ_LOG_TAG, msg);
+        Rlog.v(mLogTag, msg);
     }
 
     private void unsljLog(int response) {
@@ -4219,7 +4219,7 @@ public final class RIL extends BaseCommands implements CommandsInterface {
     }
 
     private void updateRilTag() {
-        mLogTag = LOG_TAG + (mIs2ndRil ? "1" : "0") +"[" + mRilId + "]";
+        mLogTag = RILJ_LOG_TAG + (mIs2ndRil ? "1" : "0");
     }
 
     String getSocketName() {
