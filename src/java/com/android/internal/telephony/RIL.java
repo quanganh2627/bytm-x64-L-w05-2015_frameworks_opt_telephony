@@ -2657,6 +2657,10 @@ public final class RIL extends BaseCommands implements CommandsInterface {
                 if (RILJ_LOGD) unsljLogMore(response, newState.toString());
 
                 switchToRadioState(newState);
+                if (newState.toString() == "RADIO_ON") {
+                    riljLog("fixed bug 683, minjie setPreferredNetworkType after RAIDO_ON");
+                    setPreferredNetworkType(mPreferredNetworkType, null);
+                }
             break;
             case RIL_UNSOL_RESPONSE_IMS_NETWORK_STATE_CHANGED:
                 if (RILJ_LOGD) unsljLog(response);
