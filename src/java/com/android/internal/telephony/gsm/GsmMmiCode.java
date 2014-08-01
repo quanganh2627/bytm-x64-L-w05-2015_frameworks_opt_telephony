@@ -24,6 +24,7 @@ import com.android.internal.telephony.uicc.UiccCardApplication;
 import com.android.internal.telephony.uicc.IccCardApplicationStatus.AppState;
 
 import android.os.*;
+import android.net.ConnectivityManager;
 import android.telephony.PhoneNumberUtils;
 import android.text.SpannableStringBuilder;
 import android.text.TextUtils;
@@ -526,7 +527,11 @@ public final class GsmMmiCode extends Handler implements MmiCode {
         }
 
         Context context = phone.getContext();
-        boolean usingSim1 = phone.getSimIdByPhone(phone) == TelephonyConstants.DSDS_SLOT_1_ID;
+        boolean usingSim1 = true; // phone.getSimIdByPhone(phone) == TelephonyConstants.DSDS_SLOT_1_ID;
+        if (phone instanceof GSMPhone) {
+            GSMPhone gsmPhone = (GSMPhone)phone;
+            usingSim1 = gsmPhone.getSimIdByPhone(gsmPhone) == TelephonyConstants.DSDS_SLOT_1_ID;
+        }
 
         boolean isLocalEmergencyNumber = false;
         if (usingSim1) {

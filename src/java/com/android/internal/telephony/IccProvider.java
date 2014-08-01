@@ -160,7 +160,7 @@ public class IccProvider extends ContentProvider {
             return null;
         }
 
-        StringBuilder buf = isPrimaryPhone ? new StringBuilder("content://icc/") : new StringBuilder("content://icc2/");
+        StringBuilder buf = new StringBuilder("content://icc/");
         switch (match) {
             case ADN:
             case ADN2:

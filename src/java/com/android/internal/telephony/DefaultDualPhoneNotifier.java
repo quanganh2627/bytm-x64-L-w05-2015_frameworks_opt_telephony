@@ -175,6 +175,10 @@ public class DefaultDualPhoneNotifier implements PhoneNotifier {
                          TelephonyManager.NETWORK_TYPE_UNKNOWN),
                         roaming);
             } else {
+                // secondary phone only allows mms message
+                if (apnType != PhoneConstants.APN_TYPE_MMS) {
+                   return;
+                }
                 mRegistry2.notifyDataConnection(
                         DefaultPhoneNotifier.convertDataState(state),
                         sender.isDataConnectivityPossible(apnType), reason,

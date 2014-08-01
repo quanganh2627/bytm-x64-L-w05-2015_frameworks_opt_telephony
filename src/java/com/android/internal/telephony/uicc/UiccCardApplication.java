@@ -25,12 +25,13 @@ import android.os.RegistrantList;
 import android.telephony.Rlog;
 
 import com.android.internal.telephony.CommandsInterface;
+import com.android.internal.telephony.CommandsInterface.RadioState;
+import com.android.internal.telephony.TelephonyConstants;
 import com.android.internal.telephony.uicc.IccCardApplicationStatus.AppState;
 import com.android.internal.telephony.uicc.IccCardApplicationStatus.AppType;
 import com.android.internal.telephony.uicc.IccCardApplicationStatus.PersoSubState;
 import com.android.internal.telephony.uicc.IccCardStatus.PinState;
-import com.android.internal.telephony.CommandsInterface.RadioState;
-import com.android.internal.telephony.TelephonyConstants;
+
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
 

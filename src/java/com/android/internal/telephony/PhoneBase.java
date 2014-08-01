@@ -154,11 +154,11 @@ public abstract class PhoneBase extends Handler implements Phone {
     protected AtomicReference<UiccCardApplication> mUiccApplication =
             new AtomicReference<UiccCardApplication>();
 
+    public boolean mIsAutomaticNetworkSelection = true;
     private TelephonyTester mTelephonyTester;
     private final String mName;
     private final String mActionDetached;
     private final String mActionAttached;
-    public boolean mIsAutomaticNetworkSelection = true;
 	
     @Override
     public String getPhoneName() {
@@ -1495,6 +1495,9 @@ public abstract class PhoneBase extends Handler implements Phone {
         pw.println(" getActiveApnTypes()=" + getActiveApnTypes());
         pw.println(" isDataConnectivityPossible()=" + isDataConnectivityPossible());
         pw.println(" needsOtaServiceProvisioning=" + needsOtaServiceProvisioning());
+    }
+    public boolean isInCall() {
+        return false;
     }
     private boolean isUserPinActive(int userPin, int slot) {
         return slot == 0 ? ((userPin & 1) != 0) : ((userPin & 2) != 0);

@@ -461,10 +461,12 @@ public final class AdnRecordCache extends Handler implements IccConstants {
                 }
 
                 Message response = mUserWriteResponse.get(efid);
+                if (response != null) {
                 mUserWriteResponse.delete(efid);
 
                 AsyncResult.forMessage(response, null, ar.exception);
                 response.sendToTarget();
+                }
                 break;
         }
 

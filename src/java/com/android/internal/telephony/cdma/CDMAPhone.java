@@ -410,7 +410,8 @@ public class CDMAPhone extends PhoneBase {
         return false;
     }
 
-    boolean isInCall() {
+    @Override
+    public boolean isInCall() {
         CdmaCall.State foregroundCallState = getForegroundCall().getState();
         CdmaCall.State backgroundCallState = getBackgroundCall().getState();
         CdmaCall.State ringingCallState = getRingingCall().getState();

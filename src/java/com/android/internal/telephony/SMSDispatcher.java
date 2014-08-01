@@ -125,16 +125,18 @@ public abstract class SMSDispatcher extends Handler {
     protected static final int EVENT_NEW_ICC_SMS = 14;
     protected static final int EVENT_ICC_CHANGED = 15;
 
+    /** Status report received */
+    protected static final int EVENT_NEW_SMS_STATUS_REPORT = 100;
     protected PhoneBase mPhone;
     protected final Context mContext;
     protected final ContentResolver mResolver;
-    protected final CommandsInterface mCi;
+    protected CommandsInterface mCi;
     protected final TelephonyManager mTelephonyManager;
 
     /** Maximum number of times to retry sending a failed SMS. */
     private static final int MAX_SEND_RETRIES = 3;
     /** Delay before next send attempt on a failed SMS, in milliseconds. */
-    private static final int SEND_RETRY_DELAY = 2000;
+    private static final int SEND_RETRY_DELAY = 10000;
     /** single part SMS */
     private static final int SINGLE_PART_SMS = 1;
     /** Message sending queue limit */
@@ -217,6 +219,8 @@ public abstract class SMSDispatcher extends Handler {
         mPhone = phone;
         mUsageMonitor = phone.mSmsUsageMonitor;
         Rlog.d(TAG, "Active phone changed to " + mPhone.getPhoneName() );
+        mCi = phone.mCi;
+        mCi.setOnSmsStatus(this, EVENT_NEW_SMS_STATUS_REPORT, null);
     }
 
     /** Unregister for incoming SMS events. */

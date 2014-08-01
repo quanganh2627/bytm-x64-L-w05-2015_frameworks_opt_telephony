@@ -35,9 +35,13 @@ import android.view.WindowManager;
 
 import com.android.internal.telephony.CommandsInterface;
 import com.android.internal.telephony.PhoneBase;
+import com.android.internal.telephony.PhoneConstants;
+import com.android.internal.telephony.PhoneFactory;
+import com.android.internal.telephony.PhoneProxy;
 import com.android.internal.telephony.CommandsInterface.RadioState;
 import com.android.internal.telephony.IccCardConstants.State;
 import com.android.internal.telephony.gsm.GSMPhone;
+import com.android.internal.telephony.uicc.IccCardApplicationStatus.AppState;
 import com.android.internal.telephony.uicc.IccCardApplicationStatus.AppType;
 import com.android.internal.telephony.uicc.IccCardStatus.CardState;
 import com.android.internal.telephony.uicc.IccCardStatus.PinState;
@@ -46,11 +50,8 @@ import com.android.internal.telephony.cdma.CDMALTEPhone;
 import com.android.internal.telephony.cdma.CDMAPhone;
 import com.android.internal.telephony.cdma.CdmaSubscriptionSourceManager;
 import com.android.internal.telephony.TelephonyProperties;
-import com.android.internal.telephony.uicc.IccCardApplicationStatus.AppState;
-import com.android.internal.telephony.PhoneProxy;
-import com.android.internal.telephony.PhoneFactory;
 import com.android.internal.telephony.TelephonyConstants;
-import com.android.internal.telephony.PhoneConstants;
+
 import android.os.SystemProperties;
 
 import com.android.internal.R;
@@ -161,9 +162,7 @@ public class UiccCard {
                     CatService.getInstance2(mCi, mContext, this);
 
             } else {
-                if (mCatService != null) {
-                    mCatService.dispose();
-                }
+                // Just set the member variable to null.
                 mCatService = null;
             }
 
@@ -185,8 +184,8 @@ public class UiccCard {
                 }
                 mIsSimOff = simOff;
             }
-            if (radioState == RadioState.RADIO_ON && mLastRadioState == RadioState.RADIO_ON
-                || (TelephonyConstants.IS_DSDS && mHotSwapSupported )) {
+            if ((radioState == RadioState.RADIO_ON && mLastRadioState == RadioState.RADIO_ON)
+                || TelephonyConstants.IS_DSDS) {
                 if ((oldState != CardState.CARDSTATE_ABSENT &&
                         mCardState == CardState.CARDSTATE_ABSENT)|| isReallyAbsent) {
                     if (DBG) log("update: notify card removed");
@@ -196,7 +195,7 @@ public class UiccCard {
                         mCardState != CardState.CARDSTATE_ABSENT) {
                     if (DBG) log("update: notify card added");
                     if (TelephonyConstants.IS_DSDS) {
-                        if (isPinLocked() && !mIsSimOff && (radioState == RadioState.RADIO_ON)) {
+                        if (isPinLocked() && !mIsSimOff) {
                             if (DBG) log("to enable PIN lock keyguard for HOT_SWAP.");
                             mPhone.setUserPin();
                         }

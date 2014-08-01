@@ -592,7 +592,7 @@ public final class SmsManager {
     boolean isImsSmsSupported() {
         boolean boSupported = false;
         try {
-            ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService(getServiceName()));
+            ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService("isms"));
             if (iccISms != null) {
                 boSupported = iccISms.isImsSmsSupported();
             }
@@ -617,7 +617,7 @@ public final class SmsManager {
     String getImsSmsFormat() {
         String format = com.android.internal.telephony.SmsConstants.FORMAT_UNKNOWN;
         try {
-            ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService(getServiceName()));
+            ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService("isms"));
             if (iccISms != null) {
                 format = iccISms.getImsSmsFormat();
             }

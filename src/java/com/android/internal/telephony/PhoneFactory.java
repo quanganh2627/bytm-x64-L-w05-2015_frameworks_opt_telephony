@@ -21,7 +21,9 @@ import android.content.Context;
 import android.net.ConnectivityManager;
 import android.net.LocalServerSocket;
 import android.os.Looper;
+import android.os.Build;
 import android.os.Message;
+import android.os.SystemProperties;
 import android.provider.Settings;
 import android.telephony.Rlog;
 import android.telephony.TelephonyManager;
@@ -34,7 +36,6 @@ import com.android.internal.telephony.gsm.OnlyOne3gSyncer;
 import com.android.internal.telephony.sip.SipPhone;
 import com.android.internal.telephony.sip.SipPhoneFactory;
 import com.android.internal.telephony.uicc.UiccController;
-import android.os.SystemProperties;
 
 /**
  * {@hide}
@@ -151,7 +152,9 @@ public class PhoneFactory {
                         }
                         Rlog.i(LOG_TAG, "Network Mode is set to " + Integer.toString(network2Mode));
 
-                        sPrimarySimId = TelephonyManager.getPrimarySim();
+                        sPrimarySimId = Settings.Global.getInt(
+                                context.getContentResolver(), Settings.Global.MOBILE_DATA_SIM,
+                                ConnectivityManager.MOBILE_DATA_NETWORK_SLOT_A);
                         boolean primaryOnSimA = (sPrimarySimId == ConnectivityManager.MOBILE_DATA_NETWORK_SLOT_A);
                         retrieveRatSettings();
 
@@ -266,7 +269,9 @@ public class PhoneFactory {
     }
 
     public static void setPrimarySim(int dataSim, Message msg) {
-        sPrimarySimId = TelephonyManager.getPrimarySim();
+        sPrimarySimId = Settings.Global.getInt(
+                sContext.getContentResolver(), Settings.Global.MOBILE_DATA_SIM,
+                ConnectivityManager.MOBILE_DATA_NETWORK_SLOT_A);
         Rlog.d(LOG_TAG, "setPrimarySim,dataSim:" + dataSim + ","  + sPrimarySimId);
         switchRilSocket();
         ensureOne3GPolicy(sContext, msg);

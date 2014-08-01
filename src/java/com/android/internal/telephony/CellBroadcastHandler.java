@@ -31,6 +31,7 @@ import com.android.internal.telephony.PhoneBase;
  * completes and our result receiver is called.
  */
 public class CellBroadcastHandler extends WakeLockStateMachine {
+    private final Context mContext;
     protected final PhoneBase mPhone;
 
     private CellBroadcastHandler(Context context, PhoneBase phone) {
@@ -39,6 +40,7 @@ public class CellBroadcastHandler extends WakeLockStateMachine {
 
     protected CellBroadcastHandler(String debugTag, Context context, PhoneBase phone) {
         super(debugTag, context, phone);
+        mContext = context;
         mPhone = phone;
     }
 

@@ -48,6 +48,7 @@ import android.telephony.CellLocation;
 import android.telephony.Rlog;
 import android.telephony.ServiceState;
 import android.telephony.SignalStrength;
+import android.telephony.TelephonyManager;
 import android.telephony.gsm.GsmCellLocation;
 import android.text.TextUtils;
 import android.util.EventLog;
@@ -66,15 +67,15 @@ import com.android.internal.telephony.TelephonyIntents;
 import com.android.internal.telephony.TelephonyIntents2;
 import com.android.internal.telephony.TelephonyProperties;
 import com.android.internal.telephony.TelephonyProperties2;
+import com.android.internal.telephony.PhoneFactory;
+import com.android.internal.telephony.PhoneProxy;
 import com.android.internal.telephony.dataconnection.DcTrackerBase;
 import com.android.internal.telephony.uicc.IccCardApplicationStatus.AppState;
+import com.android.internal.telephony.uicc.IccCardProxy;
 import com.android.internal.telephony.uicc.IccRecords;
 import com.android.internal.telephony.uicc.SIMRecords;
 import com.android.internal.telephony.uicc.UiccCardApplication;
 import com.android.internal.telephony.uicc.UiccController;
-import com.android.internal.telephony.PhoneProxy;
-import com.android.internal.telephony.uicc.IccCardProxy;
-import com.android.internal.telephony.PhoneFactory;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -85,12 +86,11 @@ import java.util.Date;
 import java.util.List;
 import java.util.TimeZone;
 
-import android.telephony.TelephonyManager;
 
 /**
  * {@hide}
  */
-final class GsmServiceStateTracker extends ServiceStateTracker {
+public class GsmServiceStateTracker extends ServiceStateTracker {
     private static final String LOG_TAG = "GsmSST";
     private static final boolean VDBG = false;
 
@@ -228,6 +228,8 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
         super(phone, phone.mCi, new CellInfoGsm());
 
         mPhone = phone;
+        mCellLoc = new GsmCellLocation();
+        mNewCellLoc = new GsmCellLocation();
 
         mPhoneId = phone.isPrimaryPhone() ? 0 : 1;
 
@@ -252,8 +254,6 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
         PROPERTY_OPERATOR_ISROAMING = mPhoneId == 0 ? TelephonyProperties.PROPERTY_OPERATOR_ISROAMING
                                                     : TelephonyProperties2.PROPERTY_OPERATOR_ISROAMING;
 
-        mCellLoc = new GsmCellLocation();
-        mNewCellLoc = new GsmCellLocation();
 
         PowerManager powerManager =
                 (PowerManager)phone.getContext().getSystemService(Context.POWER_SERVICE);
@@ -332,13 +332,13 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
         if (mUiccApplcation != null) {mUiccApplcation.unregisterForReady(this);}
         if (mIccRecords != null) {mIccRecords.unregisterForRecordsLoaded(this);}
         mCi.unSetOnRestrictedStateChanged(this);
-        if (TelephonyConstants.IS_DSDS) {
-            mCi.unregisterForRilConnected(this);
-        }
         mCi.unSetOnNITZTime(this);
         mCr.unregisterContentObserver(mAutoTimeObserver);
         mCr.unregisterContentObserver(mAutoTimeZoneObserver);
         mPhone.getContext().unregisterReceiver(mIntentReceiver);
+        if (TelephonyConstants.IS_DSDS) {
+            mCi.unregisterForRilConnected(this);
+        }
         super.dispose();
     }
 
@@ -377,6 +377,11 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
                 //setPowerStateToDesired();
                 break;
 
+            case EVENT_RADIO_ON:
+                if (mUiccApplcation == null
+                        || mUiccApplcation.getState() != AppState.APPSTATE_READY) {
+                    break;
+                }
             case EVENT_SIM_READY:
                 // Set the network type, in case the radio does not restore it.
                 mCi.setCurrentPreferredNetworkType();
@@ -568,7 +573,10 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
      *   Only for dual sim device.
      */
     private boolean simEnabled() {
-        int dataSim = TelephonyManager.getPrimarySim();
+        int dataSim = Settings.Global.getInt(
+                mPhone.getContext().getContentResolver(),
+                Settings.Global.MOBILE_DATA_SIM,
+                TelephonyConstants.DSDS_SLOT_1_ID);
 
         // if this tracker is for sim 1
         if ((dataSim == TelephonyConstants.DSDS_SLOT_1_ID && mPhoneId == 0) ||
@@ -702,11 +710,7 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
                         " showPlmn='%b' plmn='%s' showSpn='%b' spn='%s'",
                         showPlmn, plmn, showSpn, spn));
             }
-            final String SPN_STRINGS_UPDATED_ACTION = isPhone2() ?
-                TelephonyIntents2.SPN_STRINGS_UPDATED_ACTION:
-                TelephonyIntents.SPN_STRINGS_UPDATED_ACTION;
-            Intent intent =
-                new Intent(SPN_STRINGS_UPDATED_ACTION);
+            Intent intent = new Intent(TelephonyIntents.SPN_STRINGS_UPDATED_ACTION);
             intent.addFlags(Intent.FLAG_RECEIVER_REPLACE_PENDING);
             intent.putExtra(TelephonyIntents.EXTRA_SHOW_SPN, showSpn);
             intent.putExtra(TelephonyIntents.EXTRA_SPN, spn);

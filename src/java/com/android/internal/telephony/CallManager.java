@@ -398,18 +398,16 @@ public final class CallManager {
 
     }
 
-    private CallManager getAcitveCm() {
+    private CallManager getActiveCm() {
         if (!TelephonyConstants.IS_DSDS) {
             return getInstance();
         }
-
+        CallManager cm = CallManager.getInstance();
         CallManager cm2 = CallManager.getInstance2();
 
-        if (cm2.getActiveFgCallState() == Call.State.ACTIVE) {
-            return cm2;
-        } else {
+        PhoneConstants.State state = cm.getState();
+        PhoneConstants.State state2 = cm2.getState();
             return cm2.getState() == PhoneConstants.State.OFFHOOK ? cm2 : getPrimaryCm();
-        }
     }
 
     private CallManager getRingingCm() {
@@ -421,8 +419,8 @@ public final class CallManager {
         return cm2.getState() == PhoneConstants.State.RINGING ? cm2 : getPrimaryCm();
     }
 
-    private Phone getAcitvePhone() {
-        CallManager cm = getAcitveCm();
+    private Phone getActivePhone() {
+        CallManager cm = getActiveCm();
         Phone offhookPhone = cm.getFgPhone();
         if (cm.getActiveFgCallState() == Call.State.IDLE) {
             // There is no active Fg calls, the OFFHOOK state
@@ -431,16 +429,18 @@ public final class CallManager {
         }
         return offhookPhone;
     }
-
+    private Call getFirstActiveRingingCallOnDevice() {
+        return getRingingCm().getFirstActiveRingingCall();
+    }
     public boolean hasActiveFgCallOndevice() {
-        return getAcitveCm().hasActiveFgCall();
+        return getActiveCm().hasActiveFgCall();
     }
     public void setAudioMode() {
         Context context = getContext();
         if (context == null) return;
         AudioManager audioManager = (AudioManager)
                 context.getSystemService(Context.AUDIO_SERVICE);
-        CallManager cm = getAcitveCm();
+        CallManager cm = getActiveCm();
         // change the audio mode and request/abandon audio focus according to phone state,
         // but only on audio mode transitions
         switch (getOverallState()) {
@@ -464,7 +464,7 @@ public final class CallManager {
                 break;
             case OFFHOOK:
 			    Rlog.d(LOG_TAG, "OFFHOOK" );
-                Phone offhookPhone = getAcitvePhone();
+                Phone offhookPhone = getActivePhone();
                 if (cm.getActiveFgCallState() == Call.State.IDLE) {
                     // There is no active Fg calls, the OFFHOOK state
                     // is set by the Bg call. So set the phone to bgPhone.

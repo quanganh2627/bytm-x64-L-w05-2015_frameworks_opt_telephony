@@ -18,6 +18,7 @@ package com.android.internal.telephony.gsm;
 
 import android.content.ContentValues;
 import android.content.Context;
+import android.content.res.Resources;
 import android.content.SharedPreferences;
 import android.database.SQLException;
 import android.net.Uri;
@@ -75,9 +76,9 @@ import com.android.internal.telephony.UUSInfo;
 import com.android.internal.telephony.test.SimulatedRadioControl;
 import com.android.internal.telephony.uicc.IccRecords;
 import com.android.internal.telephony.uicc.IccVmNotSupportedException;
+import com.android.internal.telephony.uicc.SIMRecords;
 import com.android.internal.telephony.uicc.UiccCardApplication;
 import com.android.internal.telephony.uicc.UiccController;
-import com.android.internal.telephony.uicc.SIMRecords;
 import com.android.internal.telephony.ServiceStateTracker;
 
 import java.io.FileDescriptor;
@@ -164,9 +165,8 @@ public class GSMPhone extends PhoneBase {
     public
     GSMPhone (Context context, CommandsInterface ci, PhoneNotifier notifier, boolean unitTestMode, String name) {
         super("GSM", notifier, context, ci, unitTestMode);
+        if (!TextUtils.isEmpty(name) && name.equals("GSM2")) {
 
-
-        if (name != null && name.length() > 0) {
             mIsPrimaryPhone = false;
             if (LOCAL_DEBUG) log("to create the secondary GSMPhone instance");
         } else {
@@ -750,7 +750,8 @@ public class GSMPhone extends PhoneBase {
         return result;
     }
 
-    boolean isInCall() {
+    @Override
+    public boolean isInCall() {
         GsmCall.State foregroundCallState = getForegroundCall().getState();
         GsmCall.State backgroundCallState = getBackgroundCall().getState();
         GsmCall.State ringingCallState = getRingingCall().getState();
@@ -798,6 +799,15 @@ public class GSMPhone extends PhoneBase {
         }
     }
 
+    public final void
+    setEmergencyCallOngoing(boolean isEmergencyCallOngoing) {
+        mIsEmergencyCallOngoing = isEmergencyCallOngoing;
+    }
+
+    public final boolean
+    isEmergencyCallOngoing() {
+        return mIsEmergencyCallOngoing;
+    }
     @Override
     public boolean handlePinMmi(String dialString) {
         GsmMmiCode mmi = GsmMmiCode.newFromDialString(dialString, this, mUiccApplication.get());
@@ -1297,6 +1307,7 @@ public class GSMPhone extends PhoneBase {
             return;
         }
         switch (msg.what) {
+            case EVENT_RADIO_ON:
             case EVENT_RADIO_AVAILABLE: {
                 mCi.getBasebandVersion(
                         obtainMessage(EVENT_GET_BASEBAND_VERSION_DONE));
@@ -1304,9 +1315,7 @@ public class GSMPhone extends PhoneBase {
                 mCi.getIMEI(obtainMessage(EVENT_GET_IMEI_DONE));
                 mCi.getIMEISV(obtainMessage(EVENT_GET_IMEISV_DONE));
             }
-            break;
 
-            case EVENT_RADIO_ON:
             break;
 
             case EVENT_REGISTERED_TO_NETWORK:
@@ -1460,6 +1469,10 @@ public class GSMPhone extends PhoneBase {
 
             case EVENT_RADIO_NOT_AVAILABLE:
                 if (LOCAL_DEBUG) log("EVENT_RADIO_NOT_AVAILABLE,reset cache now");
+                reset();
+                break;
+            case EVENT_SIM_UNAVAILABLE:
+                if (LOCAL_DEBUG) log("EVENT_SIM_UNAVAILABLE,reset cache now");
                 reset();
                 break;
              default:

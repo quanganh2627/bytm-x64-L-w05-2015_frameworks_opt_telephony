@@ -60,13 +60,14 @@ import com.android.internal.telephony.TelephonyIntents;
 import com.android.internal.telephony.gsm.GSMPhone;
 import com.android.internal.telephony.PhoneConstants;
 import com.android.internal.telephony.RILConstants;
+import com.android.internal.telephony.uicc.IccCardApplicationStatus.AppState;
 import com.android.internal.telephony.uicc.IccRecords;
+import com.android.internal.telephony.uicc.UiccCardApplication;
 import com.android.internal.telephony.uicc.UiccController;
 import com.android.internal.telephony.TelephonyConstants;
 import com.android.internal.telephony.TelephonyProperties;
 import com.android.internal.util.AsyncChannel;
-import com.android.internal.telephony.gsm.GsmDataConnectionSyncer;
-import com.android.internal.telephony.gsm.GsmDataConnectionSyncer.StateListener;
+
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
 import java.util.ArrayList;
@@ -78,6 +79,7 @@ import java.util.HashMap;
  */
 public final class DcTracker extends DcTrackerBase {
     protected final String LOG_TAG = "DCT";
+    private static final int TEARDOWN_TIMER_MILLIS = 10 * 1000;
 
     /**
      * Handles changes to the APN db.
@@ -102,14 +104,14 @@ public final class DcTracker extends DcTrackerBase {
 
     // Used by puppetmaster/*/radio_stress.py
     private static final String PUPPET_MASTER_RADIO_STRESS_TEST = "gsm.defaultpdpcontext.active";
-    private static final String INTENT_RECONNECT_ALARM_EXTRA_SIM_ID = "sim_id";
+
     private static final int POLL_PDP_MILLIS = 5 * 1000;
 
     static final Uri PREFERAPN_NO_UPDATE_URI =
                         Uri.parse("content://telephony/carriers/preferapn_no_update");
+    static final String APN_ID = "apn_id";
     static final Uri PREFERAPN_NO_UPDATE_URI2 =
                         Uri.parse("content://telephony/carriers2/preferapn_no_update");
-    static final String APN_ID = "apn_id";
     static final String APN_ID2 = "apn_id2";
     private boolean mCanSetPreferApn = false;
 
@@ -118,29 +120,22 @@ public final class DcTracker extends DcTrackerBase {
     /** Watches for changes to the APN db. */
     private ApnChangeObserver mApnObserver;
     //Change for DSDS. Indicate user settings on Data SIM
-    private boolean mSimDataEnabled = true;
-    private boolean mSimDataSwitch = false;
-    private int mSimId = ConnectivityManager.MOBILE_DATA_NETWORK_SLOT_A;
     /* Used for DSDS to monitor peer state */
-    private StateListener mListener;
     //***** Constructor
 
     public DcTracker(PhoneBase p) {
         super(p);
         if (DBG) log("GsmDCT.constructor");
+        p.mCi.registerForOn(this, DctConstants.EVENT_RADIO_ON, null);
         if (!p.isPrimaryPhone()) {
             if (TelephonyConstants.IS_DSDS == false) {
                 loge("Error! Check config here. Are you building Single SIM or Dual SIM");
             }
+            mIsPrimary = false;
 
-            mSimId = ConnectivityManager.MOBILE_DATA_NETWORK_SLOT_B;
-        }
-
-        if (TelephonyConstants.IS_DSDS) {
-            if (mSimId != getDataSimId()) {
                 mSimDataEnabled = false;
             }
-        }
+
         p.mCi.registerForAvailable (this, DctConstants.EVENT_RADIO_AVAILABLE, null);
         p.mCi.registerForOffOrNotAvailable(this, DctConstants.EVENT_RADIO_OFF_OR_NOT_AVAILABLE,
                 null);
@@ -168,16 +163,7 @@ public final class DcTracker extends DcTrackerBase {
         p.getContext().getContentResolver().registerContentObserver(
                 getCarrierApnUri(), true, mApnObserver);
 
-        if (TelephonyConstants.IS_DSDS) {
-            mListener = new StateListener() {
-                public void onDisconnected() {
-                    sendMessage(obtainMessage(DctConstants.EVENT_PEER_DISCONNECTED));
-                }
-            };
 
-            GsmDataConnectionSyncer syncer = GsmDataConnectionSyncer.getInstance();
-            syncer.registerTracker(this, mListener);
-        }
         initApnContexts();
 
         for (ApnContext apnContext : mApnContexts.values()) {
@@ -190,6 +176,7 @@ public final class DcTracker extends DcTrackerBase {
 
         ConnectivityManager cm = (ConnectivityManager)p.getContext().getSystemService(
                 Context.CONNECTIVITY_SERVICE);
+        if (isOnDataSim()) {
         cm.supplyMessenger(ConnectivityManager.TYPE_MOBILE, new Messenger(this));
         cm.supplyMessenger(ConnectivityManager.TYPE_MOBILE_MMS, new Messenger(this));
         cm.supplyMessenger(ConnectivityManager.TYPE_MOBILE_SUPL, new Messenger(this));
@@ -198,6 +185,9 @@ public final class DcTracker extends DcTrackerBase {
         cm.supplyMessenger(ConnectivityManager.TYPE_MOBILE_FOTA, new Messenger(this));
         cm.supplyMessenger(ConnectivityManager.TYPE_MOBILE_IMS, new Messenger(this));
         cm.supplyMessenger(ConnectivityManager.TYPE_MOBILE_CBS, new Messenger(this));
+        } else {
+            cm.supplyMessenger(ConnectivityManager.TYPE_MOBILE2_MMS, new Messenger(this));
+        }
     }
 
     public void bridgeTheOtherPhone(PhoneBase p) {
@@ -279,7 +269,7 @@ public final class DcTracker extends DcTrackerBase {
 
     protected void initApnContexts() {
         log("initApnContexts: E");
-        boolean defaultEnabled = isDefaultDataEnabled();
+        boolean defaultEnabled = SystemProperties.getBoolean(DEFALUT_DATA_ON_BOOT_PROP, true);
         // Load device network attributes from resources
         String[] networkConfigStrings = mPhone.getContext().getResources().getStringArray(
                 TelephonyConstants.IS_DSDS ? com.android.internal.R.array.networkAttributes_dsds
@@ -291,7 +281,7 @@ public final class DcTracker extends DcTrackerBase {
             switch (networkConfig.type) {
             case ConnectivityManager.TYPE_MOBILE:
                 apnContext = addApnContext(PhoneConstants.APN_TYPE_DEFAULT, networkConfig);
-                apnContext.setEnabled(defaultEnabled && mSimDataEnabled);
+                apnContext.setEnabled(defaultEnabled && mIsPrimary);
                 break;
             case ConnectivityManager.TYPE_MOBILE_MMS:
                 apnContext = addApnContext(PhoneConstants.APN_TYPE_MMS, networkConfig);
@@ -317,6 +307,7 @@ public final class DcTracker extends DcTrackerBase {
             case ConnectivityManager.TYPE_MOBILE_IA:
                 apnContext = addApnContext(PhoneConstants.APN_TYPE_IA, networkConfig);
                 break;
+
             default:
                 log("initApnContexts: skipping unknown type=" + networkConfig.type);
                 continue;
@@ -582,6 +573,21 @@ public final class DcTracker extends DcTrackerBase {
         if (DBG) log("onDataConnectionAttached");
         mAttached.set(true);
         if (getOverallState() == DctConstants.State.CONNECTED) {
+            if (!getAnyDataEnabled()) {
+                /*
+                 * If the user disables "Data enabled" in out of service state,
+                 * data deactivation request is ignored due to device out of
+                 * service. When the device gets back to registered state,
+                 * browsing is allowed even when the data is disabled by user.
+                 * Check the data enabled state and cleanup all connection if data
+                 * is disabled. ATTACHED state is notified as this may be needed
+                 * to update UI.
+                 */
+                onCleanUpAllConnections(Phone.REASON_DATA_DISABLED);
+                notifyDataConnection(Phone.REASON_DATA_ATTACHED);
+                return;
+            }
+
             if (DBG) log("onDataConnectionAttached: start polling notify attached");
             startNetStatPoll();
             startDataStallAlarm(DATA_STALL_NOT_SUSPECTED);
@@ -667,13 +673,6 @@ public final class DcTracker extends DcTrackerBase {
             return false;
         }
 
-        if (TelephonyConstants.IS_DSDS) {
-            GsmDataConnectionSyncer syncer = GsmDataConnectionSyncer.getInstance();
-            if (!syncer.isPeerDisconnected(this)) {
-                log("Wait peer disconnected");
-                return true;
-            }
-        }
         if (mPhone.getSimulatedRadioControl() != null) {
             // Assume data is connected on the simulator
             // FIXME  this can be improved
@@ -1221,6 +1220,11 @@ public final class DcTracker extends DcTrackerBase {
             if (isAnyDataCallActive) startNetStatPoll();
         }
 
+        if (dataCallStates.size() == 0) {
+            if (DBG) log("onDataStateChange(ar): NoData calls Stop stall alarm");
+            stopNetStatPoll();
+            stopDataStallAlarm();
+        }
         if (DBG) log("onDataStateChanged(ar): X");
     }
 
@@ -1313,7 +1317,7 @@ public final class DcTracker extends DcTrackerBase {
         Intent intent = new Intent(INTENT_RECONNECT_ALARM + "." + apnType);
         intent.putExtra(INTENT_RECONNECT_ALARM_EXTRA_REASON, apnContext.getReason());
         intent.putExtra(INTENT_RECONNECT_ALARM_EXTRA_TYPE, apnType);
-        intent.putExtra(INTENT_RECONNECT_ALARM_EXTRA_ISPRIMARY, mSimDataEnabled);
+        intent.putExtra(INTENT_RECONNECT_ALARM_EXTRA_ISPRIMARY, mIsPrimary);
 
         if (DBG) {
             log("startAlarmForReconnect: delay=" + delay + " action=" + intent.getAction()
@@ -1361,43 +1365,11 @@ public final class DcTracker extends DcTrackerBase {
             notifyOffApnsOfAvailability(Phone.REASON_SIM_LOADED);
         }
         setupDataOnConnectableApns(Phone.REASON_SIM_LOADED);
-    }
 
     /*
      * Only update the setting on slot 1
      */
-    @Override
-    protected void onSetUserDataEnabled(boolean enabled) {
-        synchronized (mDataEnabledLock) {
-            final boolean prevEnabled = getAnyDataEnabled();
-            if (mUserDataEnabled != enabled) {
-                mUserDataEnabled = enabled;
-                if (mSimId == TelephonyConstants.DSDS_SLOT_1_ID) {
-                    Settings.Global.putInt(mPhone.getContext().getContentResolver(),
-                            Settings.Global.MOBILE_DATA, enabled ? 1 : 0);
-                }
-                if (mUserDataEnabled != mSimDataEnabled && mSimId == getDataSimId()) {
-                    if (DBG) log("user data changed, update SimDataEnabled");
-                    mSimDataEnabled = mUserDataEnabled;
-                }
-                if (getDataOnRoamingEnabled() == false &&
-                        mPhone.getServiceState().getRoaming() == true) {
-                    if (enabled) {
-                        notifyOffApnsOfAvailability(Phone.REASON_ROAMING_ON);
-                    } else {
-                        notifyOffApnsOfAvailability(Phone.REASON_DATA_DISABLED);
-                    }
-                }
-                if (prevEnabled != getAnyDataEnabled()) {
-                    if (!prevEnabled) {
 //                        resetAllRetryCounts();
-                        onTrySetupData(Phone.REASON_DATA_ENABLED);
-                    } else {
-                        onCleanUpAllConnections(Phone.REASON_DATA_DISABLED);
-                    }
-                }
-            }
-        }
     }
 
     @Override
@@ -1600,6 +1572,28 @@ public final class DcTracker extends DcTrackerBase {
         }
     }
 
+    private void restoreSavedNetworkSelection() {
+        if (DBG) log("restoreSavedNetworkSelection");
+        if (mUiccApplication != null
+                && mUiccApplication.getState() == AppState.APPSTATE_READY
+                && mPhone.mCi.getRadioState().isOn()) {
+            boolean skipRestoringSelection = mPhone.getContext().getResources().getBoolean(
+                    com.android.internal.R.bool.skip_restoring_network_selection);
+            if (!skipRestoringSelection) {
+                mPhone.restoreSavedNetworkSelection(null);
+            }
+        }
+    }
+    @Override
+    protected void onRadioOn() {
+        if (DBG) log("onRadioOn");
+        IccRecords r = mIccRecords.get();
+        if (mUiccApplication != null
+                && r != null && r.getRecordsLoaded()) {
+            createAllApnList();
+            setInitialAttachApn();
+        }
+    }
     @Override
     protected void onRadioAvailable() {
         if (DBG) log("onRadioAvailable");
@@ -1902,11 +1896,6 @@ public final class DcTracker extends DcTrackerBase {
         // pending.
         if (isDisconnected()) {
             //Notify peer this is disconnected
-            if (TelephonyConstants.IS_DSDS) {
-                if (DBG) log("onDisconnectDone: notify peer");
-                GsmDataConnectionSyncer syncer = GsmDataConnectionSyncer.getInstance();
-                syncer.notifyDisconnected(this);
-            }
             if (mPhone.getServiceStateTracker().processPendingRadioPowerOffAfterDataOff()) {
                 if(DBG) log("onDisconnectDone: radio will be turned off, no retries");
                 // Radio will be turned off. No need to retry data setup
@@ -1990,10 +1979,12 @@ public final class DcTracker extends DcTrackerBase {
         mInVoiceCall = false;
         if (isConnected()) {
             if (mUserDataEnabled == false) {
+                if (DBG) log("kz onCleanUpAllConnections");
                 onCleanUpAllConnections(Phone.REASON_DATA_DISABLED);
+                return;
             }
 
-            if (!mPhone.getServiceStateTracker().isConcurrentVoiceAndDataAllowed()&& mUserDataEnabled) {
+            if (!mPhone.getServiceStateTracker().isConcurrentVoiceAndDataAllowed()) {
                 startNetStatPoll();
                 startDataStallAlarm(DATA_STALL_NOT_SUSPECTED);
                 notifyDataConnection(Phone.REASON_VOICE_CALL_ENDED);
@@ -2387,18 +2378,13 @@ public final class DcTracker extends DcTrackerBase {
                 }
                 break;
 
+            case DctConstants.EVENT_SET_INITIAL_ATTACH_DONE:
+                restoreSavedNetworkSelection();
+                break;
             case DctConstants.CMD_SET_SIM_DATA_ENABLED:
                 //Note that we handle this command here, not DataConnectionTracker
                 if (DBG) log("CMD_SET_SIM_DATA_ENABLED " + msg.arg1);
                 onSetSimDataEnabled(msg.arg1 == 1);
-                break;
-            case DctConstants.CMD_SET_DATA_SIM:
-                if (DBG) log("CMD_SET_DATA_SIM " + msg.arg1);
-                onSetDataSim(msg.arg1 == 1);
-                break;
-            case DctConstants.EVENT_PEER_DISCONNECTED:
-                if (DBG) log("EVENT_PEER_DISCONNECTED");
-                onPeerDisconnected();
                 break;
 	
             default:
@@ -2415,6 +2401,8 @@ public final class DcTracker extends DcTrackerBase {
             return RILConstants.DATA_PROFILE_FOTA;
         } else if (TextUtils.equals(apnType, PhoneConstants.APN_TYPE_CBS)) {
             return RILConstants.DATA_PROFILE_CBS;
+        } else if (TextUtils.equals(apnType, PhoneConstants.APN_TYPE_MMS)) {
+            return (RILConstants.DATA_PROFILE_MMS);
         } else if (TextUtils.equals(apnType, PhoneConstants.APN_TYPE_IA)) {
             return RILConstants.DATA_PROFILE_DEFAULT; // DEFAULT for now
         } else if (TextUtils.equals(apnType, PhoneConstants.APN_TYPE_DUN)) {
@@ -2475,18 +2463,41 @@ public final class DcTracker extends DcTrackerBase {
     @Override
     protected void onActionIntentDataStallAlarm(Intent intent) {
        if (VDBG) log("onActionIntentDataStallAlarm: action=" + intent.getAction());
-       int slot = intent.getIntExtra(INTENT_RECONNECT_ALARM_EXTRA_SIM_ID,
-               TelephonyConstants.DSDS_SLOT_1_ID);
-       if (slot != mSimId) {
+        boolean isPrimary = intent.getBooleanExtra(INTENT_RECONNECT_ALARM_EXTRA_ISPRIMARY, true);
+        if (isPrimary != mIsPrimary) {
            if (DBG) log("Ignore the alarm");
            return;
        }
 
+        super.onActionIntentDataStallAlarm(intent);
+/*
        Message msg = obtainMessage(DctConstants.EVENT_DATA_STALL_ALARM, intent.getAction());
        msg.arg1 = intent.getIntExtra(DATA_STALL_ALARM_TAG_EXTRA, 0);
        sendMessage(msg);
+*/
     }
 
+    public void onDataSuspended() {
+        if (DBG) log("onDataSuspended");
+        if (isConnected()) {
+            if (DBG) log("onDataSuspended stop polling");
+            stopNetStatPoll();
+            stopDataStallAlarm();
+            notifyDataConnection(null);
+        }
+        notifyOffApnsOfAvailability(null);
+    }
+    public void onDataResumed() {
+        if (DBG) log("onDataResumed");
+        if (isConnected()) {
+            startNetStatPoll();
+            startDataStallAlarm(DATA_STALL_NOT_SUSPECTED);
+            notifyDataConnection(null);
+        } else {
+            setupDataOnConnectableApns(null);
+        }
+        notifyOffApnsOfAvailability(null);
+    }
     /*
      * Handler command from ConnectivityService
      */
@@ -2495,7 +2506,6 @@ public final class DcTracker extends DcTrackerBase {
         mSimDataEnabled = enabled;
 
         synchronized (mDataEnabledLock) {
-            setDefaultApnEnabled(mSimDataEnabled);
 
             if (enabled) {
                 log("onSetSimDataEnabled: changed to enabled, try to setup data call");
@@ -2507,82 +2517,27 @@ public final class DcTracker extends DcTrackerBase {
         }
     }
 
-    protected void onSetDataSim(boolean enabled) {
-        synchronized (mDataEnabledLock) {
-            mSimDataSwitch = enabled;
-            mSimDataEnabled = enabled;
-            setDefaultApnEnabled(enabled);
-            if (enabled) {
-                // Update Data SIM Setting
-                Settings.Global.putInt(mPhone.getContext().getContentResolver(),
-                        Settings.Global.MOBILE_DATA_SIM, mSimId);
-                // Update Data SIM property
-                String dataSimOperator =
-                        TelephonyManager.getTmBySlot(mSimId).getSimOperator();
-                SystemProperties.set(TelephonyProperties.PROPERTY_DATA_SIM_ICC_OPERATOR_NUMERIC,
-                        dataSimOperator);
-
-//                resetAllRetryCounts();
-                GsmDataConnectionSyncer syncer = GsmDataConnectionSyncer.getInstance();
-                if (syncer.isPeerDisconnected(this)) {
-                    broadcastSetDataSimDone();
-                    mSimDataSwitch = false;
-                    onTrySetupData(Phone.REASON_DATA_SIM_ENABLED);
-                }
-            } else {
-                onCleanUpAllConnections(Phone.REASON_DATA_SIM_CHANGED);
-            }
-        }
-    }
-
-    private boolean isOnPrimarySim() {
-        return mPhone.getSlot() == TelephonyConstants.DSDS_SLOT_1_ID;
+    private boolean isOnDataSim() {
+        return mIsPrimary;
     }
 
     private Uri getPreferApnUri() {
-        return isOnPrimarySim() ? PREFERAPN_NO_UPDATE_URI : PREFERAPN_NO_UPDATE_URI2;
+        return isOnDataSim() ? PREFERAPN_NO_UPDATE_URI : PREFERAPN_NO_UPDATE_URI2;
     }
 
     private String getPreferApnId() {
-        return isOnPrimarySim() ? APN_ID : APN_ID2;
+        return isOnDataSim() ? APN_ID : APN_ID2;
     }
 
     private Uri getCarrierApnUri() {
-        return isOnPrimarySim() ? Telephony.Carriers.CONTENT_URI : Telephony.Carriers.CONTENT_URI2;
+        return isOnDataSim() ? Telephony.Carriers.CONTENT_URI : Telephony.Carriers.CONTENT_URI2;
     }
 
-    private int getDataSimId() {
-        return Settings.Global.getInt(mPhone.getContext().getContentResolver(),
-                Settings.Global.MOBILE_DATA_SIM, TelephonyConstants.DSDS_SLOT_1_ID);
-    }
 
-    private boolean isDefaultDataEnabled() {
-        return SystemProperties.getBoolean(DEFALUT_DATA_ON_BOOT_PROP, true);
-    }
 
-    protected void onPeerDisconnected() {
-        log("Receive Peer Disconnected");
 //        setupDataOnReadyApns("PEER_DISCONNCTED");
-        if (mSimDataSwitch) {
-            broadcastSetDataSimDone();
-            mSimDataSwitch = false;
-        }
-    }
 
-    public void setDefaultApnEnabled(boolean enabled) {
-        ApnContext apnContext = mApnContexts.get(PhoneConstants.APN_TYPE_DEFAULT);
-        if (apnContext != null && isDefaultDataEnabled()) {
-            log("update default apnContext " + enabled);
-            apnContext.setEnabled(enabled);
-        }
-    }
 
-    private void broadcastSetDataSimDone() {
-        Intent intent = new Intent(TelephonyConstants.ACTION_DATA_SIM_SWITCH);
-        intent.putExtra(TelephonyConstants.EXTRA_SWITCH_STAGE, TelephonyConstants.SIM_SWITCH_DONE);
-        intent.putExtra(TelephonyConstants.EXTRA_RESULT_CODE, TelephonyConstants.SWITCH_SUCCESS);
-        mPhone.getContext().sendBroadcast(intent);
-    }
 
     /*
      * Reason for override this function is that we need to check
@@ -2590,12 +2545,12 @@ public final class DcTracker extends DcTrackerBase {
      */
     @Override
     protected void log(String s) {
-        Rlog.d(LOG_TAG,"[GsmDCT " + mSimId + "]" + s);
+        Rlog.d(LOG_TAG, "[DcTracker " + ((mIsPrimary) ? "0" : "1") + "]" + s);
     }
 
     @Override
     protected void loge(String s) {
-        Rlog.e(LOG_TAG, "[GsmDCT " + mSimId + "]" + s);
+        Rlog.e(LOG_TAG, "[DcTracker " + ((mIsPrimary) ? "0" : "1") + "]" + s);
     }
 
     @Override

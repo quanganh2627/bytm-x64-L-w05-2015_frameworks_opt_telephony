@@ -191,7 +191,6 @@ public class SIMRecords extends IccRecords {
     private final String PROPERTY_ICC_OPERATOR_NUMERIC;
     // Indicate Primary SIM for DSDS, default is true for SIM on slot 1.
     // It can be false, for SIM on slot 2.
-    private boolean mIsPrimary = true;
     // ***** Constructor
 
     public SIMRecords(UiccCardApplication app, Context c, CommandsInterface ci) {
@@ -204,7 +203,6 @@ public class SIMRecords extends IccRecords {
             PROPERTY_ICC_OPERATOR_ALPHA = TelephonyProperties2.PROPERTY_ICC_OPERATOR_ALPHA;
             PROPERTY_ICC_OPERATOR_ISO_COUNTRY = TelephonyProperties2.PROPERTY_ICC_OPERATOR_ISO_COUNTRY;
             PROPERTY_ICC_OPERATOR_NUMERIC = TelephonyProperties2.PROPERTY_ICC_OPERATOR_NUMERIC;
-            mIsPrimary = false;
         }
         mAdnCache = new AdnRecordCache(mFh);
 
@@ -264,11 +262,11 @@ public class SIMRecords extends IccRecords {
         SystemProperties.set(PROPERTY_ICC_OPERATOR_NUMERIC, null);
         SystemProperties.set(PROPERTY_ICC_OPERATOR_ALPHA, null);
         SystemProperties.set(PROPERTY_ICC_OPERATOR_ISO_COUNTRY, null);
-        if (TelephonyConstants.IS_DSDS && isOnDataSim()) {
+/*        if (TelephonyConstants.IS_DSDS && isOnDataSim()) {
             log("SIMRecords: onRadioOffOrNotAvailable " +
                     "set 'gsm.data_sim.operator.numeric' to operator=null");
             SystemProperties.set(PROPERTY_DATA_SIM_ICC_OPERATOR_NUMERIC, null);
-        }
+        }*/
         // recordsRequested is set to false indicating that the SIM
         // read requests made so far are not valid. This is set to
         // true only when fresh set of read requests are made.
@@ -1370,11 +1368,11 @@ public class SIMRecords extends IccRecords {
         } else {
             log("onAllRecordsLoaded empty 'gsm.sim.operator.numeric' skipping");
         }
-        if (TelephonyConstants.IS_DSDS && isOnDataSim()) {
+/*        if (TelephonyConstants.IS_DSDS && isOnDataSim()) {
             log("SIMRecords: set 'gsm.data_sim.operator.numeric' for data sim to operator='" +
                     operator + "'");
             SystemProperties.set(PROPERTY_DATA_SIM_ICC_OPERATOR_NUMERIC, operator);
-        }
+        }*/
         if (!TextUtils.isEmpty(mImsi)) {
             log("onAllRecordsLoaded set mcc imsi=" + mImsi);
             SystemProperties.set(PROPERTY_ICC_OPERATOR_ISO_COUNTRY,
@@ -1789,7 +1787,7 @@ public class SIMRecords extends IccRecords {
      * Return true if current SIMRecords point to data sim
      * return false otherwise.
      */
-    private boolean isOnDataSim() {
+/*    private boolean isOnDataSim() {
         ConnectivityManager cm = (ConnectivityManager)mContext.getSystemService(
                 Context.CONNECTIVITY_SERVICE);
         int dataSimId =  cm.getDataSim();
@@ -1799,7 +1797,7 @@ public class SIMRecords extends IccRecords {
         }
 
         return false;
-    }
+    }*/
     @Override
     public void dump(FileDescriptor fd, PrintWriter pw, String[] args) {
         pw.println("SIMRecords: " + this);

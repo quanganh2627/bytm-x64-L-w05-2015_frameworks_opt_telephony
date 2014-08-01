@@ -22,15 +22,15 @@ import android.os.Handler;
 import android.os.Message;
 import android.os.Registrant;
 import android.os.RegistrantList;
-import android.telephony.Rlog;
 import android.provider.Settings;
+import android.telephony.Rlog;
 import com.android.internal.telephony.CommandsInterface;
-import com.android.internal.telephony.uicc.IccCardApplicationStatus;
-import com.android.internal.telephony.TelephonyConstants;
 import com.android.internal.telephony.Phone;
-import com.android.internal.telephony.PhoneFactory;
 import com.android.internal.telephony.PhoneBase;
+import com.android.internal.telephony.PhoneFactory;
 import com.android.internal.telephony.PhoneProxy;
+import com.android.internal.telephony.TelephonyConstants;
+import com.android.internal.telephony.uicc.IccCardApplicationStatus;
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
 
@@ -211,7 +211,6 @@ public class UiccController extends Handler {
                     break;
                 case EVENT_ICC_STATUS_REPOLL:
                     if (DBG) log("Received EVENT_ICC_STATUS_REPOLL");
-                    setSwitchingFinished(true);
                     mCi.getIccCardStatus(obtainMessage(EVENT_GET_ICC_STATUS_DONE));
                     break;
                 case EVENT_ICC_STATUS_CHANGED:
@@ -226,9 +225,10 @@ public class UiccController extends Handler {
                 case EVENT_RADIO_OFF_NOT_AVAILABLE:
                     log("EVENT_RADIO_OFF_NOT_AVAILABLE");
                     if (TelephonyConstants.IS_DSDS) {
-                        if (!mIccKnown && isAirplaneModeOn()) {
+                       if (!mIccKnown &&
+                               (isAirplaneModeOn() || getPhoneBase(isPrimary()).isSimOff())) {
                             mCi.getIccCardStatus(obtainMessage(EVENT_GET_ICC_STATUS_DONE));
-                            log("to retrieve SIM status in airplane mode for DSDS");
+                           log("to retrieve SIM status in airplane mode or sim off for DSDS");
                             break;
                         }
                         if (mCi.getRadioState().isAvailable() && mUiccCard != null) {
@@ -239,11 +239,14 @@ public class UiccController extends Handler {
                     // Fall through
                 case EVENT_RADIO_NOT_AVAILABLE:
                     log("reset SIM when NOT_AVAILABLE");
-                    setSwitchingFinished(false);
                     IccCardStatus cardStatus = new IccCardStatus();
-                    // CardState.CARDSTATE_ERROR
+                   if (getPhoneBase(isPrimary()).isSimOff()) {
+                       log("reset card state ABSENT");
+                       cardStatus.setCardState(0);
+                   } else {
+                       log("reset card state ERROR");
                     cardStatus.setCardState(2);
-                    // PinState.PINSTATE_UNKNOWN
+                   }
                     cardStatus.setUniversalPinState(0);
                     cardStatus.mGsmUmtsSubscriptionAppIndex = -1;
                     cardStatus.mCdmaSubscriptionAppIndex = -1;
@@ -314,31 +317,16 @@ public class UiccController extends Handler {
     String getPhoneTag() {
         return isPrimary() ? "[GSM]" : "[GSM2]";
     }
-    private int mIccSwitchingState = -1; //in on/off switching
-    private void setSwitchingFinished(boolean success) {
-        if (success && mIccSwitchingState == 0) {
-            mIccSwitchingState = 1;
-        } else {
-            mIccSwitchingState = -1;
-        }
-    }
 
-    private boolean isSwitchingFinished() {
-        return mIccSwitchingState > 0;
-    }
 
-    public void setSwitching(boolean switching) {
-        mIccSwitchingState = switching ? 0 : -1;
-    }
 
     private void tryClearUserPin() {
         if (!TelephonyConstants.IS_DSDS) {
             return;
         }
-        if (isSwitchingFinished() && !mUiccCard.isPinLocked()) {
+        if (!mUiccCard.isPinLocked()) {
             log("tryClearUserPin,PinState:" + mUiccCard.getUniversalPinState());
             getPhoneBase(isPrimary()).clearUserPin();
-            setSwitching(false);
         }
     }
 

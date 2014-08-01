@@ -35,6 +35,7 @@ import com.android.internal.telephony.SmsConstants;
 import com.android.internal.telephony.SmsHeader;
 import com.android.internal.telephony.SmsStorageMonitor;
 import com.android.internal.telephony.SmsUsageMonitor;
+import com.android.internal.telephony.TelephonyConstants;
 import com.android.internal.telephony.TelephonyProperties;
 import com.android.internal.telephony.uicc.IccRecords;
 import com.android.internal.telephony.uicc.IccUtils;
@@ -57,7 +58,6 @@ public final class GsmSMSDispatcher extends SMSDispatcher {
     private GsmInboundSmsHandler mGsmInboundSmsHandler;
 
     /** Status report received */
-    private static final int EVENT_NEW_SMS_STATUS_REPORT = 100;
 
     public GsmSMSDispatcher(PhoneBase phone, SmsUsageMonitor usageMonitor,
             ImsSMSDispatcher imsSMSDispatcher,
@@ -65,7 +65,12 @@ public final class GsmSMSDispatcher extends SMSDispatcher {
         super(phone, usageMonitor, imsSMSDispatcher);
         mCi.setOnSmsStatus(this, EVENT_NEW_SMS_STATUS_REPORT, null);
         mGsmInboundSmsHandler = gsmInboundSmsHandler;
+        if (TelephonyConstants.IS_DSDS) {
+            mUiccController = mPhone.isPrimaryPhone()?
+                UiccController.getInstance() : UiccController.getInstance2();
+        } else {
         mUiccController = UiccController.getInstance();
+        }
         mUiccController.registerForIccChanged(this, EVENT_ICC_CHANGED, null);
         Rlog.d(TAG, "GsmSMSDispatcher created");
     }
