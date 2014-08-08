@@ -3003,9 +3003,9 @@ public final class RIL extends BaseCommands implements CommandsInterface {
                 setRadioPower(false, null);
                 riljLog("RIL_UNSOL_RIL_CONNECTED,00000000000");
                 mIsSwitchingRil = false;
-                if (!TelephonyConstants.IS_DSDS) {
+//2g3g          if (!TelephonyConstants.IS_DSDS) {
                 setPreferredNetworkType(mPreferredNetworkType, null);
-                }
+//2g3g          }
                 setCdmaSubscriptionSource(mCdmaSubscription, null);
                 setCellInfoListRate(Integer.MAX_VALUE, null);
                 notifyRegistrantsRilConnectionChanged(((int[])ret)[0]);
