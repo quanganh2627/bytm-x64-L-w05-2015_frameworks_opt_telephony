@@ -186,7 +186,7 @@ public class UiccCard {
             }
             if ((radioState == RadioState.RADIO_ON && mLastRadioState == RadioState.RADIO_ON)
                 || TelephonyConstants.IS_DSDS) {
-                if ((oldState != CardState.CARDSTATE_ABSENT &&
+                if ((oldState == CardState.CARDSTATE_PRESENT &&
                         mCardState == CardState.CARDSTATE_ABSENT)|| isReallyAbsent) {
                     if (DBG) log("update: notify card removed");
                     mAbsentRegistrants.notifyRegistrants();
