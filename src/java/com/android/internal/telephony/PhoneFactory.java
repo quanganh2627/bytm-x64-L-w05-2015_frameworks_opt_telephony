@@ -177,7 +177,8 @@ public class PhoneFactory {
                         sProxyPhone2 = new PhoneProxy(new GSMPhone(context, sCommandsInterface2, sPhoneNotifier, "GSM2"));
                         Rlog.i(LOG_TAG, "created phone2 :" + sProxyPhone2.getPhoneName()
                                 + ",on socket " + ((RIL)sCommandsInterface2).getSocketName());
-
+ 
+                        updateDataSimProperty(getDataSimId(sContext));
                         syncer = OnlyOne3gSyncer.getInstance();
                         syncer.setRat(sRats[0], sRats[1]);
                         syncer.registerRadios(((PhoneProxy)sProxyPhone).getActivePhone(),
@@ -230,6 +231,11 @@ public class PhoneFactory {
         }
     }
 
+     private static int getDataSimId(Context ctx) {
+           return Settings.Global.getInt(ctx.getContentResolver(), 
+                   Settings.Global.MOBILE_DATA_SIM, TelephonyConstants.DSDS_SLOT_1_ID);
+    }
+
     static void retrieveRatSettings() {
         int networkMode = Settings.Global.getInt(sContext.getContentResolver(),
                 Settings.Global.PREFERRED_NETWORK_MODE, RILConstants.PREFERRED_NETWORK_MODE);
@@ -274,6 +280,7 @@ public class PhoneFactory {
                 ConnectivityManager.MOBILE_DATA_NETWORK_SLOT_A);
         Rlog.d(LOG_TAG, "setPrimarySim,dataSim:" + dataSim + ","  + sPrimarySimId);
         switchRilSocket();
+        updateDataSimProperty(sPrimarySimId);
         ensureOne3GPolicy(sContext, msg);
     }
 
@@ -346,6 +353,10 @@ public class PhoneFactory {
         }
     }
 
+    public static void updateDataSimProperty(int simId) {
+           Rlog.d(LOG_TAG, "updateDataSimProperty to:" + simId);
+           SystemProperties.set("gsm.simmanager.data_sim_id", simId > 0 ? "1" : "0");
+       }
 
     public static void setSimOnOffProperties() {
         setSimOnOffProperties(0);
