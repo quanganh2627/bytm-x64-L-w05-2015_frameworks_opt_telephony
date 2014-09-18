@@ -35,6 +35,12 @@ public interface OemHookConstants {
     public static final int RIL_OEM_HOOK_STRING_GET_DVP_STATE = 0x000000B3;
     /* OEM hook specific to set DvP status,"0" means dsiable, "1" means enable*/
     public static final int RIL_OEM_HOOK_STRING_SET_DVP_ENABLED = 0x000000B4;
+
+    /* OEM hook to set the RF Power table */
+    public static final int RIL_OEM_HOOK_STRING_GET_RF_POWER_CUTBACK_TABLE = 0x000000AB;
+    /* OEM hook to set the RF Power table */
+    public static final int RIL_OEM_HOOK_STRING_SET_RF_POWER_CUTBACK_TABLE = 0x000000AC;
+
     //TOOS
     /* OEM hook specific to DSDS for catching out of service URC
      *

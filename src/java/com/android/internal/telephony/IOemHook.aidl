@@ -38,4 +38,30 @@ interface IOemHook {
      * {@hide}
      */
     boolean setDvPEnabled(boolean enable);
+
+    /*
+     * Get the currently applied rf power cutback table.
+     * @return On Success, int representing the applied table.
+     *          {@link com.intel.internal.telephony.OemTelephony.
+     *                  OemTelephonyConstants#OFFSET_TABLE_INDEX_0},
+     *          {@link com.intel.internal.telephony.OemTelephony.
+     *                  OemTelephonyConstants#OFFSET_TABLE_INDEX_1},
+     *          {@link com.intel.internal.telephony.OemTelephony.
+     *                  OemTelephonyConstants#OFFSET_TABLE_INDEX_2},
+     * {@hide}
+     */
+    int getRFPowerCutbackTable();
+
+    /*
+     * Set the currently applied rf power cutback table.
+     * @param table the table to apply.
+     *          {@link com.intel.internal.telephony.OemTelephony.
+     *                  OemTelephonyConstants#OFFSET_TABLE_INDEX_0},
+     *          {@link com.intel.internal.telephony.OemTelephony.
+     *                  OemTelephonyConstants#OFFSET_TABLE_INDEX_1},
+     *          {@link com.intel.internal.telephony.OemTelephony.
+     *                  OemTelephonyConstants#OFFSET_TABLE_INDEX_2},
+     * {@hide}
+     */
+    oneway void setRFPowerCutbackTable(int table);
 }
