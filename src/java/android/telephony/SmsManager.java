@@ -20,6 +20,7 @@ import android.app.ActivityThread;
 import android.app.PendingIntent;
 import android.os.RemoteException;
 import android.os.ServiceManager;
+import android.os.Binder;
 import android.text.TextUtils;
 
 import com.android.internal.telephony.ISms;
@@ -325,11 +326,21 @@ public final class SmsManager {
         boolean success = false;
         byte[] pdu = new byte[IccConstants.SMS_RECORD_LENGTH-1];
         Arrays.fill(pdu, (byte)0xff);
+        String packageName = null;
 
         try {
+            packageName = ActivityThread.getPackageManager().getNameForUid(Binder.getCallingUid());
+        } catch ( Exception ex ){
+            // nothing todo
+        }
+        try {
+            if(null == packageName){
+                 packageName = ActivityThread.currentPackageName();
+            }
+
             ISms iccISms = ISms.Stub.asInterface(ServiceManager.getService(getServiceName()));
             if (iccISms != null) {
-                success = iccISms.updateMessageOnIccEf(ActivityThread.currentPackageName(),
+                success = iccISms.updateMessageOnIccEf(packageName,
                         messageIndex, STATUS_ON_ICC_FREE, pdu);
             }
         } catch (RemoteException ex) {
