@@ -165,6 +165,10 @@ public class UiccCardApplication {
                 if (DBG) log("radio State changing to " + mLastRadioState);
                 if (mLastRadioState == RadioState.RADIO_ON) {
                     if (DBG) log("notifySimReadyFor DSDS " + mLastRadioState);
+                    // If the radio state turns to RADIO_ON, then query FDN status,
+                    //as it might have failed in earlier attempt.
+                    queryFdn();
+                    queryPin1State();                    
                     notifyReadyRegistrantsIfNeeded(null);
                 }
             }
