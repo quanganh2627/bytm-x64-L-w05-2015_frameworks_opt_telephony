@@ -31,12 +31,28 @@ public interface AppInterface {
                                     "android.intent.action.stk.command";
     public static final String CAT_SESSION_END_ACTION =
                                     "android.intent.action.stk.session_end";
+    // Broadcast to be sent to Launcher to request user activity action
+    public static final String CHECK_USER_ACTIVITY_ACTION =
+                                    "android.intent.action.launcher.user_activity";
 
+    // Broadcast to receive from Launcher when user activity occurs
+    public static final String USER_ACTIVITY_AVAILABLE_ACTION =
+                                   "android.intent.action.stk.user_activity_available";
     /*
      * Callback function from app to telephony to pass a result code and user's
      * input back to the ICC.
      */
     void onCmdResponse(CatResponseMessage resMsg);
+
+    /*
+    * Returns true - Event download active for the given event.
+    */
+    boolean isEventDownloadActive(int event);
+
+    /*
+    * Callback function from app to telephony to pass a event to the SIM.
+    */
+    void onEventDownload(CatEventMessage eventMsg);
 
     /*
      * Enumeration for representing "Type of Command" of proactive commands.
