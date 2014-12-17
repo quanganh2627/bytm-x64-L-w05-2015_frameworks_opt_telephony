@@ -1774,7 +1774,11 @@ public class SIMRecords extends IccRecords {
                      // Operator Selection menu should be disabled.
                      // Operator Selection Mode should be set to Automatic.
                      log("[CSP] Set Automatic Network Selection");
-                     mNetworkSelectionModeAutomaticRegistrants.notifyRegistrants();
+                     boolean ignoreAR = SystemProperties.getBoolean("persist.conformance.CSP.PLMN", false);
+                     log("ignoreAR = " + ignoreAR);
+                     if (!ignoreAR){
+                         mNetworkSelectionModeAutomaticRegistrants.notifyRegistrants();
+                     }
                  }
                  return;
              }
