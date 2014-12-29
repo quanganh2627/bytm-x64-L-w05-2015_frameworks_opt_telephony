@@ -52,7 +52,7 @@ import static com.android.internal.telephony.TelephonyConstants.SIM_SWITCH_END;
 import static com.android.internal.telephony.TelephonyConstants.SWITCH_SUCCESS;
 import static com.android.internal.telephony.TelephonyConstants.SWITCH_FAILED_TIMEDOUT;
 import static com.android.internal.telephony.TelephonyConstants.ACTION_RIL_SWITCHING;
-
+import com.android.internal.telephony.RILConstants;
 
 /*
  *  This class is used to prevent two 3G setting, which is not allowed
@@ -347,6 +347,11 @@ public class OnlyOne3gSyncer extends Handler {
     }
 
     private void syncNetworkTypes() {
+        int mNetworkSetting = Settings.Global.getInt( mPhones[0].getContext().getContentResolver(),
+                Settings.Global.PREFERRED_NETWORK_MODE, RILConstants.PREFERRED_NETWORK_MODE);
+        int mNetwork2Setting = Settings.Global.getInt(mPhones[1].getContext().getContentResolver(),
+                Settings.Global.PREFERRED_NETWORK2_MODE, RILConstants.PREFERRED_NETWORK_MODE);
+        if (DBG) log("mNetworkType:" + mNetworkType + "mNetworkSetting:" + mNetworkSetting + "mNetwork2Type:" +mNetwork2Type + " mNetwork2Setting:" + mNetwork2Setting);
         if (mNetworkType == mNetworkSetting &&
                     mNetwork2Type == mNetwork2Setting) {
             if (DBG) log("RATs perfect match.");
