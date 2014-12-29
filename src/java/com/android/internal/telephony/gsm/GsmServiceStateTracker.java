@@ -378,10 +378,13 @@ public class GsmServiceStateTracker extends ServiceStateTracker {
                 break;
 
             case EVENT_RADIO_ON:
-                if (mUiccApplcation == null
-                        || mUiccApplcation.getState() != AppState.APPSTATE_READY) {
-                    break;
-                }
+                //this is not there in actuall release, causing a issue
+                //while airplane mode is on and off
+                //if (mUiccApplcation == null
+                //        || mUiccApplcation.getState() != AppState.APPSTATE_READY) {
+                //    break;
+                //}
+                break;
             case EVENT_SIM_READY:
                 // Set the network type, in case the radio does not restore it.
                 mCi.setCurrentPreferredNetworkType();
