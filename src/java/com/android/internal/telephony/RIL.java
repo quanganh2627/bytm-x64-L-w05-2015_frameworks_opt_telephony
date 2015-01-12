@@ -1558,7 +1558,7 @@ public final class RIL extends BaseCommands implements CommandsInterface {
 		if (RILJ_LOGD) riljLog(rr.serialString() + "Add delay 200ms START");
         try{
             //do what you want to do before sleeping
-            Thread.sleep(200);//sleep for 200 ms
+            //Thread.sleep(200);//sleep for 200 ms
             //do what you want to do after sleeptig
         }
         catch(Exception e){
