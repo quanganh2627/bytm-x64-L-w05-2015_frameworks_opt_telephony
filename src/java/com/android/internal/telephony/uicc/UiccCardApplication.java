@@ -421,6 +421,11 @@ public class UiccCardApplication {
                 case EVENT_RADIO_OFF_NOT_AVAILABLE:
                     log("EVENT_RADIO_OFF_NOT_AVAILABLE");
                     mLastRadioState = mCi.getRadioState();
+
+                    if(mLastRadioState == RadioState.RADIO_ON){
+                        mLastRadioState = RadioState.RADIO_UNAVAILABLE;
+                        log("Force mLastRadioState changed to RADIO_UNAVAILABLE!");
+                    }
                     break;
                 default:
                     loge("Unknown Event " + msg.what);
