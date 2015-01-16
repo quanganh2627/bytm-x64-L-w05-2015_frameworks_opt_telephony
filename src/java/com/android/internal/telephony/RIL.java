@@ -245,7 +245,8 @@ public final class RIL extends BaseCommands implements CommandsInterface {
     // The number of wakelock requests currently active.  Don't release the lock
     // until dec'd to 0
     int mWakeLockCount;
-
+    // add variable mLastReqPower to avoid sending unnecessary RADIO POWER request
+    int mLastReqPower = 0xFF;
     SparseArray<RILRequest> mRequestList = new SparseArray<RILRequest>();
 
     Object     mLastNITZTimeInfo;
@@ -324,6 +325,7 @@ public final class RIL extends BaseCommands implements CommandsInterface {
 
                         if (s == null) {
                             rr.onError(RADIO_NOT_AVAILABLE, null);
+                            mLastReqPower = 0xFF;
                             rr.release();
                             decrementWakeLock();
                             return;
@@ -361,6 +363,7 @@ public final class RIL extends BaseCommands implements CommandsInterface {
                         // eg, if RILReceiver cleared the list.
                         if (req != null) {
                             rr.onError(RADIO_NOT_AVAILABLE, null);
+                            mLastReqPower = 0xFF;
                             rr.release();
                             decrementWakeLock();
                         }
@@ -404,6 +407,7 @@ public final class RIL extends BaseCommands implements CommandsInterface {
                             }
                         }
                     }
+                    mLastReqPower = 0xFF;
                     break;
             }
         }
@@ -576,6 +580,7 @@ public final class RIL extends BaseCommands implements CommandsInterface {
 
                 // Clear request list on close
                 clearRequestList(RADIO_NOT_AVAILABLE, false);
+                mLastReqPower = 0xFF;
             }} catch (Throwable tr) {
                 Rlog.e(RILJ_LOG_TAG,"Uncaught exception", tr);
             }
@@ -1447,6 +1452,13 @@ public final class RIL extends BaseCommands implements CommandsInterface {
     @Override
     public void
     setRadioPower(boolean on, Message result) {
+        int requestPower = (on ? 1 : 0);
+        if( requestPower == mLastReqPower ){
+            riljLog( "Ignore the power request - " + (on ? " on" : " off"));
+            return;
+        }
+        mLastReqPower = requestPower;
+
         RILRequest rr = RILRequest.obtain(RIL_REQUEST_RADIO_POWER, result, mIs2ndRil);
 
         rr.mParcel.writeInt(1);
@@ -2249,6 +2261,7 @@ public final class RIL extends BaseCommands implements CommandsInterface {
 
         if (mSocket == null || isSwitchingRil() ) {
             rr.onError(RADIO_NOT_AVAILABLE, null);
+            mLastReqPower = 0xFF;
             rr.release();
             return;
         }
