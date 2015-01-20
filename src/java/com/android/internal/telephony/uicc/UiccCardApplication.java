@@ -176,8 +176,8 @@ public class UiccCardApplication {
                         queryPin1State();
                     }
 
-                    if( !isSimReadyNotified )
-                        notifyReadyRegistrantsIfNeeded(null);
+//                    if( !isSimReadyNotified )
+//                        notifyReadyRegistrantsIfNeeded(null);
                 }
             }
         }
