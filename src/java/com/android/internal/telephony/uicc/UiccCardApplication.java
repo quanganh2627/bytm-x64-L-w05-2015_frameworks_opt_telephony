@@ -149,6 +149,8 @@ public class UiccCardApplication {
                 notifyNetworkLockedRegistrantsIfNeeded(null);
             }
 
+            boolean isSimReadyNotified = false;
+            boolean isFdnQueried = false;
             if (mAppState != oldAppState) {
                 if (DBG) log(oldAppType + " changed state: " + oldAppState + " -> " + mAppState);
                 // If the app state turns to APPSTATE_READY, then query FDN status,
@@ -156,20 +158,26 @@ public class UiccCardApplication {
                 if (mAppState == AppState.APPSTATE_READY) {
                     queryFdn();
                     queryPin1State();
+                    isFdnQueried = true;
                 }
                 notifyPinLockedRegistrantsIfNeeded(null);
                 notifyReadyRegistrantsIfNeeded(null);
+                isSimReadyNotified = true;
             }
             if (TelephonyConstants.IS_DSDS && mLastRadioState != mCi.getRadioState()) {
                 mLastRadioState = mCi.getRadioState();
                 if (DBG) log("radio State changing to " + mLastRadioState);
                 if (mLastRadioState == RadioState.RADIO_ON) {
                     if (DBG) log("notifySimReadyFor DSDS " + mLastRadioState);
-                    // If the radio state turns to RADIO_ON, then query FDN status,
-                    //as it might have failed in earlier attempt.
-                    queryFdn();
-                    queryPin1State();                    
-                    notifyReadyRegistrantsIfNeeded(null);
+                    if( !isFdnQueried ){
+                        // If the radio state turns to RADIO_ON, then query FDN status,
+                        //as it might have failed in earlier attempt.
+                        queryFdn();
+                        queryPin1State();
+                    }
+
+//                    if( !isSimReadyNotified )
+//                        notifyReadyRegistrantsIfNeeded(null);
                 }
             }
         }
@@ -421,6 +429,11 @@ public class UiccCardApplication {
                 case EVENT_RADIO_OFF_NOT_AVAILABLE:
                     log("EVENT_RADIO_OFF_NOT_AVAILABLE");
                     mLastRadioState = mCi.getRadioState();
+
+                    if(mLastRadioState == RadioState.RADIO_ON){
+                        mLastRadioState = RadioState.RADIO_UNAVAILABLE;
+                        log("Force mLastRadioState changed to RADIO_UNAVAILABLE!");
+                    }
                     break;
                 default:
                     loge("Unknown Event " + msg.what);

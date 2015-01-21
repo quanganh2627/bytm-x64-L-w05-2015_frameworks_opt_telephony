@@ -221,7 +221,6 @@ public class IccCardProxy extends Handler implements IccCard {
     @Override
     public void handleMessage(Message msg) {
         AsyncResult ar;
-        int pinEvent = msg.arg1;
         if (DBG) log("handleMessage:" + msg.what);
         switch (msg.what) {
             case EVENT_RADIO_OFF_OR_UNAVAILABLE:
@@ -270,10 +269,11 @@ public class IccCardProxy extends Handler implements IccCard {
             case EVENT_PINPUK_DONE:
                 ar = (AsyncResult)msg.obj;
                 // TODO should abstract these exceptions
-                AsyncResult.forMessage(((Message)ar.userObj)).exception
-                    = ar.exception;
-                handlePinError(pinEvent, ar);
-                ((Message)ar.userObj).sendToTarget();
+                Message message = (Message) ar.userObj;
+                AsyncResult asyncResult = new AsyncResult(msg.obj, ar.result, ar.exception);
+                message.obj = asyncResult;
+                handlePinError(msg.arg2, msg.arg1, ar);
+                message.sendToTarget();
                 break;
             default:
                 loge("Unhandled message with number: " + msg.what);
@@ -593,8 +593,7 @@ public class IccCardProxy extends Handler implements IccCard {
         synchronized (mLock) {
             if (mUiccApplication != null) {
                 mUiccApplication.supplyPin(pin,
-                        obtainMessage(EVENT_PINPUK_DONE, PIN_PUK_EVENT_PIN1, 0, onComplete));
-
+                        obtainMessage(EVENT_PINPUK_DONE, 0, PIN_PUK_EVENT_PIN1, onComplete));
             } else if (onComplete != null) {
                 Exception e = new RuntimeException("ICC card is absent.");
                 AsyncResult.forMessage(onComplete).exception = e;
@@ -609,8 +608,7 @@ public class IccCardProxy extends Handler implements IccCard {
         synchronized (mLock) {
             if (mUiccApplication != null) {
                 mUiccApplication.supplyPuk(puk, newPin,
-                        obtainMessage(EVENT_PINPUK_DONE, PIN_PUK_EVENT_PUK1, 0, onComplete));
-
+                        obtainMessage(EVENT_PINPUK_DONE, 0, PIN_PUK_EVENT_PUK1, onComplete));
             } else if (onComplete != null) {
                 Exception e = new RuntimeException("ICC card is absent.");
                 AsyncResult.forMessage(onComplete).exception = e;
@@ -662,31 +660,25 @@ public class IccCardProxy extends Handler implements IccCard {
         }
     }
 
-    private void handlePinError(int pinEvent, AsyncResult ar) {
+    private void handlePinError(int pinEvent, int retryTimesLeft, AsyncResult ar) {
         if (pinEvent != PIN_PUK_EVENT_PIN1
                 && pinEvent != PIN_PUK_EVENT_PUK1) {
             return;
         }
         if (ar.exception == null) {
+            log("handlePinError resetPinRetries");
             resetPinRetries(pinEvent);
             return;
         }
-        int[]   ints = null;
+        if (DBG) log("remaining times:" + retryTimesLeft);
         if (ar.exception instanceof CommandException) {
+             log("handlePinError exception");
             CommandException.Error err = ((CommandException)(ar.exception)).getCommandError();
+             log("handlePinError err" + err);
             if (err == CommandException.Error.PASSWORD_INCORRECT) {
-                ints = (int[])ar.result;
+                updatePinPukRetriesProperty(pinEvent, retryTimesLeft);
             }
         }
-        if (ints == null || ints.length == 0) {
-            log("no pin retries returned by RIL");
-            return;
-        }
-        if (DBG) log("remaining times:" + ints[0]);
-        int retryTimesLeft = ints[0];
-        log("handlePinError, we have " + retryTimesLeft +
-                " times left for PIN:" + pinEvent);
-        updatePinPukRetriesProperty(pinEvent, retryTimesLeft);
     }
 
     private void reset() {
@@ -755,7 +747,7 @@ public class IccCardProxy extends Handler implements IccCard {
         synchronized (mLock) {
             if (mUiccApplication != null) {
                 mUiccApplication.setIccLockEnabled(enabled, password,
-                        obtainMessage(EVENT_PINPUK_DONE, PIN_PUK_EVENT_PIN1, 0, onComplete));
+                        obtainMessage(EVENT_PINPUK_DONE, 0, PIN_PUK_EVENT_PIN1, onComplete));
             } else if (onComplete != null) {
                 Exception e = new RuntimeException("ICC card is absent.");
                 AsyncResult.forMessage(onComplete).exception = e;
@@ -784,7 +776,7 @@ public class IccCardProxy extends Handler implements IccCard {
         synchronized (mLock) {
             if (mUiccApplication != null) {
                 mUiccApplication.changeIccLockPassword(oldPassword, newPassword,
-                        obtainMessage(EVENT_PINPUK_DONE, PIN_PUK_EVENT_PIN1, 0, onComplete));
+                        obtainMessage(EVENT_PINPUK_DONE, 0, PIN_PUK_EVENT_PIN1, onComplete));
             } else if (onComplete != null) {
                 Exception e = new RuntimeException("ICC card is absent.");
                 AsyncResult.forMessage(onComplete).exception = e;
