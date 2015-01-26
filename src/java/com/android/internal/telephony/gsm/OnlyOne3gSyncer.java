@@ -374,6 +374,11 @@ public class OnlyOne3gSyncer extends Handler {
     private void handleSet2gDone(Message msg) {
         AsyncResult ar = (AsyncResult) msg.obj;
 
+        int mNetworkSetting = Settings.Global.getInt( mPhones[0].getContext().getContentResolver(),
+                Settings.Global.PREFERRED_NETWORK_MODE, RILConstants.PREFERRED_NETWORK_MODE);
+        int mNetwork2Setting = Settings.Global.getInt(mPhones[1].getContext().getContentResolver(),
+                Settings.Global.PREFERRED_NETWORK2_MODE, RILConstants.PREFERRED_NETWORK_MODE);
+
         if (DBG) log("Set 2g Done.");
         if (ar.exception == null) {
             Message smsg = obtainMessage(EVENT_SET_SECOND_TYPE_DONE, sId);
