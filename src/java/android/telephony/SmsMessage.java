@@ -347,6 +347,17 @@ public class SmsMessage {
                 }
             } else {  // Assume unicode.
                 nextPos = pos + Math.min(limit / 2, textLen - pos);
+
+                // check if UTF-16. Higher half range is 0xD800-0xDBFF, Lower half range is 0xDC00 - 0xDFFF
+                if( textLen > nextPos ){
+                    int lastChar = new Integer(text.charAt(nextPos-1));
+                    int nextChar = new Integer(text.charAt(nextPos));
+                    if( (lastChar >= 0xD800) && (lastChar <= 0xDBFF)
+                        && (nextChar >= 0xDC00) && (nextChar <= 0xDFFF)){
+                        nextPos -= 1;
+                        Rlog.d(LOG_TAG, "UTF-16, nextPos - 1");
+                    }
+                }
             }
             if ((nextPos <= pos) || (nextPos > textLen)) {
                 Rlog.e(LOG_TAG, "fragmentText failed (" + pos + " >= " + nextPos + " or " +
