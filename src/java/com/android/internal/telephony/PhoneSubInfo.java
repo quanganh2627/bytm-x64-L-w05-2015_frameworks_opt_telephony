@@ -23,8 +23,11 @@ import android.content.pm.PackageManager;
 import android.os.Binder;
 import android.telephony.PhoneNumberUtils;
 import android.telephony.Rlog;
-
+import android.os.SystemProperties;
 import com.android.internal.telephony.uicc.IsimRecords;
+import android.app.AppOpsManager;
+import com.android.internal.app.IAppOpsService;
+import android.os.ServiceManager;
 
 public class PhoneSubInfo extends IPhoneSubInfo.Stub {
     static final String LOG_TAG = "PhoneSubInfo";
@@ -33,6 +36,7 @@ public class PhoneSubInfo extends IPhoneSubInfo.Stub {
 
     private Phone mPhone;
     private Context mContext;
+    private static IAppOpsService mAppOpsService;
     private static final String READ_PHONE_STATE =
         android.Manifest.permission.READ_PHONE_STATE;
     // TODO: change getCompleteVoiceMailNumber() to require READ_PRIVILEGED_PHONE_STATE
@@ -41,12 +45,30 @@ public class PhoneSubInfo extends IPhoneSubInfo.Stub {
     private static final String READ_PRIVILEGED_PHONE_STATE =
         android.Manifest.permission.READ_PRIVILEGED_PHONE_STATE;
 
+    private static final boolean PEM_CONTROL = SystemProperties.getBoolean("intel.pem.control", false);
+
     public PhoneSubInfo(Phone phone) {
         mPhone = phone;
         mContext = phone.getContext();
     }
 
     public void dispose() {
+    }
+    
+    private static int checkOps(int op){
+       try {
+            if(mAppOpsService == null){
+                mAppOpsService = IAppOpsService.Stub.asInterface(ServiceManager.getService(Context.APP_OPS_SERVICE));
+            }
+            int result = mAppOpsService.checkOperationWithData(op, Binder.getCallingUid(), null);
+            if (result != PackageManager.PERMISSION_GRANTED) {
+                 return -1;
+            }
+       } catch (Exception e) {
+           return -1;
+       }
+
+       return 0;
     }
 
     @Override
@@ -65,6 +87,12 @@ public class PhoneSubInfo extends IPhoneSubInfo.Stub {
     @Override
     public String getDeviceId() {
         mContext.enforceCallingOrSelfPermission(READ_PHONE_STATE, "Requires READ_PHONE_STATE");
+       if(PEM_CONTROL){
+           if(checkOps(AppOpsManager.OP_MONITOR_ICC_INFO) < 0){
+             log("Read phone IMEI denied!");
+             return "";
+           }
+        }
         return mPhone.getDeviceId();
     }
 
@@ -84,6 +112,13 @@ public class PhoneSubInfo extends IPhoneSubInfo.Stub {
     @Override
     public String getSubscriberId() {
         mContext.enforceCallingOrSelfPermission(READ_PHONE_STATE, "Requires READ_PHONE_STATE");
+
+       if(PEM_CONTROL){
+        if(checkOps(AppOpsManager.OP_MONITOR_ICC_INFO) < 0){
+          log("Read phone subscriberid (IMSI) denied!");
+          return "";
+        }
+       }
         return mPhone.getSubscriberId();
     }
 
@@ -110,6 +145,12 @@ public class PhoneSubInfo extends IPhoneSubInfo.Stub {
     @Override
     public String getLine1Number() {
         mContext.enforceCallingOrSelfPermission(READ_PHONE_STATE, "Requires READ_PHONE_STATE");
+       if(PEM_CONTROL){
+        if(checkOps(AppOpsManager.OP_READ_CONTACTS) < 0){
+          log("Read phone number denied!");
+          return "";
+          }
+       }
         return mPhone.getLine1Number();
     }
 

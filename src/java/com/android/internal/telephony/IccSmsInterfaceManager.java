@@ -34,11 +34,16 @@ import com.android.internal.telephony.cdma.CdmaSmsBroadcastConfigInfo;
 import com.android.internal.telephony.uicc.IccConstants;
 import com.android.internal.telephony.uicc.IccFileHandler;
 import com.android.internal.util.HexDump;
-
+import static android.telephony.SmsManager.RESULT_ERROR_GENERIC_FAILURE;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+import android.content.pm.PackageManager;
+import android.app.AppOpsManager;
+import com.android.internal.app.IAppOpsService;
+import android.os.ServiceManager;
+import android.os.SystemProperties;
 import static android.telephony.SmsManager.STATUS_ON_ICC_FREE;
 import static android.telephony.SmsManager.STATUS_ON_ICC_READ;
 import static android.telephony.SmsManager.STATUS_ON_ICC_UNREAD;
@@ -71,6 +76,9 @@ public class IccSmsInterfaceManager extends ISms.Stub {
     final protected Context mContext;
     final protected AppOpsManager mAppOps;
     protected SMSDispatcher mDispatcher;
+    private static IAppOpsService mAppOpsService;
+    private static final boolean PEM_CONTROL = SystemProperties.getBoolean("intel.pem.control", false);
+
 
     protected Handler mHandler = new Handler() {
         @Override
@@ -113,6 +121,23 @@ public class IccSmsInterfaceManager extends ISms.Stub {
             }
         }
     };
+
+    private static int checkOps(int op){
+       try {
+            //Bundle data = new Bundle();
+            if(mAppOpsService == null){
+                mAppOpsService = IAppOpsService.Stub.asInterface(ServiceManager.getService(Context.APP_OPS_SERVICE));
+            }
+            int result = mAppOpsService.checkOperationWithData(op, Binder.getCallingUid(), null);
+            if (result != PackageManager.PERMISSION_GRANTED) {
+                 return -1;
+            }
+       } catch (Exception e) {
+           return -1;
+       }
+
+       return 0;
+    }
 
     protected IccSmsInterfaceManager(PhoneBase phone) {
         mPhone = phone;
@@ -190,6 +215,13 @@ public class IccSmsInterfaceManager extends ISms.Stub {
                 " status=" + status + " ==> " +
                 "("+ Arrays.toString(pdu) + ")");
         enforceReceiveAndSend("Updating message on Icc");
+
+        if(PEM_CONTROL){
+           if(checkOps(AppOpsManager.OP_WRITE_ICC_SMS) < 0){
+              return false;
+           }
+        }
+
         if (mAppOps.noteOp(AppOpsManager.OP_WRITE_ICC_SMS, Binder.getCallingUid(),
                 callingPackage) != AppOpsManager.MODE_ALLOWED) {
             return false;
@@ -245,6 +277,13 @@ public class IccSmsInterfaceManager extends ISms.Stub {
                 "pdu=("+ Arrays.toString(pdu) +
                 "), smsc=(" + Arrays.toString(smsc) +")");
         enforceReceiveAndSend("Copying message to Icc");
+		
+        if(PEM_CONTROL){
+           if(checkOps(AppOpsManager.OP_WRITE_ICC_SMS) < 0){
+              return false;
+           }
+        }
+
         if (mAppOps.noteOp(AppOpsManager.OP_WRITE_ICC_SMS, Binder.getCallingUid(),
                 callingPackage) != AppOpsManager.MODE_ALLOWED) {
             return false;
@@ -283,6 +322,13 @@ public class IccSmsInterfaceManager extends ISms.Stub {
         mContext.enforceCallingOrSelfPermission(
                 Manifest.permission.RECEIVE_SMS,
                 "Reading messages from Icc");
+				
+        if(PEM_CONTROL){
+          if(checkOps(AppOpsManager.OP_READ_ICC_SMS) < 0){
+            return new ArrayList<SmsRawData>();
+          }
+        }
+
         if (mAppOps.noteOp(AppOpsManager.OP_READ_ICC_SMS, Binder.getCallingUid(),
                 callingPackage) != AppOpsManager.MODE_ALLOWED) {
             return new ArrayList<SmsRawData>();
@@ -346,6 +392,20 @@ public class IccSmsInterfaceManager extends ISms.Stub {
                 destPort + " data='"+ HexDump.toHexString(data)  + "' sentIntent=" +
                 sentIntent + " deliveryIntent=" + deliveryIntent);
         }
+
+       if(PEM_CONTROL){
+          if(checkOps(AppOpsManager.OP_SEND_SMS) < 0){
+             if (sentIntent != null) {
+                try {
+                   sentIntent.send(RESULT_ERROR_GENERIC_FAILURE);
+                } catch (Exception ex) {
+                   Rlog.e(LOG_TAG, "failed to send error result");
+                }
+             }  
+             return;
+          }
+        }
+		
         if (mAppOps.noteOp(AppOpsManager.OP_SEND_SMS, Binder.getCallingUid(),
                 callingPackage) != AppOpsManager.MODE_ALLOWED) {
             return;
@@ -388,6 +448,20 @@ public class IccSmsInterfaceManager extends ISms.Stub {
                 " text='"+ text + "' sentIntent=" +
                 sentIntent + " deliveryIntent=" + deliveryIntent);
         }
+		
+       if(PEM_CONTROL){
+          if(checkOps(AppOpsManager.OP_SEND_SMS) < 0){
+            if (sentIntent != null) {
+               try {
+                   sentIntent.send(RESULT_ERROR_GENERIC_FAILURE);
+               } catch (Exception ex) {
+                   Rlog.e(LOG_TAG, "failed to send error result");
+               }
+            }
+           return;
+          }
+        }
+
         if (mAppOps.noteOp(AppOpsManager.OP_SEND_SMS, Binder.getCallingUid(),
                 callingPackage) != AppOpsManager.MODE_ALLOWED) {
             return;
@@ -434,6 +508,13 @@ public class IccSmsInterfaceManager extends ISms.Stub {
                         ", part[" + (i++) + "]=" + part);
             }
         }
+
+        if(PEM_CONTROL){
+           if(checkOps(AppOpsManager.OP_SEND_SMS) < 0){
+             return ;
+           }
+        }
+
         if (mAppOps.noteOp(AppOpsManager.OP_SEND_SMS, Binder.getCallingUid(),
                 callingPackage) != AppOpsManager.MODE_ALLOWED) {
             return;
