@@ -710,6 +710,14 @@ public class GsmServiceStateTracker extends ServiceStateTracker {
                         " showPlmn='%b' plmn='%s' showSpn='%b' spn='%s'",
                         showPlmn, plmn, showSpn, spn));
             }
+
+            if(mSS != null){
+               String type = getNetType();
+               if(type != null){
+                 plmn += " - "+type;
+               }
+            }
+        
             Intent intent = new Intent(TelephonyIntents.SPN_STRINGS_UPDATED_ACTION);
             intent.addFlags(Intent.FLAG_RECEIVER_REPLACE_PENDING);
             intent.putExtra(TelephonyIntents.EXTRA_SHOW_SPN, showSpn);
@@ -724,6 +732,31 @@ public class GsmServiceStateTracker extends ServiceStateTracker {
         mCurShowPlmn = showPlmn;
         mCurSpn = spn;
         mCurPlmn = plmn;
+    }
+    
+    private String getNetType(){
+      int code = mSS.getNetworkType();
+      switch (code){
+            case TelephonyManager.NETWORK_TYPE_GPRS:
+            case TelephonyManager.NETWORK_TYPE_EDGE:
+                 return "2G";
+            case TelephonyManager.NETWORK_TYPE_UMTS:
+            case TelephonyManager.NETWORK_TYPE_HSPA:
+            case TelephonyManager.NETWORK_TYPE_HSDPA:
+            case TelephonyManager.NETWORK_TYPE_HSUPA:
+            case TelephonyManager.NETWORK_TYPE_HSPAP:
+                 return "3G";
+            case TelephonyManager.NETWORK_TYPE_LTE:
+                 return "4G";
+            case TelephonyManager.NETWORK_TYPE_CDMA:
+            case TelephonyManager.NETWORK_TYPE_EHRPD:
+            case TelephonyManager.NETWORK_TYPE_1xRTT:
+            case TelephonyManager.NETWORK_TYPE_EVDO_0:
+            case TelephonyManager.NETWORK_TYPE_EVDO_A:
+            case TelephonyManager.NETWORK_TYPE_EVDO_B:
+        default:
+            return null;
+      } 
     }
 
     /**
