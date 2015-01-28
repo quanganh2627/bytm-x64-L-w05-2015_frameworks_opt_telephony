@@ -67,7 +67,7 @@ public class UiccCardApplication {
     private boolean       mDesiredPinLocked;
     private boolean       mIccFdnAvailable = true; // Default is enabled.
     private RadioState    mLastRadioState = RadioState.RADIO_UNAVAILABLE;
-
+    private boolean       mIccFdnUpdated = false;
 
     private CommandsInterface mCi;
     private Context mContext;
@@ -149,8 +149,6 @@ public class UiccCardApplication {
                 notifyNetworkLockedRegistrantsIfNeeded(null);
             }
 
-            boolean isSimReadyNotified = false;
-            boolean isFdnQueried = false;
             if (mAppState != oldAppState) {
                 if (DBG) log(oldAppType + " changed state: " + oldAppState + " -> " + mAppState);
                 // If the app state turns to APPSTATE_READY, then query FDN status,
@@ -158,23 +156,23 @@ public class UiccCardApplication {
                 if (mAppState == AppState.APPSTATE_READY) {
                     queryFdn();
                     queryPin1State();
-                    isFdnQueried = true;
+                }
+                else{
+                    mIccFdnUpdated = false;
                 }
                 notifyPinLockedRegistrantsIfNeeded(null);
                 notifyReadyRegistrantsIfNeeded(null);
-                isSimReadyNotified = true;
             }
+            else if( (mAppState == AppState.APPSTATE_READY) && !mIccFdnUpdated ) {
+                if (DBG) log(" queryFdn as it have failed in last attempt!");
+                queryFdn();
+            }
+
             if (TelephonyConstants.IS_DSDS && mLastRadioState != mCi.getRadioState()) {
                 mLastRadioState = mCi.getRadioState();
                 if (DBG) log("radio State changing to " + mLastRadioState);
                 if (mLastRadioState == RadioState.RADIO_ON) {
                     if (DBG) log("notifySimReadyFor DSDS " + mLastRadioState);
-                    if( !isFdnQueried ){
-                        // If the radio state turns to RADIO_ON, then query FDN status,
-                        //as it might have failed in earlier attempt.
-                        queryFdn();
-                        queryPin1State();
-                    }
 
 //                    if( !isSimReadyNotified )
 //                        notifyReadyRegistrantsIfNeeded(null);
@@ -243,7 +241,8 @@ public class UiccCardApplication {
     private void onQueryFdnEnabled(AsyncResult ar) {
         synchronized (mLock) {
             if (ar.exception != null) {
-                if (DBG) log("Error in querying facility lock:" + ar.exception);
+                if (DBG) log("Error in querying facility FDN:" + ar.exception);
+                mIccFdnUpdated = false;
                 return;
             }
 
@@ -257,6 +256,7 @@ public class UiccCardApplication {
                     mIccFdnEnabled = (result[0] == 1) ? true : false;
                     mIccFdnAvailable = true;
                 }
+                mIccFdnUpdated = true;
                 log("Query facility FDN : FDN service available: "+ mIccFdnAvailable
                         +" enabled: "  + mIccFdnEnabled);
             } else {
